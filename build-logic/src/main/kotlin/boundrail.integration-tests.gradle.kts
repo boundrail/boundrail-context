@@ -29,8 +29,6 @@ val integrationTests = listOf(
         systemProperty("boundrail.context.backend", "thread-local")
         filter {
             includeTestsMatching("*RuntimeConformanceIT")
-            // RuntimeConformanceIT is added in T008; until then the filter matches nothing.
-            isFailOnNoMatchingTests = false
         }
     },
 )

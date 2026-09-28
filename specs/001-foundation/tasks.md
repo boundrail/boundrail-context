@@ -96,7 +96,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
       observations), `TestJwts` (per-run signing key; user `alice` with claim `tenant=acme`), minimal Spring Boot applications `EdgeApp`,
       `OrdersApp`, `BillingApp`, `PartnerApp` (records received headers) and `TokenExchangeApp` (stub endpoint, counts calls), and
       `Topology`, a JUnit extension that starts the Testcontainers Kafka broker and the five contexts on random ports (BLD-07)
-- [ ] T008 [P] [US3] Write `RuntimeConformanceIT` with RC-1 – RC-8 (`Pending: M1`) and RC-9 (`Pending: M3`), and remove the temporary
+- [x] T008 [P] [US3] Write `RuntimeConformanceIT` with RC-1 – RC-8 (`Pending: M1`) and RC-9 (`Pending: M3`), and remove the temporary
       `isFailOnNoMatchingTests = false` from `boundrail.integration-tests.gradle.kts` (added in T004), so the thread-local run fails if the
       suite goes missing
 - [ ] T009 [P] [US3] Write `TrustBoundaryIT` with IT-2.1 – IT-2.9 (`Pending: M2`)
