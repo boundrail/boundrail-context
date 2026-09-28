@@ -22,7 +22,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Purpose**: Gradle skeleton
 
-- [ ] T001 [TDD-EXCEPTION: `./gradlew --version` runs] Add the Gradle wrapper (`gradlew`, `gradle/wrapper/`); the root `.gitignore`
+- [x] T001 [TDD-EXCEPTION: `./gradlew --version` runs] Add the Gradle wrapper (`gradlew`, `gradle/wrapper/`); the root `.gitignore`
       already covers `build/` and `.gradle/`
 - [ ] T002 [TDD-EXCEPTION: `./gradlew projects` lists the six projects of BLD-02] Create `gradle/libs.versions.toml` (JUnit 5, AssertJ,
       Testcontainers, Spring Boot 4.x, Spring Kafka, Spring Security), `build-logic/settings.gradle.kts`, `build-logic/build.gradle.kts`
