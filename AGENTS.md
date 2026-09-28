@@ -68,3 +68,5 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   feature closes (the `reviewer` agent does the review).
 - Implementation starts only after the user approves the feature's spec, plan, tasks and TDD exceptions. The `leader` agent then commits
   each reviewed task on the feature branch; pushing and merging always need the user.
+- Branch names: feature work uses the feature folder name (`001-foundation`); everything else uses `<type>/<topic>`, where the type is a
+  Conventional Commits type or `setup` (e.g. `setup/spec-driven-workflow`). Never commit on `main`. Details in the `git-commit` skill.

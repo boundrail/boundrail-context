@@ -14,6 +14,17 @@ Write conventional, informative commit messages for Boundrail Context.
   spec, plan and tasks the user approved. That approval is the request. Reference the task and requirement IDs in the body.
 - Never commit unprompted otherwise, even after finishing a change — offer instead. Never commit to `main` or push without the user.
 
+## Branch names
+
+Never commit on `main`; create a branch first.
+
+- **Feature work** (a milestone from `specs/`): the feature folder name, e.g. `001-foundation`, `004-async-diagnostics`.
+- **Everything else**: `<type>/<topic>`.
+  - `<type>` is a commit type from the list below (`fix`, `docs`, `build`, `ci`, `chore`, …), or `setup` for repository, tooling or
+    workflow setup. Pick the type that describes most of the branch's work.
+  - `<topic>` is short kebab-case: lowercase words joined by hyphens, no IDs or dates, e.g. `docs/deadline-examples`,
+    `build/gradle-9-upgrade`, `setup/spec-driven-workflow`.
+
 ## Format
 
 Conventional Commits:
