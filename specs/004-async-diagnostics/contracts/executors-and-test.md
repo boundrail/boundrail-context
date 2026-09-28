@@ -15,6 +15,6 @@ public final class BoundExecutors {
 
 ## Test support (TEST-02, TEST-03) — `boundrail-context-test`
 
-- `@BoundrailTest`: JUnit 5 extension annotation; violation mode `fail`, capture sites `on`, recorded violations exposed to the test.
+- `@BoundrailTest`: JUnit Jupiter extension annotation; violation mode `fail`, capture sites `on`, recorded violations exposed to the test.
 - `ContextAssertions.assertThat(ContextSnapshot)`: `contains(key, value)`, `doesNotContain(key)`, `isEmpty()`.
 - `ContextAssertions.assertThatViolations()`: `hasSize(int)`, `containsKind(Violation.Kind)`, `isEmpty()`.

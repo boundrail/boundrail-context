@@ -17,7 +17,7 @@ initiator value types with their local rules.
 
 **Language/Version**: Java 21 (main), Java 25 (`java25` source set for the ScopedValue backend)
 
-**Primary Dependencies**: none at runtime (BLD-03); JUnit 5 and AssertJ for tests
+**Primary Dependencies**: none at runtime (BLD-03); JUnit 6 and AssertJ for tests
 
 **Testing**: unit tests in `boundrail-context-core`; RuntimeConformanceIT in `integration-tests` on all three JDK tasks
 

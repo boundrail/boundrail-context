@@ -19,7 +19,7 @@ on three JDK launchers, the test topology skeleton, every later scenario as a di
 
 **Storage**: N/A
 
-**Testing**: JUnit 5, AssertJ, Testcontainers (Kafka), Spring Boot test support
+**Testing**: JUnit 6 (managed by the Spring Boot BOM), AssertJ, Testcontainers (Kafka), Spring Boot test support
 
 **Target Platform**: JVM 21+ (library)
 

@@ -14,7 +14,7 @@ Hold that shape and most "where does this go?" questions answer themselves.
 **Pinned stack** (verify against the project's `pom.xml`/`build.gradle` — do not assume):
 Spring Boot 4.0 (GA 2025-11-20), Spring Framework 7, Java 17 baseline / Java 25 LTS, Jakarta
 EE 11 (`jakarta.*`, never `javax.*`), Jackson 3, Spring Security 7, Spring Data JPA /
-Hibernate 7, JUnit 5 + Testcontainers, Gradle (Kotlin DSL).
+Hibernate 7, JUnit 6 + Testcontainers, Gradle (Kotlin DSL).
 
 If you are typing `WebSecurityConfigurerAdapter`, `@MockBean`, field `@Autowired`,
 `authorizeRequests`, or `javax.persistence` — **stop**. Those are the previous generation.

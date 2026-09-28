@@ -24,7 +24,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 - [x] T001 [TDD-EXCEPTION: `./gradlew --version` runs] Add the Gradle wrapper (`gradlew`, `gradle/wrapper/`); the root `.gitignore`
       already covers `build/` and `.gradle/`
-- [ ] T002 [TDD-EXCEPTION: `./gradlew projects` lists the six projects of BLD-02] Create `gradle/libs.versions.toml` (JUnit 5, AssertJ,
+- [ ] T002 [TDD-EXCEPTION: `./gradlew projects` lists the six projects of BLD-02] Create `gradle/libs.versions.toml` (JUnit 6, AssertJ,
       Testcontainers, Spring Boot 4.x, Spring Kafka, Spring Security), `build-logic/settings.gradle.kts`, `build-logic/build.gradle.kts`
       (`kotlin-dsl`), and `settings.gradle.kts` with `includeBuild("build-logic")` and the six projects (BLD-01, BLD-02)
 - [ ] T003 [TDD-EXCEPTION: `./gradlew build` passes, and `:boundrail-context-core:dependencies --configuration runtimeClasspath` lists no
