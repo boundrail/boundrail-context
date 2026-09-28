@@ -91,7 +91,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped with `Pending: Mx`.
 
-- [ ] T007 [US3] Red: write `TopologySmokeIT` (enabled), which starts the topology and calls each service once through its hosts-file
+- [x] T007 [US3] Red: write `TopologySmokeIT` (enabled), which starts the topology and calls each service once through its hosts-file
       name, and see it fail. Green: create in `topology/` the `ObservedContext` probe (per-service, per-request `Map<String, String>`
       observations), `TestJwts` (per-run signing key; user `alice` with claim `tenant=acme`), minimal Spring Boot applications `EdgeApp`,
       `OrdersApp`, `BillingApp`, `PartnerApp` (records received headers) and `TokenExchangeApp` (stub endpoint, counts calls), and
