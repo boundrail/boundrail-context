@@ -27,7 +27,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 - [x] T002 [TDD-EXCEPTION: `./gradlew projects` lists the six projects of BLD-02] Create `gradle/libs.versions.toml` (JUnit 6, AssertJ,
       Testcontainers, Spring Boot 4.x, Spring Kafka, Spring Security), `build-logic/settings.gradle.kts`, `build-logic/build.gradle.kts`
       (`kotlin-dsl`), and `settings.gradle.kts` with `includeBuild("build-logic")` and the six projects (BLD-01, BLD-02)
-- [ ] T003 [TDD-EXCEPTION: `./gradlew build` passes, and `:boundrail-context-core:dependencies --configuration runtimeClasspath` lists no
+- [x] T003 [TDD-EXCEPTION: `./gradlew build` passes, and `:boundrail-context-core:dependencies --configuration runtimeClasspath` lists no
       dependencies] Create `build-logic/src/main/kotlin/boundrail.java-conventions.gradle.kts` (JDK 25 toolchain, `options.release = 21`,
       JUnit platform) and the `build.gradle.kts` of `boundrail-context-core` (no dependencies), `-spring` (Spring Boot 4; Security and
       Micrometer `compileOnly`), `-kafka`, `-test` and `examples/propagation-demo` (BLD-03, BLD-05, BLD-12)
