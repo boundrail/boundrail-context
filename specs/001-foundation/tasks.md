@@ -40,7 +40,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Purpose**: The integration-test project, which every story's tests run in
 
-- [ ] T004 [TDD-EXCEPTION: `./gradlew check --dry-run` lists the three integration test tasks] Create
+- [x] T004 [TDD-EXCEPTION: `./gradlew check --dry-run` lists the three integration test tasks] Create
       `build-logic/src/main/kotlin/boundrail.integration-tests.gradle.kts` (tasks `integrationTestJdk21`, `integrationTestJdk25`,
       `integrationTestJdk25ThreadLocal` with system property `boundrail.context.backend=thread-local` and filter `*RuntimeConformanceIT`;
       each with `-Djdk.net.hosts.file`; `check` depends on all three), `integration-tests/build.gradle.kts` applying it with the four
@@ -94,7 +94,9 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
       observations), `TestJwts` (per-run signing key; user `alice` with claim `tenant=acme`), minimal Spring Boot applications `EdgeApp`,
       `OrdersApp`, `BillingApp`, `PartnerApp` (records received headers) and `TokenExchangeApp` (stub endpoint, counts calls), and
       `Topology`, a JUnit extension that starts the Testcontainers Kafka broker and the five contexts on random ports (BLD-07)
-- [ ] T008 [P] [US3] Write `RuntimeConformanceIT` with RC-1 – RC-8 (`Pending: M1`) and RC-9 (`Pending: M3`)
+- [ ] T008 [P] [US3] Write `RuntimeConformanceIT` with RC-1 – RC-8 (`Pending: M1`) and RC-9 (`Pending: M3`), and remove the temporary
+      `isFailOnNoMatchingTests = false` from `boundrail.integration-tests.gradle.kts` (added in T004), so the thread-local run fails if the
+      suite goes missing
 - [ ] T009 [P] [US3] Write `TrustBoundaryIT` with IT-2.1 – IT-2.9 (`Pending: M2`)
 - [ ] T010 [P] [US3] Write `ContextPropagationIT` with IT-1.1 – IT-1.8 (`Pending: M3`)
 - [ ] T011 [P] [US3] Write `DeadlinePropagationIT` with IT-3.1 – IT-3.7 (`Pending: M4`) and IT-3.8 (`Pending: M6`)
