@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.jar.JarFile;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +35,25 @@ class BuildSmokeIT {
     @DisplayName("BLD-04 versioned classes are compiled for release 25")
     void versionedClassesAreCompiledForRelease25() throws Exception {
         assertThat(classFileMajorVersion("META-INF/versions/25/" + MARKER)).isEqualTo(69);
+    }
+
+    @Test
+    @DisplayName("BLD-06 library classes load from packaged JARs")
+    void libraryClassesLoadFromPackagedJars() throws Exception {
+        Path location = Path.of(RuntimeVersionMarker.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+
+        assertThat(location.getFileName().toString()).endsWith(".jar");
+    }
+
+    @Test
+    @DisplayName("BLD-06 runs on the JDK its task declares")
+    void runsOnTheJdkItsTaskDeclares() {
+        String task = System.getProperty("boundrail.it.task");
+        assertThat(task).as("system property boundrail.it.task (set by the integration test task)").isNotNull();
+        Matcher name = Pattern.compile("integrationTestJdk(\\d+).*").matcher(task);
+        assertThat(name.matches()).as("task name %s names its JDK", task).isTrue();
+
+        assertThat(Runtime.version().feature()).isEqualTo(Integer.parseInt(name.group(1)));
     }
 
     /** Reads the class file major version of a core JAR entry, bypassing multi-release resolution. */

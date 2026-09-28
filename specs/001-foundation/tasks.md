@@ -75,9 +75,11 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Independent Test**: `./gradlew check`; the smoke test passes in the JDK 21 and JDK 25 tasks.
 
-- [ ] T006 [US2] [TDD-EXCEPTION: the check fails when a class directory is put on the classpath by hand, passes on the real build, and
-      the test reports show each task's `java.version`] Add a Gradle check (in `boundrail.integration-tests.gradle.kts`) that fails the
-      build if `testRuntimeClasspath` contains a library project's class directory instead of its JAR (BLD-06)
+- [x] T006 [US2] Red: add to `BuildSmokeIT` a test `BLD-06 library classes load from packaged JARs` (core's classes come from a `.jar`)
+      and a test `BLD-06 runs on the JDK its task declares` (the running JVM matches the version in the task's name, passed as the
+      `boundrail.it.task` system property), and see the JDK test fail. Green: each integration test task passes its name. Prove both tests
+      can fail: a class directory ahead of the core JAR fails the first, a task registered or launched with the wrong JDK fails the second
+      (BLD-06)
 
 **Checkpoint**: BLD-06 satisfied.
 

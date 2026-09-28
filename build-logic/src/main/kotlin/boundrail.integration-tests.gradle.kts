@@ -18,6 +18,7 @@ fun registerIntegrationTest(name: String, javaVersion: Int, configure: Test.() -
         classpath = testSourceSet.runtimeClasspath
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(javaVersion) }
         systemProperty("jdk.net.hosts.file", hostsFile)
+        systemProperty("boundrail.it.task", name)
         configure()
     }
 
