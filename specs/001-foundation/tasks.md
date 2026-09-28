@@ -57,7 +57,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Independent Test**: `./gradlew :integration-tests:integrationTestJdk21 :integration-tests:integrationTestJdk25 --tests '*BuildSmokeIT'`
 
-- [ ] T005 [US1] Red: write `integration-tests/src/test/java/io/github/boundrail/context/it/BuildSmokeIT.java` with
+- [x] T005 [US1] Red: write `integration-tests/src/test/java/io/github/boundrail/context/it/BuildSmokeIT.java` with
       `@DisplayName("BLD-11 versioned marker class loads on JDK 25 only")`, asserting `RuntimeVersionMarker.version()` is 25 when
       `Runtime.version().feature() >= 25` and 21 otherwise, and see it fail. Green: create
       `build-logic/src/main/kotlin/boundrail.multi-release.gradle.kts` (`java25` source set with `release = 25`, output packaged
