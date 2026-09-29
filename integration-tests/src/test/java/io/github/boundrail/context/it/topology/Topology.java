@@ -45,7 +45,7 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
     private static final Namespace NAMESPACE = Namespace.create(Topology.class);
 
     /** Same Kafka version as the kafka-clients managed by the Spring Boot BOM. */
-    private static final String KAFKA_IMAGE = "apache/kafka-native:4.2.1";
+    private static final String KAFKA_IMAGE = "apache/kafka:4.2.1";
 
     /** Only edge is secured; the other services run without Spring Security's auto-configuration. */
     private static final String SECURITY_AUTO_CONFIGURATIONS = String.join(",",
