@@ -118,7 +118,7 @@ verified by the test report listing its scenarios as skipped with the right reas
 
 **Independent Test**: A pull request shows a green `check` job.
 
-- [ ] T013 [US4] [TDD-EXCEPTION: `./gradlew check` green locally; the workflow's first run on GitHub, after the user approves a push]
+- [x] T013 [US4] [TDD-EXCEPTION: `./gradlew check` green locally; the workflow's first run on GitHub, after the user approves a push]
       Create `.github/workflows/ci.yml`: on push and pull request, `actions/setup-java` with JDK 21 and 25, `gradle/actions/setup-gradle`,
       run `./gradlew check`. Confirm `LICENSE` is Apache-2.0 at the root (BLD-08, BLD-09)
 
