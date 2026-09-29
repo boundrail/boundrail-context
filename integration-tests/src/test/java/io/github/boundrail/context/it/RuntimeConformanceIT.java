@@ -75,9 +75,9 @@ class RuntimeConformanceIT {
 
     @Test
     @Disabled("Pending: M3")
-    @DisplayName("RC-9 scope listeners enter in order and restore in reverse")
-    void rc9ScopeListenersEnterInOrderAndRestoreInReverse() {
-        // RC-9: (RuntimeConformanceIT). Two registered listeners are entered in registration order and restored in reverse order for every
-        // nested scope, including when the operation throws. A listener that throws does not change the operation's result. *(RT-07)*
+    @DisplayName("RC-9 Scope listeners")
+    void rc9ScopeListeners() {
+        // RC-9: Two registered listeners are entered in registration order and restored in reverse order for every nested scope, including
+        // when the operation throws. A listener that throws does not change the operation's result. *(RT-07)*
     }
 }
