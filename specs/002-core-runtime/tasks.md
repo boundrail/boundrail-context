@@ -1,16 +1,274 @@
 ---
-description: "Task list for 002-core-runtime (stub)"
+description: "Task list for 002-core-runtime"
 ---
 
 # Tasks: Core and Runtimes
 
 **Input**: Design documents from `/specs/002-core-runtime/`
 
-**Status**: Stub. Generate the task list with `/speckit-tasks` (or the `planner` agent) once [plan.md](plan.md) is complete.
+**Prerequisites**: [plan.md](plan.md), [spec.md](spec.md), [contracts/core-api.md](contracts/core-api.md)
+
+**Tests**: Required (constitution principle VII). Each task is one red-green cycle: its failing test, with the behaviour it pins down, and the
+minimum code that makes it pass, committed and reviewed together. Every task leaves `./gradlew check` green. There are no TDD exceptions in this
+feature (see [plan.md](plan.md#tdd-exceptions)).
+
+**Open decisions**: two questions are still open for the user; see [plan.md](plan.md#open-decisions).
+
+- G12: whether a `null` argument to any public method or factory throws `NullPointerException` (the reviewer's suggested rule), beyond the
+  calls CORE-03 lists. Decide before T002. First affected: T002 and T003 (`with`, `without`, `run`, `call`), then T005 – T007 (`run`, `call`,
+  `wrap`, `find` on snapshots), T013 (builder, `KeyRules`, queries), T015 (`filter`) and T016 (`merge`). If adopted, each gains one `null`
+  test and a `requireNonNull`; the task shapes do not change.
+- G11: what `Deadline.after` and `within` do with a duration too large to represent (cap or `IllegalArgumentException`). Decide before T017;
+  it affects only that case of T017.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Can run in parallel (different files, no dependencies)
+- **[Story]**: The user story the task belongs to (US1–US3)
+
+Paths: `core/` is `boundrail-context-core/src/main/java/io/github/boundrail/context/`, `core25/` is
+`boundrail-context-core/src/main/java25/io/github/boundrail/context/`, `test/` is `boundrail-context-core/src/test/java/io/github/boundrail/context/`,
+and `RuntimeConformanceIT` is `integration-tests/src/test/java/io/github/boundrail/context/it/RuntimeConformanceIT.java`.
+
+Verify commands:
+
+- **Unit**: `./gradlew :boundrail-context-core:test --tests '<TestClass>'` (with `--tests` repeated for each class) for red and green, then
+  `./gradlew check` before commit.
+- **RC**: the conformance run, then `./gradlew check` before commit. `--tests` applies only to the task just before it, so it is repeated
+  after each task:
+
+  ```bash
+  ./gradlew --continue :integration-tests:integrationTestJdk21 --tests '*RuntimeConformanceIT' \
+            :integration-tests:integrationTestJdk25 --tests '*RuntimeConformanceIT' \
+            :integration-tests:integrationTestJdk25ThreadLocal
+  ```
+
+  (The ThreadLocal task's build filter already restricts it to `*RuntimeConformanceIT`. `--continue` makes a red run report the failure in
+  every task rather than stop at the first.)
+
+Enabling an RC scenario means: remove `@Disabled`, set `@DisplayName` to `RC-n <title>` with the title exactly as spec.md bolds it, without the
+trailing period, update the comment to the spec text, and write the body. This deliberately replaces 001's lowercase placeholder names (see
+[plan.md](plan.md#research-notes)). It must fail (red) before the green step, in all three integration test tasks, except RC-1, which T009
+enables after T008 and which is red only in `integrationTestJdk25`.
+
+## Phase 1: Setup
+
+None. 001-foundation built the core project, its test dependencies, the three integration test tasks and the `boundrail.it.task` property
+(BLD-06). The one build change this feature needs (the `java25` compile classpath) belongs to T009.
+
+---
+
+## Phase 2: User Story 1 - Scoped, typed context on both runtimes (Priority: P1) 🎯 MVP
+
+**Goal**: Keys, bindings, snapshots and re-entry, identical on the ThreadLocal and ScopedValue backends.
+
+**Independent Test**: The RC command above: RC-1 – RC-7 green in all three integration test tasks.
+
+- [ ] T001 [US1] Keys. Red: `test/ContextKeyTest.java` with `CORE-01 accepts names matching the key name pattern`, `CORE-01 rejects invalid
+      names` (parameterised: empty, upper case, leading digit, trailing or double dot), `CORE-01 rejects the reserved boundrail. prefix`,
+      `CORE-01 rejects primitive types` (parameterised: `long.class`, `int.class`, `boolean.class`, in both `of` factories), `CORE-03 rejects a
+      null name or type with NullPointerException` (both factories) and `CORE-03 rejects a null default`; `name()`, `type()` and
+      `defaultValue()` return what was given. Green: `core/ContextKey.java` with both `of` factories and the three accessors, no `equals`
+      override (CORE-01, CORE-03). Verify: Unit `ContextKeyTest`
+- [ ] T002 [US1] Bind and read. Red: `test/ContextBindingTest.java` with `CORE-05 find returns the bound value, else the default, else empty`,
+      `CORE-05 get throws MissingContextException naming the key`, `CORE-05 isBound ignores defaults`, `CORE-07 run binds for the scope and
+      restores afterwards`, `CORE-02 keys with the same name are different keys` (two same-named keys bound in one binding keep separate
+      values), `RT-01 each thread has its own current snapshot`; enable RC-6 in `RuntimeConformanceIT`. Green: `core/Context.java` (`with`),
+      `core/ContextBinding.java` (`with` records the change without checking it; `run`), `core/ContextSnapshot.java` (`EMPTY`),
+      `core/ImmutableContextSnapshot.java`, `core/MissingContextException.java`, `core/ContextCallable.java`, `core/ContextRuntime.java` (slot
+      holder only; `backend()` comes in T008), `core/internal/ContextSlot.java`, `core/internal/ThreadLocalSlot.java` (restores the previous
+      snapshot after a normal return only; `finally` comes in T003), `core/internal/SlotFactory.java` (base: ThreadLocal), and
+      `find`/`get`/`isBound` on `ContextKey` (CORE-02, CORE-05, CORE-07, RT-01; RC-6). Verify: Unit `ContextBindingTest`; RC
+- [ ] T003 [US1] Removal, nesting, exceptions and `call`. Red: in `ContextBindingTest`, `CORE-07 without removes a key for the scope`, `CORE-07
+      the last change for a key wins within one binding` (`with(k, 1).without(k)` leaves `k` unbound; `without(k).with(k, 2)` and
+      `with(k, 1).with(k, 2)` bind 2), `CORE-07 nested bindings restore the exact previous snapshot`, `CORE-07 restores the previous snapshot
+      when the operation throws`, `CORE-08 call returns the result and rethrows checked exceptions unchanged`, `CORE-06 with and without return
+      a new binding`, `RT-03 a pooled thread carries no residue after a scope exits exceptionally`; enable RC-2 and RC-5, where RC-5's body
+      runs, on one single-thread pool, a scope that exits normally and a scope whose operation throws, and asserts the next task observes
+      `EMPTY` after each (the exceptional exit is what makes RC-5 red here). In both RC-5 and the RT-03 unit test, the throwing scope is
+      caught inside the pooled task (or the task is submitted with `submit()`), never left to escape an `execute()` task, which would kill
+      the worker and let the next task pass on a fresh thread; each task records `Thread.currentThread()`, and the test asserts the next task
+      ran on the same `Thread` as the throwing one. Green: `Context.without`, `ContextBinding.without` and `call`,
+      with changes applied in call order; `ThreadLocalSlot` restores in `finally` and calls `remove()` when the outermost scope exits (CORE-06,
+      CORE-07, CORE-08, RT-03; RC-2, RC-5). The reviewer checks `remove()` against RT-03, since the API cannot observe it. Verify: Unit
+      `ContextBindingTest`; RC
+- [ ] T004 [US1] Value checks. Red: in `ContextBindingTest`, `CORE-03 binding null throws NullPointerException at the with call` and `CORE-04
+      binding a value of the wrong type throws ClassCastException at the with call` (through a raw key), each for `Context.with` and
+      `ContextBinding.with`, asserting the exception from `with` alone, without calling `run` or `get`; enable RC-7, which asserts both
+      exceptions at the `with` call in the same way. Green: `requireNonNull` and `key.type().cast` in both `with` methods (CORE-03, CORE-04;
+      RC-7). Verify: Unit `ContextBindingTest`; RC
+- [ ] T005 [US1] Capture and re-entry. Red: `test/ContextSnapshotTest.java` with `CORE-09 capture returns the current snapshot without copying`
+      (same instance inside `snapshot.run`), `CORE-09 capture outside any scope returns EMPTY`, `CORE-10 snapshot run replaces the caller's
+      snapshot and restores it`, `CORE-10 snapshot call returns the result and rethrows checked exceptions`, `CORE-11 one snapshot runs
+      concurrently on many threads`; enable RC-3 and RC-4. Green: `Context.capture`, `ContextSnapshot.run` and `call` (CORE-09, CORE-10,
+      CORE-11; RC-3, RC-4). Verify: Unit `ContextSnapshotTest`; RC
+- [ ] T006 [US1] Wrapped operations. Red: in `ContextSnapshotTest`, `CORE-10 wrap(Runnable) runs later on another thread with the snapshot` and
+      `CORE-10 wrap(Callable) runs later on another thread with the snapshot and returns its result`, each restoring the executing thread's
+      snapshot afterwards. Green: both `ContextSnapshot.wrap` methods (CORE-10). Verify: Unit `ContextSnapshotTest`
+- [ ] T007 [US1] Snapshot inspection. Red: in `ContextSnapshotTest`, `CORE-06 snapshot exposes bindings read-only` (`find` returns bound values
+      only, never defaults; `keys()` rejects modification; `isEmpty`) and `CORE-12 toString lists key names with each value's toString`.
+      Green: `find`, `keys`, `isEmpty` and `toString` in `ImmutableContextSnapshot` (CORE-06, CORE-12). Verify: Unit `ContextSnapshotTest`
+- [ ] T008 [US1] Backend report and override property. Red: `test/internal/BackendOverrideTest.java` with `RT-04 thread-local forces the
+      ThreadLocal backend`, `RT-04 auto and unset select automatically` (no warning), and `RT-04 an unrecognised value logs a warning and falls
+      back to automatic selection` (parameterised: `THREAD-LOCAL`, `Thread-Local`, `threadlocal`, the empty string; a recording
+      `System.Logger` passed in receives one `WARNING`); `test/internal/SlotFactoryTest.java` with `RT-02 the base SlotFactory creates the
+      ThreadLocal slot whether or not the override forces it` (`create(true)` and `create(false)` both report `THREAD_LOCAL`);
+      `test/ContextRuntimeTest.java` with `RT-05 backend reports the backend of the slot the runtime uses` (`THREAD_LOCAL` from class
+      directories; the `SCOPED_VALUE` half is RC-1 in T009). Green: `core/internal/BackendOverride.java`; the base `SlotFactory` with
+      `create()` (reads `boundrail.context.backend` through `BackendOverride` with a `System.Logger` named `io.github.boundrail.context`) and
+      package-private `create(boolean forceThreadLocal)`; `ContextSlot.backend()`; `ContextRuntime.Backend` and `ContextRuntime.backend()`
+      (RT-02, RT-04, RT-05). Verify: Unit `BackendOverrideTest`, `SlotFactoryTest`, `ContextRuntimeTest`
+- [ ] T009 [US1] ScopedValue backend on Java 25. Red: enable RC-1 with the JDK check: it reads `boundrail.it.task`, fails (not skips) when it is
+      missing or names another task, and asserts `Runtime.version().feature()` and `ContextRuntime.backend()` per task (21 and `THREAD_LOCAL`;
+      25 and `SCOPED_VALUE`; 25 and `THREAD_LOCAL`); see it fail in `integrationTestJdk25`. Green: `core25/internal/SlotFactory.java` (same
+      signatures as the base; ScopedValue unless `BackendOverride` forces ThreadLocal), `core25/internal/ScopedValueSlot.java`
+      (package-private), and in `build-logic/src/main/kotlin/boundrail.multi-release.gradle.kts` add `main`'s output to the `java25` compile
+      classpath. RC-2 – RC-7 now run on `SCOPED_VALUE` in `integrationTestJdk25` and must pass unchanged. Prove RC-1 can fail, reverting each
+      change: drop the override property from `integrationTestJdk25ThreadLocal`; register `integrationTestJdk21` with the JDK 25 launcher; drop
+      `boundrail.it.task` (RT-02, RT-04, RT-05, BLD-06; RC-1; RT-06 through SC-001). Verify: RC; `jar tf` on the core JAR lists
+      `META-INF/versions/25/io/github/boundrail/context/internal/ScopedValueSlot.class`
+
+**Checkpoint**: RC-1 – RC-7 green on all three integration test tasks; US1 is usable on its own.
+
+---
+
+## Phase 3: User Story 2 - Propagation policy (Priority: P2)
+
+**Goal**: The four codecs, and a validated, immutable per-key policy that can filter and merge.
+
+**Independent Test**: `./gradlew :boundrail-context-core:test --tests '*Codecs*' --tests '*ContextPolicy*'`
+
+- [ ] T010 [P] [US2] String and long codecs. Red: `test/CodecsTest.java` with `WIRE-03 each Codecs method returns the same instance on every
+      call` (for `string` and `longValue`), `WIRE-03 encode and decode throw NullPointerException for null`, `WIRE-03 string round-trips every
+      string unchanged` (including the empty string), `WIRE-03 longValue round-trips valid values` (`0`, `-1`, `Long.MIN_VALUE`,
+      `Long.MAX_VALUE`; `encode` is `Long.toString`) and `WIRE-03 longValue rejects invalid input with IllegalArgumentException`
+      (parameterised: `+1`, ` 1`, `007`, `-0`, `٣`, `9223372036854775808`, the empty string). Green: `core/ContextCodec.java`,
+      `core/Codecs.java` with `string()` and `longValue()` as constants (WIRE-03). Verify: Unit `CodecsTest`
+- [ ] T011 [US2] UUID codec. Red: in `CodecsTest`, `WIRE-03 uuid round-trips valid values and encodes in lower case`, `WIRE-03 uuid decodes
+      hexadecimal digits in either case`, `WIRE-03 uuid rejects invalid input with IllegalArgumentException` (parameterised: `1-2-3-4-5`, a
+      value in braces, a `urn:uuid:` prefix, 32 digits without hyphens, a non-hexadecimal digit), and the singleton and `null` cases for
+      `uuid`. Green: `Codecs.uuid()` (WIRE-03). Verify: Unit `CodecsTest`
+- [ ] T012 [US2] Locale codec. Red: in `CodecsTest`, `WIRE-03 locale round-trips locales whose language tag maps back to them` (`Locale.ROOT`,
+      `ja_JP_JP`, `en_GB`, `zh-Hant-TW`; `encode` equals `toLanguageTag()`, for `ja_JP_JP` on JDK 25 `ja-JP-u-ca-japanese-x-lvariant-JP`, and
+      `decode` gives back the locale), `WIRE-03 locale encodes other locales without error` (`no_NO_NY`, `Locale.of("xyz123")`), `WIRE-03
+      locale decodes RFC 5646 language tags ignoring case` (parameterised: `en`, `EN-gb`, `zh-Hant-TW`, `es-419`, `und`, `x-foo`, `i-klingon`,
+      each equal to `Locale.forLanguageTag(text)`), `WIRE-03 locale rejects invalid input with IllegalArgumentException` (parameterised: the
+      empty string, `en_GB`, `en-`, `e`, `en--GB`, ` en`), and the singleton and `null` cases for `locale`. Green: `Codecs.locale()` with a
+      precompiled case-insensitive expression for the `Language-Tag` production of RFC 5646 §2.1 (WIRE-03). The reviewer checks the expression
+      against the RFC's ABNF, including the 26 grandfathered tags. Verify: Unit `CodecsTest`
+- [ ] T013 [US2] Policy builder and queries. Red: `test/ContextPolicyTest.java` with `POL-01 a built policy reports each key's codec, wire
+      name, required, loggable and boundaries` (`codec(key)` returns the registered instance and `wireName(key)` the registered name),
+      `POL-01 codec and wireName are empty when none is registered` (a registered key without them, and an unregistered key), `POL-01 a built
+      policy does not change when its builder is used again`, `POL-02 an unregistered key propagates to ATTACHED and DETACHED only and is
+      neither required nor loggable`, `POL-03 a key propagates to a remote boundary only if the policy lists it`. Green: `core/Boundary.java`,
+      `core/ContextPolicy.java` with `builder()`, `Builder`, `KeyRules`, `propagates`, `isRequired`, `isLoggable`, `wireName` and `codec`
+      (POL-01, POL-02, POL-03). Verify: Unit `ContextPolicyTest`
+- [ ] T014 [US2] Build validation. Red: `test/ContextPolicyValidationTest.java` with `POL-03 build fails when an application key lists a remote
+      boundary without a codec`, `… without a wire name`, `POL-05 build fails on two different keys with the same name`, `POL-05 build fails on
+      two different keys with wire names equal ignoring case`, `POL-05 build accepts one key registered twice with equal rules` (same
+      `Codecs.string()` instance, same wire name, flags and boundaries; the built policy reports those rules), `POL-05 build fails when one key
+      is registered with conflicting rules` (parameterised: another codec instance, a wire name differing only in case, a different required
+      flag, loggable flag or boundary set), `POL-09 build fails on the wire name Authorization in any case`, `POL-09 build fails on a wire name
+      starting with Boundrail- in any case`, each failure with `IllegalStateException`. Green: validation in `ContextPolicy.Builder.build()`
+      (POL-03, POL-05, POL-09). Verify: Unit `ContextPolicyValidationTest`
+- [ ] T015 [US2] Filtering. Red: in `ContextPolicyTest`, `POL-04 filter keeps exactly the bindings whose keys propagate to the boundary` (a
+      registered key at a listed and an unlisted boundary; an unregistered key at `DETACHED` and at `INTERNAL_CALL`). Green:
+      `ContextPolicy.filter` (POL-04). Verify: Unit `ContextPolicyTest`
+- [ ] T016 [US2] Merging. Red: in `ContextPolicyValidationTest`, `POL-05 merge combines the keys of both policies`, `POL-05 merge accepts the same
+      key with equal rules`, `POL-05 merge fails on two different keys with the same name`, `POL-05 merge fails on two different keys with wire
+      names equal ignoring case`, `POL-05 merge fails on conflicting rules for one key` (another codec instance, a wire name differing only in
+      case, a different flag or boundary set), each failure with `IllegalStateException`. Green: `ContextPolicy.merge`, sharing the rule
+      comparison of T014 (POL-05). Verify: Unit `ContextPolicyValidationTest`
+
+**Checkpoint**: POL-01 – POL-05, POL-09 and WIRE-03 tested; POL-06 follows in Phase 4, once the built-in keys exist.
+
+---
+
+## Phase 4: User Story 3 - Built-in deadline, authority and initiator values (Priority: P3)
+
+**Goal**: The three built-in values, their keys and fixed policies, and deadlines that only shrink.
+
+**Independent Test**: RC-8 in the RC command above, plus `./gradlew :boundrail-context-core:test --tests '*Deadline*' --tests '*BuiltInKeys*'
+--tests '*Authority*' --tests '*Initiator*'`
+
+- [ ] T017 [P] [US3] Deadline value. Red: `test/DeadlineTest.java` with `DL-01 remaining is never negative` (including a negative budget),
+      `DL-01 a zero or negative duration gives an already expired deadline` (through `after` and through `within`), `DL-01 a long budget is
+      not expired`, `DL-01 check throws DeadlineExceededException with stage APPLICATION when expired`, `DL-01 check passes when not expired`,
+      `DL-01 earliest returns the deadline that expires first` (either order; no tie case, since DL-01 allows either), `DL-01 within returns
+      this when max ends later`, `DL-01 within returns a deadline at most max away when max ends sooner`, and `CORE-03 after, earliest and
+      within reject null with NullPointerException`. Green: `core/Deadline.java`, `core/DeadlineExceededException.java` with `Stage` (DL-01,
+      CORE-03). Durations too large to represent are not tested or handled: open decision G11 in [plan.md](plan.md#open-decisions); its test
+      joins this task if the spec answers first, otherwise it becomes a new task right after this one. Verify: Unit `DeadlineTest`
+- [ ] T018 [US3] Built-in keys. Red: `test/BuiltInKeysTest.java` with `CORE-01 built-in keys use their reserved names` (`boundrail.deadline`,
+      `boundrail.authority`, `boundrail.initiator`, with types `Deadline`, `Authority`, `Initiator`) and `DL-02 Deadlines.current is equivalent to
+      DEADLINE.find` (bound and unbound). Green: `core/BuiltInKeys.java` (the three constants, through a package-private `ContextKey` factory
+      that skips only the reserved-prefix check), `core/Deadlines.java`, and bare `core/Authority.java` and `core/Initiator.java` class
+      declarations for the key types (their factories and behaviour come in T020 and T021) (CORE-01, DL-02). Verify: Unit `BuiltInKeysTest`
+- [ ] T019 [US3] Deadlines only shrink. Red: `test/DeadlineScopeTest.java` with `DL-10 binding a later deadline keeps the current one`,
+      `DL-10 binding an earlier deadline shortens it`, `DL-10 binding a deadline with none current binds it`, `DL-11 Context.without(DEADLINE)
+      throws IllegalArgumentException`, `DL-11 ContextBinding.without(DEADLINE) throws IllegalArgumentException`, both with and without a
+      deadline current; enable RC-8. Green: in `ContextBinding`, bind `current.earliest(bound)` when running a binding of `DEADLINE`, and reject
+      `without(DEADLINE)` at the call in `Context` and `ContextBinding` (DL-10, DL-11; RC-8). Verify: Unit `DeadlineScopeTest`; RC
+- [ ] T020 [P] [US3] Authority. Red: `test/AuthorityTest.java` with `ID-01 toString never contains the credential`, `ID-01 a snapshot's
+      toString never contains the credential` (CORE-12 path), `ID-01 equals and hashCode are identity-based` (two authorities with the same
+      subject and credential are not equal), `CORE-03 Authority.of rejects a null subject or credential with NullPointerException`, and
+      `subject()`/`credential()` return what was given. Green: `Authority.of`, accessors, the redacted `toString` of the contract, no
+      `equals`/`hashCode` override (ID-01, CORE-03). Verify: Unit `AuthorityTest`
+- [ ] T021 [P] [US3] Initiator. Red: `test/InitiatorTest.java` with `ID-07 accepts values of 1 and 256 characters`, `ID-07 counts length in
+      UTF-16 chars` (128 supplementary characters, 256 chars, are accepted; 129, 258 chars, are rejected), `ID-07 rejects an empty value with
+      IllegalArgumentException`, `ID-07 rejects a value longer than 256 characters with IllegalArgumentException`, `ID-07 equals and hashCode
+      compare values`, `ID-07 toString returns the value unchanged`, `CORE-03 Initiator.of rejects null with NullPointerException`, and
+      `CORE-12 a snapshot's toString shows an initiator's value`. Green: `Initiator.of`, `value()`, `equals`, `hashCode` and `toString` (ID-07,
+      CORE-03, CORE-12). Verify: Unit `InitiatorTest`
+- [ ] T022 [US3] Built-in default policy. Red: in `BuiltInKeysTest`, `DL-02 DEADLINE uses the built-in default policy`, `POL-06 AUTHORITY uses
+      the built-in default policy`, `POL-06 INITIATOR uses the built-in default policy` (each row of the spec's table: boundaries, required,
+      loggable; wire name `Boundrail-Deadline-Ms` for `DEADLINE`, `Boundrail-Initiator` for `INITIATOR`, empty for `AUTHORITY`),
+      `POL-06 defaultPolicy holds only the built-in rules` (an application key is unregistered in it), and `POL-03 the built-in rules have no
+      codec and build although they list remote boundaries` (`codec(key)` empty for all three; the `Boundrail-` wire names are allowed there).
+      Green: `BuiltInKeys.defaultPolicy()` through a package-private path of `ContextPolicy` that skips POL-03's check, POL-06's rejection and
+      POL-09 (DL-02, POL-03, POL-06). Verify: Unit `BuiltInKeysTest`
+- [ ] T023 [US3] Built-in rules in every policy. Red: in `ContextPolicyValidationTest`, `POL-06 build fails when a builder registers a built-in
+      key` (each of the three, with `IllegalStateException`), `POL-06 every built policy includes the built-in rules` (in `builder().build()`,
+      `DEADLINE` does not propagate to `DETACHED`, `INITIATOR` reports `Boundrail-Initiator`, and `filter` drops `DEADLINE` at `DETACHED`),
+      `POL-05 merging two built policies accepts their equal built-in rules` (the merge succeeds and the merged policy reports a built-in
+      rule: `wireName(DEADLINE)` is `Boundrail-Deadline-Ms`, which is red until built policies include the built-in rules). Green: `build()`
+      rejects built-in keys and adds the default policy's rules (POL-05, POL-06). Verify: Unit `ContextPolicyValidationTest`
+
+**Checkpoint**: RC-1 – RC-8 green on all three integration test tasks; every M1 requirement has its test.
+
+---
+
+## Phase 5: Close
+
+- [ ] T024 Verify each requirement one by one against the code and its tests: CORE-01 – CORE-12, RT-01 – RT-06, POL-01 – POL-06, POL-09,
+      WIRE-03, DL-01, DL-02, DL-10, DL-11, ID-01, ID-07, and RC-1 – RC-8 (SC-001), using the coverage table in
+      [plan.md](plan.md#requirement-coverage). Confirm SC-002 by listing test display names per ID (RT-06 is exempt and verified by SC-001), and
+      SC-003 with `./gradlew :boundrail-context-core:dependencies --configuration runtimeClasspath` (no dependencies). Confirm spec.md and the
+      M1 rows of `docs/roadmap.md` no longer list RT-09 (it is in 004). Confirm G11 and G12 have been answered in the spec and tested, or
+      record each as still open for the user. Confirm RuntimeConformanceIT leaves only RC-9 disabled (`Pending: M3`). Run `./gradlew check`
+      fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run; with the CI run green, this closes the feature (leader step 5)
+
+## Dependencies & Execution Order
+
+- US1 in order T001 → T009. T009 needs T008 (`BackendOverride`, `SlotFactory.create(boolean)`, `backend()`) and runs every RC scenario enabled
+  so far on `SCOPED_VALUE`.
+- US2: T010 can run any time after T001; T010 → T011 → T012 (they share `Codecs.java` and `CodecsTest.java`). T013 needs T001 and T010
+  (`ContextCodec`). T013 → T014 → T015 → T016. T015 also needs T007 (it builds and reads snapshots through `keys()` and `find`). T012 is
+  independent of T013 – T016.
+- US3: T017 needs nothing from US2 and can start after T001. T018 needs T002 and T017. T019 needs T003, T017 and T018. T020 and T021 need
+  T018 and T007. T022 needs T013, T014 and T018. T023 needs T015, T016 and T022.
+- T024 comes last.
+- G12 must be decided before T002 (its `null` tests join T002, T003, T005 – T007, T013, T015 and T016 if adopted); G11 must be decided
+  before T017 and blocks only its huge-duration case.
+- Every task is committed and reviewed on its own, on branch `002-core-runtime`.
 
 ## Exit Checklist
 
 - [ ] Scenarios enabled and green on all three JDK tasks: RC-1, RC-2, RC-3, RC-4, RC-5, RC-6, RC-7, RC-8
-- [ ] Requirements implemented with tests named after their IDs: CORE-01 – CORE-12, RT-01 – RT-06, RT-09, POL-01 – POL-06, POL-09, WIRE-03, DL-01,
+- [ ] Requirements implemented with tests named after their IDs: CORE-01 – CORE-12, RT-01 – RT-05, POL-01 – POL-06, POL-09, WIRE-03, DL-01,
       DL-02, DL-10, DL-11, ID-01, ID-07
+- [ ] RT-06 verified by SC-001 (exempt from SC-002); RT-09 not listed in 002
+- [ ] G11 (huge durations) answered and tested, or still open with the user
+- [ ] G12 (`null` arguments to the rest of the API) answered and tested, or still open with the user
+- [ ] `boundrail-context-core` still has no runtime dependencies (SC-003)
 - [ ] `./gradlew check` green

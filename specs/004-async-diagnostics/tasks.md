@@ -12,6 +12,6 @@ description: "Task list for 004-async-diagnostics (stub)"
 
 - [ ] RC-9 enabled and green on all three JDK tasks
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-1.1 – IT-1.8
-- [ ] Requirements implemented with tests named after their IDs: RT-07, RT-08, EXE-01 – EXE-07, DIAG-04 – DIAG-07, LOG-01, LOG-02, TEST-02,
-      TEST-03
+- [ ] Requirements implemented with tests named after their IDs: RT-07, RT-08, RT-09, EXE-01 – EXE-07, DIAG-04 – DIAG-07, LOG-01, LOG-02,
+      TEST-02, TEST-03
 - [ ] `./gradlew check` green
