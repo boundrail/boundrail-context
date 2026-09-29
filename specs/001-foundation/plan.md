@@ -19,7 +19,7 @@ on three JDK launchers, the test topology skeleton, every later scenario as a di
 
 **Storage**: N/A
 
-**Testing**: JUnit 5, AssertJ, Testcontainers (Kafka), Spring Boot test support
+**Testing**: JUnit 6 (managed by the Spring Boot BOM), AssertJ, Testcontainers (Kafka), Spring Boot test support
 
 **Target Platform**: JVM 21+ (library)
 
@@ -68,10 +68,9 @@ Config-only tasks with no behaviour to test first. They need the user's approval
 | T002 | Version catalog, `build-logic` and settings | `./gradlew projects` lists the six projects of BLD-02 |
 | T003 | Java conventions and module build files | `./gradlew build` passes; core's `runtimeClasspath` has no dependencies (BLD-03) |
 | T004 | Integration-test tasks, integration-tests project, hosts file | `./gradlew check --dry-run` lists the three tasks; hosts resolution proven by T007 |
-| T006 | Classpath check for packaged JARs | Fails with a class directory put on the classpath by hand, passes on the real build |
 | T013 | CI workflow, licence | `./gradlew check` locally; the workflow's first run on GitHub after the user approves a push |
 
-The multi-release build (T005) and the topology (T007) are not exceptions: a failing smoke test comes first.
+The multi-release build (T005), the classpath and JDK checks (T006) and the topology (T007) are not exceptions: a failing test comes first.
 
 ## Project Structure
 

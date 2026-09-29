@@ -170,8 +170,8 @@ previous MDC values for those names when the scope exits.
 
 ### Test support
 
-**TEST-02** `[M3]` The test module SHALL provide a JUnit 5 extension, `@BoundrailTest`, that sets the violation mode to `fail` and capture sites to
-`on` for the annotated test class, and exposes the recorded violations.
+**TEST-02** `[M3]` The test module SHALL provide a JUnit Jupiter extension, `@BoundrailTest`, that sets the violation mode to `fail` and capture sites
+to `on` for the annotated test class, and exposes the recorded violations.
 
 **TEST-03** `[M3]` The test module SHALL provide AssertJ-style assertions:
 

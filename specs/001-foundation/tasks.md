@@ -22,12 +22,12 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Purpose**: Gradle skeleton
 
-- [ ] T001 [TDD-EXCEPTION: `./gradlew --version` runs] Add the Gradle wrapper (`gradlew`, `gradle/wrapper/`); the root `.gitignore`
+- [x] T001 [TDD-EXCEPTION: `./gradlew --version` runs] Add the Gradle wrapper (`gradlew`, `gradle/wrapper/`); the root `.gitignore`
       already covers `build/` and `.gradle/`
-- [ ] T002 [TDD-EXCEPTION: `./gradlew projects` lists the six projects of BLD-02] Create `gradle/libs.versions.toml` (JUnit 5, AssertJ,
+- [x] T002 [TDD-EXCEPTION: `./gradlew projects` lists the six projects of BLD-02] Create `gradle/libs.versions.toml` (JUnit 6, AssertJ,
       Testcontainers, Spring Boot 4.x, Spring Kafka, Spring Security), `build-logic/settings.gradle.kts`, `build-logic/build.gradle.kts`
       (`kotlin-dsl`), and `settings.gradle.kts` with `includeBuild("build-logic")` and the six projects (BLD-01, BLD-02)
-- [ ] T003 [TDD-EXCEPTION: `./gradlew build` passes, and `:boundrail-context-core:dependencies --configuration runtimeClasspath` lists no
+- [x] T003 [TDD-EXCEPTION: `./gradlew build` passes, and `:boundrail-context-core:dependencies --configuration runtimeClasspath` lists no
       dependencies] Create `build-logic/src/main/kotlin/boundrail.java-conventions.gradle.kts` (JDK 25 toolchain, `options.release = 21`,
       JUnit platform) and the `build.gradle.kts` of `boundrail-context-core` (no dependencies), `-spring` (Spring Boot 4; Security and
       Micrometer `compileOnly`), `-kafka`, `-test` and `examples/propagation-demo` (BLD-03, BLD-05, BLD-12)
@@ -40,7 +40,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Purpose**: The integration-test project, which every story's tests run in
 
-- [ ] T004 [TDD-EXCEPTION: `./gradlew check --dry-run` lists the three integration test tasks] Create
+- [x] T004 [TDD-EXCEPTION: `./gradlew check --dry-run` lists the three integration test tasks] Create
       `build-logic/src/main/kotlin/boundrail.integration-tests.gradle.kts` (tasks `integrationTestJdk21`, `integrationTestJdk25`,
       `integrationTestJdk25ThreadLocal` with system property `boundrail.context.backend=thread-local` and filter `*RuntimeConformanceIT`;
       each with `-Djdk.net.hosts.file`; `check` depends on all three), `integration-tests/build.gradle.kts` applying it with the four
@@ -57,7 +57,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Independent Test**: `./gradlew :integration-tests:integrationTestJdk21 :integration-tests:integrationTestJdk25 --tests '*BuildSmokeIT'`
 
-- [ ] T005 [US1] Red: write `integration-tests/src/test/java/io/github/boundrail/context/it/BuildSmokeIT.java` with
+- [x] T005 [US1] Red: write `integration-tests/src/test/java/io/github/boundrail/context/it/BuildSmokeIT.java` with
       `@DisplayName("BLD-11 versioned marker class loads on JDK 25 only")`, asserting `RuntimeVersionMarker.version()` is 25 when
       `Runtime.version().feature() >= 25` and 21 otherwise, and see it fail. Green: create
       `build-logic/src/main/kotlin/boundrail.multi-release.gradle.kts` (`java25` source set with `release = 25`, output packaged
@@ -75,9 +75,11 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Independent Test**: `./gradlew check`; the smoke test passes in the JDK 21 and JDK 25 tasks.
 
-- [ ] T006 [US2] [TDD-EXCEPTION: the check fails when a class directory is put on the classpath by hand, passes on the real build, and
-      the test reports show each task's `java.version`] Add a Gradle check (in `boundrail.integration-tests.gradle.kts`) that fails the
-      build if `testRuntimeClasspath` contains a library project's class directory instead of its JAR (BLD-06)
+- [x] T006 [US2] Red: add to `BuildSmokeIT` a test `BLD-06 library classes load from packaged JARs` (core's classes come from a `.jar`)
+      and a test `BLD-06 runs on the JDK its task declares` (the running JVM matches the version in the task's name, passed as the
+      `boundrail.it.task` system property), and see the JDK test fail. Green: each integration test task passes its name. Prove both tests
+      can fail: a class directory ahead of the core JAR fails the first, a task registered or launched with the wrong JDK fails the second
+      (BLD-06)
 
 **Checkpoint**: BLD-06 satisfied.
 
@@ -87,24 +89,28 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Goal**: Every later scenario exists, compiles and is disabled; the topology starts.
 
-**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped with `Pending: Mx`.
+**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped; each scenario's `@Disabled("Pending: Mx")`
+annotation in the source carries the reason.
 
-- [ ] T007 [US3] Red: write `TopologySmokeIT` (enabled), which starts the topology and calls each service once through its hosts-file
+- [x] T007 [US3] Red: write `TopologySmokeIT` (enabled), which starts the topology and calls each service once through its hosts-file
       name, and see it fail. Green: create in `topology/` the `ObservedContext` probe (per-service, per-request `Map<String, String>`
       observations), `TestJwts` (per-run signing key; user `alice` with claim `tenant=acme`), minimal Spring Boot applications `EdgeApp`,
       `OrdersApp`, `BillingApp`, `PartnerApp` (records received headers) and `TokenExchangeApp` (stub endpoint, counts calls), and
       `Topology`, a JUnit extension that starts the Testcontainers Kafka broker and the five contexts on random ports (BLD-07)
-- [ ] T008 [P] [US3] Write `RuntimeConformanceIT` with RC-1 – RC-8 (`Pending: M1`) and RC-9 (`Pending: M3`)
-- [ ] T009 [P] [US3] Write `TrustBoundaryIT` with IT-2.1 – IT-2.9 (`Pending: M2`)
-- [ ] T010 [P] [US3] Write `ContextPropagationIT` with IT-1.1 – IT-1.8 (`Pending: M3`)
-- [ ] T011 [P] [US3] Write `DeadlinePropagationIT` with IT-3.1 – IT-3.7 (`Pending: M4`) and IT-3.8 (`Pending: M6`)
-- [ ] T012 [P] [US3] Write `AuthorityPropagationIT` with IT-4.1 – IT-4.8 (`Pending: M5`) and IT-4.9 (`Pending: M6`)
+- [x] T008 [P] [US3] Write `RuntimeConformanceIT` with RC-1 – RC-8 (`Pending: M1`) and RC-9 (`Pending: M3`), and remove the temporary
+      `isFailOnNoMatchingTests = false` from `boundrail.integration-tests.gradle.kts` (added in T004), so the thread-local run fails if the
+      suite goes missing
+- [x] T009 [P] [US3] Write `TrustBoundaryIT` with IT-2.1 – IT-2.9 (`Pending: M2`)
+- [x] T010 [P] [US3] Write `ContextPropagationIT` with IT-1.1 – IT-1.8 (`Pending: M3`)
+- [x] T011 [P] [US3] Write `DeadlinePropagationIT` with IT-3.1 – IT-3.7 (`Pending: M4`) and IT-3.8 (`Pending: M6`)
+- [x] T012 [P] [US3] Write `AuthorityPropagationIT` with IT-4.1 – IT-4.8 (`Pending: M5`) and IT-4.9 (`Pending: M6`)
 
 Each scenario method: `@Test`, `@Disabled("Pending: Mx")`, `@DisplayName("<ID> <title>")`, and the scenario text from its `specs/###/spec.md` as a
 comment. Bodies are written when the feature enables them, test-first. T008 – T012 add only disabled tests, so they have no red step; each is
-verified by the test report listing its scenarios as skipped with the right reason (BLD-10).
+verified by the test report listing its scenarios as skipped and by each method's `@Disabled("Pending: Mx")` annotation (BLD-10).
 
-**Checkpoint**: BLD-07 and BLD-10 satisfied; all 43 scenarios are skipped with the right reason and nothing fails.
+**Checkpoint**: BLD-07 and BLD-10 satisfied; all 43 scenarios are skipped, each with the right `@Disabled("Pending: Mx")` in the source,
+and nothing fails.
 
 ---
 
@@ -114,7 +120,7 @@ verified by the test report listing its scenarios as skipped with the right reas
 
 **Independent Test**: A pull request shows a green `check` job.
 
-- [ ] T013 [US4] [TDD-EXCEPTION: `./gradlew check` green locally; the workflow's first run on GitHub, after the user approves a push]
+- [x] T013 [US4] [TDD-EXCEPTION: `./gradlew check` green locally; the workflow's first run on GitHub, after the user approves a push]
       Create `.github/workflows/ci.yml`: on push and pull request, `actions/setup-java` with JDK 21 and 25, `gradle/actions/setup-gradle`,
       run `./gradlew check`. Confirm `LICENSE` is Apache-2.0 at the root (BLD-08, BLD-09)
 
@@ -122,7 +128,7 @@ verified by the test report listing its scenarios as skipped with the right reas
 
 ## Phase 7: Close
 
-- [ ] T014 Verify BLD-01 – BLD-12 one by one against the build, and run `./gradlew check` fresh; with the CI run green, this closes the
+- [x] T014 Verify BLD-01 – BLD-12 one by one against the build, and run `./gradlew check` fresh; with the CI run green, this closes the
       feature (leader step 5)
 
 ## Dependencies & Execution Order

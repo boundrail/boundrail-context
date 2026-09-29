@@ -24,7 +24,7 @@ When this skill and a generic skill (`java`, `spring-boot`) disagree, this one w
 | `boundrail-context-core` | JDK only — zero runtime dependencies (BLD-03) |
 | `boundrail-context-spring` | Spring Boot 4; Spring Security and Micrometer only as `compileOnly` + conditional auto-config (BLD-05) |
 | `boundrail-context-kafka` | the only module allowed Kafka dependencies (BLD-05) |
-| `boundrail-context-test` | JUnit 5 extension, assertions, test trust verifier |
+| `boundrail-context-test` | JUnit Jupiter extension, assertions, test trust verifier |
 | `integration-tests`, `examples/propagation-demo` | not published |
 
 Spring dependencies stay out of core entirely.
@@ -79,7 +79,7 @@ Base package: `io.github.boundrail.context` (proposal P7 — still open until M7
 
 ## Tests
 
-- JUnit 5 + AssertJ. Auto-configuration is tested with `ApplicationContextRunner` (see
+- JUnit 6 + AssertJ. Auto-configuration is tested with `ApplicationContextRunner` (see
   `spring-boot`).
 - Integration tests use Testcontainers for Kafka and SHALL NOT mock Kafka or HTTP clients
   (BLD-07).

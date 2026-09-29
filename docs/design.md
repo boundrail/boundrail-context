@@ -409,7 +409,7 @@ The repository is `boundrail/boundrail-context`, separate from Boundrail core. B
 | `boundrail-context-core` | keys, snapshots, scopes, policy, codecs, destination classification, deadline and identity types, both backends; zero runtime dependencies | yes |
 | `boundrail-context-spring` | Spring Boot 4 auto-configuration: servlet filters, trust, RestClient/RestTemplate, executors, `@Scheduled`, MDC, audit, security contributors | yes |
 | `boundrail-context-kafka` | Spring Kafka producer and consumer adapters | yes |
-| `boundrail-context-test` | JUnit 5 extension, assertions, test trust verifier | yes |
+| `boundrail-context-test` | JUnit Jupiter extension, assertions, test trust verifier | yes |
 | `integration-tests` | runtime conformance suite and the four acceptance suites, run against packaged JARs on JDK 21 and 25 | no |
 | `examples/propagation-demo` | runnable demo used by the README | no |
 
@@ -434,7 +434,7 @@ the ThreadLocal backend even on JDK 25. To handle this:
 - Kafka tests use Testcontainers and exercise the real serialisation and interceptor path, never mocks.
 
 **Stack.** Spring Boot 4.x (Spring Framework 7), Spring Kafka, Spring Security (optional at runtime), Micrometer (optional), SLF4J (Spring module
-only), JUnit 5, AssertJ and Testcontainers. CI runs on GitHub Actions with both JDKs installed.
+only), JUnit 6 (managed by Spring Boot), AssertJ and Testcontainers. CI runs on GitHub Actions with both JDKs installed.
 
 **Licence.** Apache 2.0 for this project, even if Boundrail core later chooses something more protective. Libraries that everyone embeds only spread
 when legal teams don't have to think about them.

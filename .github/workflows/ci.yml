@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v5
+      # No toolchain resolver is configured, so point Gradle at the JDKs setup-java installed.
+      - run: ./gradlew check -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-test-reports-${{ github.run_attempt }}
+          path: |
+            integration-tests/build/test-results/
+            integration-tests/build/reports/tests/

@@ -38,7 +38,7 @@ where it came from, where it is allowed to go, and what happens if it disappears
 | `boundrail-context-core` | Keys, snapshots, scopes, policy, codecs, destination classification, deadline and identity types, both backends; zero runtime dependencies |
 | `boundrail-context-spring` | Spring Boot 4 auto-configuration: servlet filters, trust, RestClient/RestTemplate, executors, `@Scheduled`, MDC, audit, security |
 | `boundrail-context-kafka` | Spring Kafka producer and consumer adapters |
-| `boundrail-context-test` | JUnit 5 extension, assertions and a test trust verifier |
+| `boundrail-context-test` | JUnit Jupiter extension, assertions and a test trust verifier |
 
 ## Requirements
 

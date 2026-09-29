@@ -54,12 +54,13 @@ Every acceptance suite and scenario of features 002–007 exists, compiles, and 
 
 **Why this priority**: Later features start by enabling scenarios, not writing them. Writing them first keeps the specification executable.
 
-**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped with reason `Pending: Mx`.
+**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped; each scenario's `@Disabled("Pending: Mx")`
+annotation in the source carries the reason.
 
 **Acceptance Scenarios**:
 
 1. **Given** the integration tests, **When** they run, **Then** RuntimeConformanceIT and the four acceptance suites report every scenario as
-   disabled with `Pending: Mx`, and none fails. *(BLD-07, BLD-10)*
+   skipped, each scenario's source carries `@Disabled("Pending: Mx")`, and none fails. *(BLD-07, BLD-10)*
 
 ---
 
@@ -79,8 +80,9 @@ Every push and pull request runs `./gradlew check` on GitHub Actions with JDK 21
 
 ### Edge Cases
 
-- Only one JDK is installed locally: the build fails fast because the JDK 25 toolchain is required (BLD-04), and Gradle toolchain provisioning
-  reports what is missing.
+- Only one JDK is installed locally: the build fails because a required toolchain is missing (JDK 25 for compilation, BLD-04; JDK 21 for
+  `integrationTestJdk21`, BLD-06). No toolchain resolver is configured, so Gradle does not download the missing JDK; it reports the toolchain it could
+  not find.
 - A test accidentally runs against class directories: the smoke test (BLD-11) fails on JDK 25, because the versioned class is not loaded.
 
 ## Requirements *(mandatory)*
@@ -145,7 +147,11 @@ reports version 25 when run on JDK 25, and the base version when run on JDK 21.
 
 ## Test Topology
 
-This section is shared: the acceptance suites of every feature run on it. 001-foundation builds it; later features only use it.
+This section is shared: the acceptance suites of every feature run on it. 001-foundation builds its skeleton: the `Topology` JUnit extension,
+which starts the Testcontainers Kafka broker and the five services as minimal applications on random ports, the test hosts file, the
+`ObservedContext` probe, and `TestJwts`. Each later feature adds the parts that depend on its library API, such as the application policy,
+destination settings, inbound trust, the edge tenant contributor, the Kafka consumer and the slow endpoint, when it enables the scenarios that
+need them.
 
 The acceptance suites in `integration-tests` share the following topology. Each service is a separate Spring Boot application context started in the
 same JVM on a random port.
@@ -154,8 +160,8 @@ same JVM on a random port.
 |---|---|
 | `edge` (A) | Public entry point; OAuth2 resource server that validates test JWTs; tenant contributed from the `tenant` claim |
 | `orders` (B) | Internal service |
-| `billing` (C) | Internal service; exposes a slow endpoint; consumes Kafka topic `orders.events` |
-| `partner` | External stub that records every header it receives |
+| `billing` (C) | Internal service; consumes Kafka topic `orders.events` |
+| `partner` | External stub that records every header it receives; exposes a slow endpoint |
 | `token-exchange` | Stub RFC 8693 endpoint that issues audience-scoped tokens and counts calls |
 | Kafka | Testcontainers Kafka broker |
 
@@ -202,7 +208,8 @@ The suites, and the features whose scenarios they contain:
 
 ## Assumptions
 
-- JDK 21 and JDK 25 are both available locally (or provisioned by Gradle toolchains) and in CI.
+- JDK 21 and JDK 25 are both installed locally, where Gradle toolchains detect them, and in CI, where `actions/setup-java` installs both and the
+  workflow points Gradle at them. No toolchain resolver is configured, so Gradle does not download a missing JDK.
 - Docker is available for Testcontainers wherever the integration tests run.
 - Scenario bodies may stay empty until their feature starts, because the library API they use does not exist yet; BLD-10 only requires them to
   exist, compile and be disabled.

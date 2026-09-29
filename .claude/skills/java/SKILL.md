@@ -31,7 +31,7 @@ backend is the required design, not an anti-pattern. See `boundrail-conventions`
   virtual threads, fan-out with structured concurrency, `ThreadLocal` -> `ScopedValue`.
 - Stream / Optional / Collector pipelines, and deciding when a plain loop beats a stream.
 - Setting up or fixing a `build.gradle.kts` / convention plugin for a current JDK (toolchain,
-  `--release`, preview flags, JUnit 5).
+  `--release`, preview flags, JUnit 6).
 
 **When NOT to use (delegate):**
 
