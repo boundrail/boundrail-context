@@ -102,7 +102,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 - [x] T009 [P] [US3] Write `TrustBoundaryIT` with IT-2.1 – IT-2.9 (`Pending: M2`)
 - [x] T010 [P] [US3] Write `ContextPropagationIT` with IT-1.1 – IT-1.8 (`Pending: M3`)
 - [x] T011 [P] [US3] Write `DeadlinePropagationIT` with IT-3.1 – IT-3.7 (`Pending: M4`) and IT-3.8 (`Pending: M6`)
-- [ ] T012 [P] [US3] Write `AuthorityPropagationIT` with IT-4.1 – IT-4.8 (`Pending: M5`) and IT-4.9 (`Pending: M6`)
+- [x] T012 [P] [US3] Write `AuthorityPropagationIT` with IT-4.1 – IT-4.8 (`Pending: M5`) and IT-4.9 (`Pending: M6`)
 
 Each scenario method: `@Test`, `@Disabled("Pending: Mx")`, `@DisplayName("<ID> <title>")`, and the scenario text from its `specs/###/spec.md` as a
 comment. Bodies are written when the feature enables them, test-first. T008 – T012 add only disabled tests, so they have no red step; each is
