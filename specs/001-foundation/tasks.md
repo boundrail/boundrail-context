@@ -89,7 +89,8 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 **Goal**: Every later scenario exists, compiles and is disabled; the topology starts.
 
-**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped with `Pending: Mx`.
+**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped; each scenario's `@Disabled("Pending: Mx")`
+annotation in the source carries the reason.
 
 - [x] T007 [US3] Red: write `TopologySmokeIT` (enabled), which starts the topology and calls each service once through its hosts-file
       name, and see it fail. Green: create in `topology/` the `ObservedContext` probe (per-service, per-request `Map<String, String>`
@@ -106,9 +107,10 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
 
 Each scenario method: `@Test`, `@Disabled("Pending: Mx")`, `@DisplayName("<ID> <title>")`, and the scenario text from its `specs/###/spec.md` as a
 comment. Bodies are written when the feature enables them, test-first. T008 – T012 add only disabled tests, so they have no red step; each is
-verified by the test report listing its scenarios as skipped with the right reason (BLD-10).
+verified by the test report listing its scenarios as skipped and by each method's `@Disabled("Pending: Mx")` annotation (BLD-10).
 
-**Checkpoint**: BLD-07 and BLD-10 satisfied; all 43 scenarios are skipped with the right reason and nothing fails.
+**Checkpoint**: BLD-07 and BLD-10 satisfied; all 43 scenarios are skipped, each with the right `@Disabled("Pending: Mx")` in the source,
+and nothing fails.
 
 ---
 

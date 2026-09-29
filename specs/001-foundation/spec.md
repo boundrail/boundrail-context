@@ -54,12 +54,13 @@ Every acceptance suite and scenario of features 002–007 exists, compiles, and 
 
 **Why this priority**: Later features start by enabling scenarios, not writing them. Writing them first keeps the specification executable.
 
-**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped with reason `Pending: Mx`.
+**Independent Test**: The test report lists every scenario ID from `specs/002`–`007` as skipped; each scenario's `@Disabled("Pending: Mx")`
+annotation in the source carries the reason.
 
 **Acceptance Scenarios**:
 
 1. **Given** the integration tests, **When** they run, **Then** RuntimeConformanceIT and the four acceptance suites report every scenario as
-   disabled with `Pending: Mx`, and none fails. *(BLD-07, BLD-10)*
+   skipped, each scenario's source carries `@Disabled("Pending: Mx")`, and none fails. *(BLD-07, BLD-10)*
 
 ---
 
