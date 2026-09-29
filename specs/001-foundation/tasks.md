@@ -100,7 +100,7 @@ they need the user's approval with the plan (see the TDD Exceptions table in [pl
       `isFailOnNoMatchingTests = false` from `boundrail.integration-tests.gradle.kts` (added in T004), so the thread-local run fails if the
       suite goes missing
 - [x] T009 [P] [US3] Write `TrustBoundaryIT` with IT-2.1 – IT-2.9 (`Pending: M2`)
-- [ ] T010 [P] [US3] Write `ContextPropagationIT` with IT-1.1 – IT-1.8 (`Pending: M3`)
+- [x] T010 [P] [US3] Write `ContextPropagationIT` with IT-1.1 – IT-1.8 (`Pending: M3`)
 - [ ] T011 [P] [US3] Write `DeadlinePropagationIT` with IT-3.1 – IT-3.7 (`Pending: M4`) and IT-3.8 (`Pending: M6`)
 - [ ] T012 [P] [US3] Write `AuthorityPropagationIT` with IT-4.1 – IT-4.8 (`Pending: M5`) and IT-4.9 (`Pending: M6`)
 
