@@ -128,7 +128,7 @@ and nothing fails.
 
 ## Phase 7: Close
 
-- [ ] T014 Verify BLD-01 – BLD-12 one by one against the build, and run `./gradlew check` fresh; with the CI run green, this closes the
+- [x] T014 Verify BLD-01 – BLD-12 one by one against the build, and run `./gradlew check` fresh; with the CI run green, this closes the
       feature (leader step 5)
 
 ## Dependencies & Execution Order
