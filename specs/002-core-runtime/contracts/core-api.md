@@ -72,7 +72,7 @@ public interface ContextCodec<T> {
     T decode(String text);  // throws IllegalArgumentException on invalid input
 }
 
-public final class Codecs {
+public final class Codecs {                    // each method returns the same instance on every call
     public static ContextCodec<String> string();
     public static ContextCodec<Long> longValue();
     public static ContextCodec<UUID> uuid();
@@ -85,6 +85,7 @@ public final class ContextPolicy {
     public boolean isRequired(ContextKey<?> key);
     public boolean isLoggable(ContextKey<?> key);
     public Optional<String> wireName(ContextKey<?> key);
+    public <T> Optional<ContextCodec<T>> codec(ContextKey<T> key);
     public ContextSnapshot filter(ContextSnapshot snapshot, Boundary boundary);
     public ContextPolicy merge(ContextPolicy other);  // fails on conflicts
 
@@ -117,7 +118,7 @@ public final class Deadline {
     public Duration remaining();               // never negative
     public boolean isExpired();
     public void check();                        // throws DeadlineExceededException if expired
-    public Deadline earliest(Deadline other);
+    public Deadline earliest(Deadline other);   // the one that expires first
     public Deadline within(Duration max);       // earlier of this and now + max
 }
 
@@ -140,5 +141,8 @@ public final class Authority {
 public final class Initiator {
     public static Initiator of(String value);  // e.g. "user:alice", "service:billing", "system:scheduled:x"
     public String value();
+    @Override public boolean equals(Object other);  // by value
+    @Override public int hashCode();
+    @Override public String toString();  // the value itself
 }
 ```

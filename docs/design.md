@@ -196,8 +196,9 @@ rely on it. Thread pools, `CompletableFuture` and `@Async` never inherit context
 
 ### 5.5 Policy
 
-For every key, the policy states which boundaries the key crosses, whether it is *required*, and whether it may be *logged*. Remote boundaries also
-need a *codec* and a *wire name*. Keys not registered in the policy stay in-process, crossing `ATTACHED` and `DETACHED` only.
+For every key, the policy states which boundaries the key crosses, whether it is *required*, and whether it may be *logged*. For application keys,
+remote boundaries also need a *codec* and a *wire name*; the built-in keys have fixed wire formats instead. Keys not registered in the policy stay
+in-process, crossing `ATTACHED` and `DETACHED` only.
 
 ```java
 @Bean

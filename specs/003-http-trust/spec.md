@@ -101,7 +101,7 @@ yield no service name.
 ### Wire format
 
 **WIRE-01** `[M2]` Keys SHALL be carried in HTTP headers and Kafka record headers named by their wire names. Values SHALL be the codec's string
-encoding, as UTF-8 bytes for Kafka.
+encoding, as UTF-8 bytes for Kafka. Built-in keys SHALL instead be carried as WIRE-02 defines.
 
 **WIRE-02** `[M2]` The built-in wire formats SHALL be:
 
