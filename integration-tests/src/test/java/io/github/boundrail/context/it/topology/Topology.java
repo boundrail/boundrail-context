@@ -10,8 +10,10 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ExtensionContext.Namespace;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolver;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.kafka.KafkaContainer;
 
 /**
@@ -73,7 +75,8 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
     /** The started topology; closed by JUnit when the test run ends. */
     public static final class Running implements AutoCloseable {
 
-        private final KafkaContainer kafka = new KafkaContainer(KAFKA_IMAGE);
+        private final KafkaContainer kafka =
+                new KafkaContainer(KAFKA_IMAGE).withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("kafka")));
         private final ObservedContext observed = new ObservedContext();
         private final TestJwts jwts = new TestJwts();
         private final Map<Service, ConfigurableApplicationContext> contexts = new EnumMap<>(Service.class);

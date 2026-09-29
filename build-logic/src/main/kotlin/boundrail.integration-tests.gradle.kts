@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+
 plugins {
     id("boundrail.java-conventions")
 }
@@ -19,6 +21,9 @@ fun registerIntegrationTest(name: String, javaVersion: Int, configure: Test.() -
         javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(javaVersion) }
         systemProperty("jdk.net.hosts.file", hostsFile)
         systemProperty("boundrail.it.task", name)
+        testLogging {
+            exceptionFormat = TestExceptionFormat.FULL
+        }
         configure()
     }
 
