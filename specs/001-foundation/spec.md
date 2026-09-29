@@ -80,8 +80,9 @@ Every push and pull request runs `./gradlew check` on GitHub Actions with JDK 21
 
 ### Edge Cases
 
-- Only one JDK is installed locally: the build fails fast because the JDK 25 toolchain is required (BLD-04). No toolchain resolver is
-  configured, so Gradle does not download the missing JDK; it reports the toolchain it could not find.
+- Only one JDK is installed locally: the build fails because a required toolchain is missing (JDK 25 for compilation, BLD-04; JDK 21 for
+  `integrationTestJdk21`, BLD-06). No toolchain resolver is configured, so Gradle does not download the missing JDK; it reports the toolchain it could
+  not find.
 - A test accidentally runs against class directories: the smoke test (BLD-11) fails on JDK 25, because the versioned class is not loaded.
 
 ## Requirements *(mandatory)*
