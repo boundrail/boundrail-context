@@ -33,8 +33,7 @@ nothing reaches external or unknown destinations, even headers that application 
    the same as IT-2.2. *(OUT-02, OUT-03, DEST-02, DEST-03)*
 4. **IT-2.4 Application-set forbidden headers are stripped.** When edge application code sets `Tenant-Id: acme` and
    `Authorization: Bearer partner-key` on a call declared external, then partner receives `Authorization: Bearer partner-key` and no `Tenant-Id`, and
-   one
-   `FORBIDDEN_HEADER` violation is reported. *(WIRE-07)*
+   one `FORBIDDEN_HEADER` violation is reported. *(WIRE-07)*
 5. **IT-2.9 Required key missing on an internal call.** Given violation mode `fail`, when edge code runs `Context.without(tenant)` and calls orders,
    then `ContextViolationException` is thrown and orders receives no request. *(POL-08, DIAG-02)*
 
