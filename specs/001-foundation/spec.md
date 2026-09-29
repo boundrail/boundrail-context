@@ -66,7 +66,7 @@ annotation in the source carries the reason.
 
 ### User Story 4 - Continuous integration and licence (Priority: P3)
 
-Every push and pull request runs `./gradlew check` on GitHub Actions with JDK 21 and JDK 25 installed. The repository is Apache-2.0 licensed.
+Every push to `main` and every pull request runs `./gradlew check` on GitHub Actions with JDK 21 and JDK 25 installed. The repository is Apache-2.0 licensed.
 
 **Why this priority**: Needed before contributions, but the build works locally without it.
 
@@ -74,7 +74,7 @@ Every push and pull request runs `./gradlew check` on GitHub Actions with JDK 21
 
 **Acceptance Scenarios**:
 
-1. **Given** a push, **When** CI runs, **Then** `./gradlew check` runs with JDK 21 and JDK 25 available and passes. *(BLD-08)*
+1. **Given** a push to `main` or a pull request, **When** CI runs, **Then** `./gradlew check` runs with JDK 21 and JDK 25 available and passes. *(BLD-08)*
 
 ---
 
@@ -126,7 +126,7 @@ It SHALL define three test tasks:
 
 **BLD-07** `[M0]` Integration tests SHALL use Testcontainers for Kafka, and SHALL NOT mock Kafka clients or HTTP clients.
 
-**BLD-08** `[M0]` CI (GitHub Actions) SHALL run `./gradlew check` on every push and pull request, with JDK 21 and JDK 25 installed.
+**BLD-08** `[M0]` CI (GitHub Actions) SHALL run `./gradlew check` on every push to `main` and every pull request, with JDK 21 and JDK 25 installed.
 
 **BLD-09** `[M0]` The repository SHALL be licensed under Apache-2.0, with a `LICENSE` file at the root.
 

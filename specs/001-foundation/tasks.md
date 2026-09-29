@@ -116,7 +116,7 @@ and nothing fails.
 
 ## Phase 6: User Story 4 - CI and licence (Priority: P3)
 
-**Goal**: Every push and pull request is checked.
+**Goal**: Every push to `main` and every pull request is checked.
 
 **Independent Test**: A pull request shows a green `check` job.
 
