@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,6 +17,7 @@ class CodecsTest {
     void eachCodecsMethodReturnsTheSameInstanceOnEveryCall() {
         assertThat(Codecs.string()).isSameAs(Codecs.string());
         assertThat(Codecs.longValue()).isSameAs(Codecs.longValue());
+        assertThat(Codecs.uuid()).isSameAs(Codecs.uuid());
     }
 
     @Test
@@ -25,6 +27,8 @@ class CodecsTest {
         assertThatNullPointerException().isThrownBy(() -> Codecs.string().decode(null));
         assertThatNullPointerException().isThrownBy(() -> Codecs.longValue().encode(null));
         assertThatNullPointerException().isThrownBy(() -> Codecs.longValue().decode(null));
+        assertThatNullPointerException().isThrownBy(() -> Codecs.uuid().encode(null));
+        assertThatNullPointerException().isThrownBy(() -> Codecs.uuid().decode(null));
     }
 
     @ParameterizedTest
@@ -53,5 +57,41 @@ class CodecsTest {
     @DisplayName("WIRE-03 longValue rejects invalid input with IllegalArgumentException")
     void longValueRejectsInvalidInputWithIllegalArgumentException(String text) {
         assertThatIllegalArgumentException().isThrownBy(() -> Codecs.longValue().decode(text));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "00000000-0000-0000-0000-000000000000",
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "123e4567-e89b-12d3-a456-426614174000"})
+    @DisplayName("WIRE-03 uuid round-trips valid values and encodes in lower case")
+    void uuidRoundTripsValidValuesAndEncodesInLowerCase(String lowerCase) {
+        ContextCodec<UUID> codec = Codecs.uuid();
+        UUID value = UUID.fromString(lowerCase);
+
+        assertThat(codec.encode(value)).isEqualTo(lowerCase);
+        assertThat(codec.decode(codec.encode(value))).isEqualTo(value);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "123e4567-e89b-12d3-a456-426614174000",
+        "123E4567-E89B-12D3-A456-426614174000",
+        "123e4567-E89B-12d3-A456-426614174000"})
+    @DisplayName("WIRE-03 uuid decodes hexadecimal digits in either case")
+    void uuidDecodesHexadecimalDigitsInEitherCase(String text) {
+        assertThat(Codecs.uuid().decode(text)).isEqualTo(new UUID(0x123e4567e89b12d3L, 0xa456426614174000L));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "1-2-3-4-5",
+        "{123e4567-e89b-12d3-a456-426614174000}",
+        "urn:uuid:123e4567-e89b-12d3-a456-426614174000",
+        "123e4567e89b12d3a456426614174000",
+        "123e4567-e89b-12d3-a456-42661417400g"})
+    @DisplayName("WIRE-03 uuid rejects invalid input with IllegalArgumentException")
+    void uuidRejectsInvalidInputWithIllegalArgumentException(String text) {
+        assertThatIllegalArgumentException().isThrownBy(() -> Codecs.uuid().decode(text));
     }
 }

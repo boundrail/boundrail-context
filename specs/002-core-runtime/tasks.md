@@ -202,7 +202,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `Long.MAX_VALUE`; `encode` is `Long.toString`) and `WIRE-03 longValue rejects invalid input with IllegalArgumentException`
       (parameterised: `+1`, ` 1`, `007`, `-0`, `٣`, `9223372036854775808`, the empty string). Green: `core/ContextCodec.java`,
       `core/Codecs.java` with `string()` and `longValue()` as constants (WIRE-03). Verify: Unit `CodecsTest`
-- [ ] T011 [US2] UUID codec. Red: in `CodecsTest`, `WIRE-03 uuid round-trips valid values and encodes in lower case`, `WIRE-03 uuid decodes
+- [x] T011 [US2] UUID codec. Red: in `CodecsTest`, `WIRE-03 uuid round-trips valid values and encodes in lower case`, `WIRE-03 uuid decodes
       hexadecimal digits in either case`, `WIRE-03 uuid rejects invalid input with IllegalArgumentException` (parameterised: `1-2-3-4-5`, a
       value in braces, a `urn:uuid:` prefix, 32 digits without hyphens, a non-hexadecimal digit), and the singleton and `null` cases for
       `uuid`. Green: `Codecs.uuid()` (WIRE-03). Verify: Unit `CodecsTest`
