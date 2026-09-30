@@ -176,12 +176,16 @@ Built-in default policies:
 
 **POL-01** `[M1]` `ContextPolicy` SHALL be built with a builder that registers, per key, a codec, a wire name, a required flag, a loggable flag and
 the set of boundaries the key propagates to. Built policies SHALL be immutable. `codec(key)` and `wireName(key)` SHALL return the codec and wire
-name registered for the key, and SHALL return empty when none is registered.
+name registered for the key, and SHALL return empty when none is registered. A repeated call to `codec`, `wireName` or `propagateTo` on one
+`KeyRules` SHALL replace the earlier value, so the last call wins. A boundary listed more than once in one `propagateTo` call SHALL count once.
 
 **POL-02** `[M1]` A key not registered in a policy SHALL propagate to `ATTACHED` and `DETACHED` only, and SHALL be neither required nor loggable.
 
-**POL-03** `[M1]` A key SHALL propagate to `INTERNAL_CALL`, `EXTERNAL_CALL` or `MESSAGE` only if the policy lists that boundary for it. IF a policy
-lists a remote boundary for an application key without both a codec and a wire name, THEN `build()` SHALL fail with `IllegalStateException`.
+**POL-03** `[M1]` A key SHALL propagate to `INTERNAL_CALL`, `EXTERNAL_CALL` or `MESSAGE` only if the policy lists that boundary for it. A
+registered key SHALL propagate only to the boundaries its rules list, `ATTACHED` and `DETACHED` included: a key registered with
+`propagateTo(INTERNAL_CALL)` alone does not propagate to `ATTACHED` or `DETACHED`. The `ATTACHED` and `DETACHED` defaults of POL-02 apply only to
+unregistered keys. IF a policy lists a remote boundary for an application key without both a codec and a wire name, THEN `build()` SHALL fail
+with `IllegalStateException`.
 This check applies to application keys only. The built-in rules SHALL have no codec. `DEADLINE` and `INITIATOR` SHALL have the wire names in the
 table above, which are the header names of WIRE-02, and the adapters apply the WIRE-02 formats to them. `AUTHORITY` SHALL have no wire name; it is
 carried by the `AuthorityPropagator` (ID-03).
