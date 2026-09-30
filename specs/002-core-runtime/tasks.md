@@ -141,7 +141,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       Green: `Context.capture`, `ContextSnapshot.run` and `call`, each checking its operation first
       (CORE-03, CORE-09, CORE-10, CORE-11; RC-3, RC-4; RC-2 and RC-5 extended). The reviewer checks the check comes before the scope is
       entered, as in T003 (plan design, not a CORE-03 requirement). Verify: Unit `ContextSnapshotTest`, `ContextBindingTest`; RC
-- [ ] T006 [US1] Wrapped operations. Red: in `ContextSnapshotTest`, `CORE-10 wrap(Runnable) runs later on another thread with the snapshot` and
+- [x] T006 [US1] Wrapped operations. Red: in `ContextSnapshotTest`, `CORE-10 wrap(Runnable) runs later on another thread with the snapshot` and
       `CORE-10 wrap(Callable) runs later on another thread with the snapshot and returns its result`, each restoring the executing thread's
       snapshot afterwards, and `CORE-03 wrap rejects a null operation with NullPointerException at the wrap call` (both overloads; the
       exception comes from `wrap` itself, without running the wrapper, which without the check would fail only later on the thread that runs

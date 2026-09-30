@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -138,5 +139,81 @@ class ContextSnapshotTest {
 
         assertThatNullPointerException().isThrownBy(() -> snapshot.call(null));
         assertThat(Context.capture()).isSameAs(ContextSnapshot.EMPTY);
+    }
+
+    @Test
+    @DisplayName("CORE-10 wrap(Runnable) runs later on another thread with the snapshot")
+    void wrapRunnableRunsLaterOnAnotherThreadWithTheSnapshot() throws Exception {
+        ContextSnapshot snapshot = Context.with(TENANT, "t1").call(Context::capture);
+        List<List<String>> seen = new ArrayList<>();
+        AtomicReference<Thread> runner = new AtomicReference<>();
+        List<ContextSnapshot> executorSnapshots = new ArrayList<>();
+
+        Runnable wrapped = snapshot.wrap(() -> {
+            runner.set(Thread.currentThread());
+            seen.add(boundValues());
+        });
+
+        assertThat(seen).isEmpty();
+        try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
+            pool.submit(() -> Context.with(TENANT, "t9").with(REGION, "ap").run(() -> {
+                executorSnapshots.add(Context.capture());
+                wrapped.run();
+                seen.add(boundValues());
+                executorSnapshots.add(Context.capture());
+            })).get();
+        }
+
+        assertThat(runner.get()).isNotNull().isNotSameAs(Thread.currentThread());
+        assertThat(seen).containsExactly(
+                List.of("acme.tenant=t1", "acme.region unbound", "acme.user unbound"),
+                List.of("acme.tenant=t9", "acme.region=ap", "acme.user unbound"));
+        assertThat(executorSnapshots).hasSize(2);
+        assertThat(executorSnapshots.get(1)).isSameAs(executorSnapshots.get(0));
+    }
+
+    @Test
+    @DisplayName("CORE-10 wrap(Callable) runs later on another thread with the snapshot and returns its result")
+    void wrapCallableRunsLaterOnAnotherThreadWithTheSnapshotAndReturnsItsResult() throws Exception {
+        ContextSnapshot snapshot = Context.with(TENANT, "t1").call(Context::capture);
+        List<List<String>> seen = new ArrayList<>();
+        AtomicReference<Thread> runner = new AtomicReference<>();
+        List<ContextSnapshot> executorSnapshots = new ArrayList<>();
+        Callable<String> operation = () -> {
+            runner.set(Thread.currentThread());
+            seen.add(boundValues());
+            return "result for " + TENANT.get();
+        };
+
+        Callable<String> wrapped = snapshot.wrap(operation);
+
+        assertThat(seen).isEmpty();
+        String result;
+        try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
+            result = pool.submit(() -> Context.with(TENANT, "t9").with(REGION, "ap").call(() -> {
+                executorSnapshots.add(Context.capture());
+                String value = wrapped.call();
+                seen.add(boundValues());
+                executorSnapshots.add(Context.capture());
+                return value;
+            })).get();
+        }
+
+        assertThat(result).isEqualTo("result for t1");
+        assertThat(runner.get()).isNotNull().isNotSameAs(Thread.currentThread());
+        assertThat(seen).containsExactly(
+                List.of("acme.tenant=t1", "acme.region unbound", "acme.user unbound"),
+                List.of("acme.tenant=t9", "acme.region=ap", "acme.user unbound"));
+        assertThat(executorSnapshots).hasSize(2);
+        assertThat(executorSnapshots.get(1)).isSameAs(executorSnapshots.get(0));
+    }
+
+    @Test
+    @DisplayName("CORE-03 wrap rejects a null operation with NullPointerException at the wrap call")
+    void wrapRejectsANullOperationAtTheWrapCall() {
+        ContextSnapshot snapshot = Context.with(TENANT, "t1").call(Context::capture);
+
+        assertThatNullPointerException().isThrownBy(() -> snapshot.wrap((Runnable) null));
+        assertThatNullPointerException().isThrownBy(() -> snapshot.wrap((Callable<String>) null));
     }
 }

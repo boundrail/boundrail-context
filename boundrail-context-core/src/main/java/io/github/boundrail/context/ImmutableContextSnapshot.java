@@ -2,6 +2,7 @@ package io.github.boundrail.context;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Callable;
 
 /** The library's snapshot: an immutable map from key to value. Keys compare by instance (CORE-02). */
 final class ImmutableContextSnapshot implements ContextSnapshot {
@@ -34,5 +35,17 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
     public <R, X extends Throwable> R call(ContextCallable<R, X> op) throws X {
         Objects.requireNonNull(op, "op");
         return ContextRuntime.SLOT.call(this, op);
+    }
+
+    @Override
+    public Runnable wrap(Runnable op) {
+        Objects.requireNonNull(op, "op");
+        return () -> run(op);
+    }
+
+    @Override
+    public <R> Callable<R> wrap(Callable<R> op) {
+        Objects.requireNonNull(op, "op");
+        return () -> call(op::call);
     }
 }
