@@ -86,4 +86,25 @@ public final class ContextKey<T> {
     public Optional<T> defaultValue() {
         return Optional.ofNullable(defaultValue);
     }
+
+    /**
+     * Returns the value bound in the current snapshot, else the default (CORE-05).
+     *
+     * @return the value
+     * @throws MissingContextException if the key is not bound and has no default
+     */
+    public T get() {
+        return find().orElseThrow(() -> new MissingContextException(this));
+    }
+
+    /** {@return the value bound in the current snapshot, else the default, else empty (CORE-05)} */
+    public Optional<T> find() {
+        Object value = ImmutableContextSnapshot.current().values().get(this);
+        return value != null ? Optional.of(type.cast(value)) : defaultValue();
+    }
+
+    /** {@return whether the key is bound in the current snapshot; defaults do not count (CORE-05)} */
+    public boolean isBound() {
+        return ImmutableContextSnapshot.current().values().containsKey(this);
+    }
 }

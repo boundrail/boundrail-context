@@ -104,13 +104,15 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   snapshot run replaces the caller snapshot`). Enabling each scenario replaces that name with the spec's bold title, so the case and wording
   change deliberately; the reviewer should not flag it as an unrelated edit. RC-9 keeps its name until 004.
 - **RC-5 and RC-7 are written so that they are red in their own task.** RC-5's body runs one scope that exits normally and one that exits by
-  throwing on the same single-thread pool, and asserts the next task observes `EMPTY` after each; the exceptional exit is still "a scope
-  exits" in RC-5's text, and it fails until T003's `finally`. The throwing scope must not kill the pool's worker: an exception escaping a
-  task passed to `execute()` ends the worker thread, so the next task would run on a fresh thread, see `EMPTY`, and pass even without the
+  throwing on the same single-thread pool, and after each the next task asserts that each key the previous scopes bound is not bound
+  (`isBound()` is `false`); the exceptional exit is still "a scope exits" in RC-5's text, and it fails until T003's `finally`, because the
+  throwing scope's keys stay bound. `Context.capture()` belongs to T005's green step, so T005 extends RC-5 and the RT-03 unit test with the
+  spec's literal check, that the next task's `capture()` is `EMPTY`. The throwing scope must not kill the pool's worker: an exception escaping a
+  task passed to `execute()` ends the worker thread, so the next task would run on a fresh thread, see no residue, and pass even without the
   `finally`. So the pooled task catches the scope's exception itself (or the task is submitted with `submit()`, whose `Future` holds the
   exception), and each task records `Thread.currentThread()`; the test asserts that the next task ran on the same `Thread` as the throwing
-  one before asserting `EMPTY`. The RT-03 unit test in T003 is written the same way. RC-7 and the CORE-03 and CORE-04 unit tests assert the
-  exception at the `with` call itself, without calling `run`; T002's `with` checks only that the key is not `null` and records the change
+  one before asserting that no key is bound (and, from T005, that `capture()` is `EMPTY`). The RT-03 unit test in T003 is written the same
+  way. RC-7 and the CORE-03 and CORE-04 unit tests assert the exception at the `with` call itself, without calling `run`; T002's `with` checks only that the key is not `null` and records the change
   (its `Map.copyOf` would throw `NullPointerException` for a `null` value later, at `run`), so they fail until T004.
 - **RT-03's `remove()` is not observable through the API.** A test can observe "no residue" (RC-5, and the RT-03 unit test after an
   exceptional exit on a pooled thread) but not `remove()` versus `set(null)`. The reviewer checks the `remove()` call against RT-03 in T003.
@@ -208,8 +210,10 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   boundary, so it cannot show whether `filter` checks its own argument; T015 uses `EMPTY` for that case.) A `null` operation to `run` or
   `call` would anyway throw `NullPointerException` from inside the scope, which CORE-03 also accepts ("that call" throws). The test therefore
   also asserts that the current snapshot is unchanged afterwards, using a binding that changes it (for example `Context.with(k, v).run(null)`,
-  then `k.isBound()` is `false` and `capture()` is `EMPTY`). In T002 this is red without the `requireNonNull`, because `ThreadLocalSlot` has
-  no `finally` yet and the scope would stay bound. In T003 and T005 `finally` already restores, so these tests are red only because `call` and
+  then `k.isBound()` is `false`). In T002 this is red without the `requireNonNull`, because `ThreadLocalSlot` has no `finally` yet and the
+  scope would stay bound. `Context.capture()` belongs to T005's green step, so T002's `run` and T003's `call` tests assert only `isBound`, and
+  T005 extends both with `capture()` is `EMPTY` once `capture` exists. In T003 and T005 `finally` already restores, so these tests are red
+  only because `call` and
   the snapshot's `run`/`call` are new. That `requireNonNull` comes before the scope is entered is plan design, not a CORE-03 requirement (a
   `NullPointerException` from inside the scope, with the snapshot restored, also satisfies CORE-03); the reviewer checks it as the planned
   design. The same holds for immutable-map lookups (`find(null)`, `isRequired(null)`), which throw on their own.
@@ -324,14 +328,14 @@ stays in `integration-tests`, the only project that loads the packaged multi-rel
 | CORE-04 | T004 |
 | CORE-05 | T002 |
 | CORE-06 | T003, T007 |
-| CORE-07 | T002, T003 |
+| CORE-07 | T002, T003 (T005 adds the `capture()` check to the nested-restore test) |
 | CORE-08 | T003 |
 | CORE-09, CORE-11 | T005 |
 | CORE-10 | T005, T006 |
 | CORE-12 | T007, T020, T021 |
 | RT-01 | T002 |
 | RT-02, RT-04, RT-05 | T008, T009 |
-| RT-03 | T003 |
+| RT-03 | T003 (T005 adds the `capture()` check to the RT-03 test) |
 | RT-06 | T009 (every enabled scenario on both backends), T024 (SC-001; exempt from SC-002) |
 | POL-01, POL-02 | T013 |
 | POL-03 | T013, T014, T022 |
@@ -347,7 +351,7 @@ stays in `integration-tests`, the only project that loads the packaged multi-rel
 | ID-07 | T021 |
 | BLD-06 (`boundrail.it.task`, read by RC-1) | T009 |
 | RC-1 | T009 |
-| RC-2, RC-5 | T003 |
+| RC-2, RC-5 | T003 (per key), T005 (`capture()` checks) |
 | RC-3, RC-4 | T005 |
 | RC-6 | T002 |
 | RC-7 | T004 |

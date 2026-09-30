@@ -1,5 +1,10 @@
 package io.github.boundrail.context.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
+
+import io.github.boundrail.context.ContextKey;
+import io.github.boundrail.context.MissingContextException;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,11 +55,19 @@ class RuntimeConformanceIT {
     }
 
     @Test
-    @Disabled("Pending: M1")
-    @DisplayName("RC-6 missing keys and defaults")
+    @DisplayName("RC-6 Missing keys and defaults")
     void rc6MissingKeysAndDefaults() {
         // RC-6: `get()` on an unbound key without a default throws `MissingContextException` naming the key; with a default, it returns
         // the default and `isBound()` is false. *(CORE-05)*
+        ContextKey<String> withoutDefault = ContextKey.of("rc.tenant", String.class);
+        ContextKey<String> withDefault = ContextKey.of("rc.region", String.class, "eu");
+
+        MissingContextException missing = catchThrowableOfType(MissingContextException.class, withoutDefault::get);
+        assertThat(missing.key()).isSameAs(withoutDefault);
+        assertThat(missing).hasMessageContaining("rc.tenant");
+
+        assertThat(withDefault.get()).isEqualTo("eu");
+        assertThat(withDefault.isBound()).isFalse();
     }
 
     @Test

@@ -80,14 +80,17 @@ None. 001-foundation built the core project, its test dependencies, the three in
       Green: `core/ContextKey.java` with both `of` factories (`requireNonNull` on each argument, the default included, before the
       CORE-01 checks) and the three accessors, no `equals` override (the inherited `Object.equals` is not covered by CORE-03, G13)
       (CORE-01, CORE-03). Verify: Unit `ContextKeyTest`
-- [ ] T002 [US1] Bind and read. Red: `test/ContextBindingTest.java` with `CORE-05 find returns the bound value, else the default, else empty`,
-      `CORE-05 get throws MissingContextException naming the key`, `CORE-05 isBound ignores defaults`,
-      `CORE-07 run binds for the scope and restores afterwards`, `CORE-02 keys with the same name are different keys` (two same-named keys bound in
-      one binding keep separate values), `RT-01 each thread has its own current snapshot`,
+- [x] T002 [US1] Bind and read. Red: `test/ContextBindingTest.java` with `CORE-05 find returns the bound value, else the default, else empty`,
+      `CORE-05 get throws MissingContextException naming the key`, `CORE-05 get returns the bound value, else the default`,
+      `CORE-05 isBound ignores defaults`, `CORE-07 run binds for the scope and restores afterwards` (also pinning the merge: inside
+      `Context.with(TENANT, "t1").run(…)`, a nested `Context.with(REGION, "us")` sees TENANT `t1` and REGION `us`; red for a `run` that
+      replaces the current snapshot instead of applying its changes to it), `CORE-02 keys with the same name are different keys` (two
+      same-named keys bound in one binding keep separate values), `RT-01 each thread has its own current snapshot`,
       `CORE-03 with rejects a null key with NullPointerException at the with call` (for `Context.with` and `ContextBinding.with`, without calling
       `run`), `CORE-03 run rejects a null operation with NullPointerException and leaves the current snapshot unchanged` (with a binding that
-      changes the snapshot: `Context.with(k, v).run(null)` throws, then `k.isBound()` is `false` and `Context.capture()` is `EMPTY`; red without the
-      check: the scope is entered, and with no `finally` yet it stays bound); enable RC-6 in `RuntimeConformanceIT`. Green: `core/Context.java`
+      changes the snapshot: `Context.with(k, v).run(null)` throws, then `k.isBound()` is `false`; red without the check: the scope is
+      entered, and with no `finally` yet it stays bound; the `Context.capture()` assertion is added in T005, which creates `capture`); enable
+      RC-6 in `RuntimeConformanceIT`. Green: `core/Context.java`
       (`with`), `core/ContextBinding.java` (`with` checks only that the key is not `null` and records the change; `run`, which checks its operation
       first), `core/ContextSnapshot.java` (`EMPTY`), `core/ImmutableContextSnapshot.java`, `core/MissingContextException.java`,
       `core/ContextCallable.java`, `core/ContextRuntime.java` (slot holder only; `backend()` comes in T008), `core/internal/ContextSlot.java`,
@@ -96,14 +99,20 @@ None. 001-foundation built the core project, its test dependencies, the three in
       RC-6). No `null` check in `internal`: `ThreadLocalSlot.call` gets none (G16). Verify: Unit `ContextBindingTest`; RC
 - [ ] T003 [US1] Removal, nesting, exceptions and `call`. Red: in `ContextBindingTest`, `CORE-07 without removes a key for the scope`, `CORE-07
       the last change for a key wins within one binding` (`with(k, 1).without(k)` leaves `k` unbound; `without(k).with(k, 2)` and
-      `with(k, 1).with(k, 2)` bind 2), `CORE-07 nested bindings restore the exact previous snapshot`, `CORE-07 restores the previous snapshot
-      when the operation throws`, `CORE-08 call returns the result and rethrows checked exceptions unchanged`, `CORE-06 with and without return
-      a new binding`, `RT-03 a pooled thread carries no residue after a scope exits exceptionally`, `CORE-03 without rejects a null key with
-      NullPointerException at the without call` (for `Context.without` and `ContextBinding.without`; red without the check, which records a
-      silent no-op removal), `CORE-03 call rejects a null operation with NullPointerException and leaves the current snapshot unchanged`
-      (with a binding that changes the snapshot, as in T002); enable RC-2 and RC-5, where RC-5's body
-      runs, on one single-thread pool, a scope that exits normally and a scope whose operation throws, and asserts the next task observes
-      `EMPTY` after each (the exceptional exit is what makes RC-5 red here). In both RC-5 and the RT-03 unit test, the throwing scope is
+      `with(k, 1).with(k, 2)` bind 2), `CORE-07 nested bindings restore the exact previous snapshot` (asserted per key: after the nested
+      scope exits, `find()` returns the outer scope's values again, and keys only the inner scope added or removed are back to their outer
+      state; the `Context.capture()` assertion is added in T005), `CORE-07 restores the previous snapshot when the operation throws` (per
+      key, as above), `CORE-08 call returns the result and rethrows checked exceptions unchanged`, `CORE-06 with and without return a new
+      binding`, `RT-03 a pooled thread carries no residue after a scope exits exceptionally` (the next task on the same thread asserts that
+      each key the previous scope bound is not bound, `isBound()` `false`; the `Context.capture()` assertion is added in T005), `CORE-03
+      without rejects a null key with NullPointerException at the without call` (for `Context.without` and `ContextBinding.without`; red
+      without the check, which records a silent no-op removal), `CORE-03 call rejects a null operation with NullPointerException and leaves
+      the current snapshot unchanged` (with a binding that changes the snapshot, as in T002: afterwards `k.isBound()` is `false`; the
+      `Context.capture()` assertion is added in T005); enable RC-2 and RC-5. RC-2 asserts per key, as the nested-restore unit test does.
+      RC-5's body runs, on one single-thread pool, a scope that exits normally and a scope whose operation throws, and after each the next
+      task asserts that each key the previous scopes bound is not bound (the exceptional exit is what makes RC-5 red here: without the
+      `finally` its keys stay bound). The `Context.capture()` assertions of RC-2 and RC-5 are added in T005. In both RC-5 and the RT-03 unit
+      test, the throwing scope is
       caught inside the pooled task (or the task is submitted with `submit()`), never left to escape an `execute()` task, which would kill
       the worker and let the next task pass on a fresh thread; each task records `Thread.currentThread()`, and the test asserts the next task
       ran on the same `Thread` as the throwing one. Green: `Context.without`, `ContextBinding.without` and `call`, each checking its argument
@@ -121,10 +130,17 @@ None. 001-foundation built the core project, its test dependencies, the three in
       (same instance inside `snapshot.run`), `CORE-09 capture outside any scope returns EMPTY`, `CORE-10 snapshot run replaces the caller's
       snapshot and restores it`, `CORE-10 snapshot call returns the result and rethrows checked exceptions`, `CORE-11 one snapshot runs
       concurrently on many threads`, `CORE-03 snapshot run and call reject a null operation with NullPointerException and leave the current
-      snapshot unchanged` (a non-empty snapshot run from `EMPTY`, then `capture()` is `EMPTY`); enable RC-3 and RC-4.
+      snapshot unchanged` (a non-empty snapshot run from `EMPTY`, then `capture()` is `EMPTY`); in `ContextBindingTest`, extend T002's
+      `CORE-03 run rejects a null operation …` and T003's `CORE-03 call rejects a null operation …` with the assertion that `Context.capture()`
+      is `EMPTY` afterwards, T003's `RT-03 a pooled thread carries no residue …` with the assertion that the next task's `Context.capture()`
+      is `EMPTY`, and T003's `CORE-07 nested bindings restore the exact previous snapshot` with the assertion that `capture()` after the
+      nested scope returns the same instance as before it (`isSameAs`) (these no longer compile without `capture`, so they fail with the rest
+      of the Red step); enable RC-3 and RC-4, and in `RuntimeConformanceIT` extend RC-5 (the next task's `Context.capture()` is `EMPTY` after
+      each scope) and RC-2 (`capture()` after each nested scope is the same instance as before it, `isSameAs`), keeping their display names
+      and comments as T003 set them.
       Green: `Context.capture`, `ContextSnapshot.run` and `call`, each checking its operation first
-      (CORE-03, CORE-09, CORE-10, CORE-11; RC-3, RC-4). The reviewer checks the check comes before the scope is entered, as in T003 (plan
-      design, not a CORE-03 requirement). Verify: Unit `ContextSnapshotTest`; RC
+      (CORE-03, CORE-09, CORE-10, CORE-11; RC-3, RC-4; RC-2 and RC-5 extended). The reviewer checks the check comes before the scope is
+      entered, as in T003 (plan design, not a CORE-03 requirement). Verify: Unit `ContextSnapshotTest`, `ContextBindingTest`; RC
 - [ ] T006 [US1] Wrapped operations. Red: in `ContextSnapshotTest`, `CORE-10 wrap(Runnable) runs later on another thread with the snapshot` and
       `CORE-10 wrap(Callable) runs later on another thread with the snapshot and returns its result`, each restoring the executing thread's
       snapshot afterwards, and `CORE-03 wrap rejects a null operation with NullPointerException at the wrap call` (both overloads; the
