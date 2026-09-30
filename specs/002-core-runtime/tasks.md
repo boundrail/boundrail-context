@@ -151,6 +151,20 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `CORE-03 snapshot find rejects a null key with NullPointerException` (on `EMPTY` and on a non-empty snapshot). Green: `find` (checking
       its key first), `keys`, `isEmpty` and `toString` in `ImmutableContextSnapshot` (CORE-03, CORE-06, CORE-12). Verify: Unit
       `ContextSnapshotTest`
+- [ ] T025 [US1] Snapshot `toString` order. Added after T007 was committed, for the amended CORE-12 (ascending order of key name by
+      `String.compareTo`); numbered after T024 so existing IDs stay stable, and placed here because it only amends T007. Red: in
+      `ContextSnapshotTest`, `CORE-12 toString lists entries in ascending order of key name`: one binding binds 16 keys with distinct names, in
+      descending order of name (so insertion order is the reverse of the required order), each to a distinct `String` value (`v01` – `v16`).
+      The names include `acme.a`, `acme.a-b`, `acme.a.b`, `acme.a0`, `acme.ab`, `acme.k10` and `acme.k2`, whose `String.compareTo` order
+      (character by character: `-` before `.` before digits before letters) differs from a dot-segment or numeric order. The test finds each
+      `name=value` entry in `toString()`, asserts that each occurs exactly once, and asserts that their positions increase in ascending
+      `String.compareTo` order of name; it does not pin the wrapper or the delimiter. No two keys share a name, since CORE-12 leaves their
+      order unspecified. Red is deterministic, not flaky: insertion order is excluded by construction, and T007's `Map.copyOf` iteration order
+      comes from the keys' identity hash codes and a per-JVM salt, which are unrelated to the names, so the unsorted code passes only if that
+      order of 16 entries happens to be the sorted one, about 1 in 16! (2·10^13) per run, which stays negligible even allowing for the salt's
+      choice of start slot and direction. Green: in `ImmutableContextSnapshot.toString()`, sort the entries by `getKey().name()` (natural
+      `String` order) before joining, each value still printed only through its own `toString()` (CORE-12). T007's CORE-12 test stays as it
+      is. Verify: Unit `ContextSnapshotTest`
 - [ ] T008 [US1] Backend report and override property. Red: `test/internal/BackendOverrideTest.java` with `RT-04 thread-local forces the
       ThreadLocal backend`, `RT-04 auto and unset select automatically` (no warning), and `RT-04 an unrecognised value logs a warning and falls
       back to automatic selection` (parameterised: `THREAD-LOCAL`, `Thread-Local`, `threadlocal`, the empty string; a recording
@@ -322,8 +336,9 @@ None. 001-foundation built the core project, its test dependencies, the three in
 
 ## Dependencies & Execution Order
 
-- US1 in order T001 → T009. T009 needs T008 (`BackendOverride`, `SlotFactory.create(boolean)`, `backend()`) and runs every RC scenario enabled
-  so far on `SCOPED_VALUE`.
+- US1 in order T001 → T007 → T025 → T008 → T009. T025 needs only T007 (it changes `ImmutableContextSnapshot.toString()` and extends
+  `ContextSnapshotTest`); it is listed after T007 but may run at any point before T024. T009 needs T008 (`BackendOverride`,
+  `SlotFactory.create(boolean)`, `backend()`) and runs every RC scenario enabled so far on `SCOPED_VALUE`.
 - US2: T010 can run any time after T001; T010 → T011 → T012 (they share `Codecs.java` and `CodecsTest.java`). T013 needs T001 and T010
   (`ContextCodec`). T013 → T014 → T015 → T016. T015 also needs T007 (it builds and reads snapshots through `keys()` and `find`). T012 is
   independent of T013 – T016.
@@ -344,5 +359,6 @@ None. 001-foundation built the core project, its test dependencies, the three in
       no `null` checks in `internal` (G16)
 - [ ] CORE-03 precedence as decided in OD-1: a `null` argument to `ContextKey.of` throws `NullPointerException` before any CORE-01 check
       (T001)
+- [ ] CORE-12 order as amended: `ContextSnapshot.toString()` lists entries in ascending order of key name by `String.compareTo` (T025)
 - [ ] `boundrail-context-core` still has no runtime dependencies (SC-003)
 - [ ] `./gradlew check` green

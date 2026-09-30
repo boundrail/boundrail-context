@@ -130,6 +130,10 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
 - **Snapshots.** A package-private immutable implementation of `ContextSnapshot` in `io.github.boundrail.context` wraps `Map.copyOf` of
   `ContextKey<?>` to value. `ContextKey` does not override `equals`, so keys compare by instance (CORE-02). `capture()` returns the current
   reference (CORE-09). `ContextSnapshot` stays a plain interface as the contract shows; `filter` and `merge` use only its interface methods.
+  `toString()` prints each entry as `name=value`, the value through its own `toString()`, sorted by key name in natural `String` order
+  (CORE-12, as amended), not in `Map.copyOf` iteration order, which depends on identity hash codes and a per-JVM salt. Keys with the same
+  name keep whatever relative order the stable sort leaves them in, which CORE-12 leaves unspecified. T007 built `toString()` unsorted;
+  T025 adds the sort.
 - **Binding.** `ContextBinding` is an immutable list of changes (bind or remove, per key), applied in call order to the snapshot current when
   the binding runs, so the last change for a key wins (CORE-07) and DL-10 compares against that snapshot. From T002, `with` checks
   `Objects.requireNonNull(key)` and `run` its operation; from T003, `without` its key and `call` its operation (CORE-03). From T004, `with` checks
@@ -332,7 +336,7 @@ stays in `integration-tests`, the only project that loads the packaged multi-rel
 | CORE-08 | T003 |
 | CORE-09, CORE-11 | T005 |
 | CORE-10 | T005, T006 |
-| CORE-12 | T007, T020, T021 |
+| CORE-12 | T007, T020, T021, T025 (ascending order of key name, added after T007 for the amended CORE-12) |
 | RT-01 | T002 |
 | RT-02, RT-04, RT-05 | T008, T009 |
 | RT-03 | T003 (T005 adds the `capture()` check to the RT-03 test) |

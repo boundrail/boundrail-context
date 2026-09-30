@@ -86,6 +86,7 @@ never reveals its credential.
   not CORE-01's `IllegalArgumentException`). `equals(null)`: CORE-03 (returns `false`). Methods inherited from JDK types, application-written
   implementations of the library's interfaces, and the `internal` package: not covered by CORE-03. Wrong value types: CORE-04.
 - One binding that changes the same key twice: CORE-07 (the last change wins).
+- Application-written `ContextSnapshot` implementations: not covered by CORE-12.
 - Conflicting keys, wire names or rule sets across merged policies: POL-05. The same key registered twice with equal rules: POL-05 (accepted).
   Reserved wire names: POL-09. Built-in keys re-registered: POL-06. Merging policies that both contain the built-in rules: POL-06 (accepted).
 - An unrecognised `boundrail.context.backend` value, including a different case such as `THREAD-LOCAL`: RT-04.
@@ -138,7 +139,10 @@ like `run`/`call` when executed later, on any thread.
 
 **CORE-11** `[M1]` Snapshots SHALL be immutable and safe to share across threads, including being run concurrently on many threads.
 
-**CORE-12** `[M1]` `ContextSnapshot.toString()` SHALL list key names with each value's `toString()`. (Built-in values redact themselves; see ID-01.)
+**CORE-12** `[M1]` `ContextSnapshot.toString()` SHALL list key names with each value's `toString()`, in ascending order of key name as compared
+by `String.compareTo`. The relative order of two different keys with the same name (CORE-02) is unspecified. Each value SHALL appear only as the
+result of its own `toString()`. (Built-in values redact themselves; see ID-01.) This binds the library's own `ContextSnapshot` implementations
+only, not implementations written by applications.
 
 ### Runtime backends
 
