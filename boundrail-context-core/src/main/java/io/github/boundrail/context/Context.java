@@ -18,4 +18,15 @@ public final class Context {
     public static <T> ContextBinding with(ContextKey<T> key, T value) {
         return ContextBinding.of(key, value);
     }
+
+    /**
+     * Returns a binding that removes a key.
+     *
+     * @param key the key
+     * @return a new binding
+     * @throws NullPointerException if the key is {@code null}
+     */
+    public static ContextBinding without(ContextKey<?> key) {
+        return ContextBinding.removing(key);
+    }
 }

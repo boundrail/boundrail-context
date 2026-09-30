@@ -97,7 +97,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `core/internal/ThreadLocalSlot.java` (restores the previous snapshot after a normal return only; `finally` comes in T003),
       `core/internal/SlotFactory.java` (base: ThreadLocal), and `find`/`get`/`isBound` on `ContextKey` (CORE-02, CORE-03, CORE-05, CORE-07, RT-01;
       RC-6). No `null` check in `internal`: `ThreadLocalSlot.call` gets none (G16). Verify: Unit `ContextBindingTest`; RC
-- [ ] T003 [US1] Removal, nesting, exceptions and `call`. Red: in `ContextBindingTest`, `CORE-07 without removes a key for the scope`, `CORE-07
+- [x] T003 [US1] Removal, nesting, exceptions and `call`. Red: in `ContextBindingTest`, `CORE-07 without removes a key for the scope`, `CORE-07
       the last change for a key wins within one binding` (`with(k, 1).without(k)` leaves `k` unbound; `without(k).with(k, 2)` and
       `with(k, 1).with(k, 2)` bind 2), `CORE-07 nested bindings restore the exact previous snapshot` (asserted per key: after the nested
       scope exits, `find()` returns the outer scope's values again, and keys only the inner scope added or removed are back to their outer
