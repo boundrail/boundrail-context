@@ -254,6 +254,37 @@ class ContextSnapshotTest {
     }
 
     @Test
+    @DisplayName("CORE-12 toString lists entries in ascending order of key name")
+    void toStringListsEntriesInAscendingOrderOfKeyName() {
+        // ascending String.compareTo order: '-' < '.' < digits < letters, so neither dot-segment nor numeric order
+        List<String> ascending = List.of("acme.a", "acme.a-b", "acme.a.b", "acme.a0", "acme.ab", "acme.b", "acme.c", "acme.d",
+                "acme.e", "acme.f", "acme.g", "acme.h", "acme.k10", "acme.k2", "acme.m", "acme.n");
+        assertThat(ascending).isSorted().doesNotHaveDuplicates().hasSize(16);
+        List<String> entries = new ArrayList<>();
+        for (int i = 0; i < ascending.size(); i++) {
+            entries.add(ascending.get(i) + "=" + "v%02d".formatted(i + 1));
+        }
+        ContextBinding binding = null;
+        for (int i = ascending.size() - 1; i >= 0; i--) {
+            ContextKey<String> key = ContextKey.of(ascending.get(i), String.class);
+            String value = "v%02d".formatted(i + 1);
+            binding = binding == null ? Context.with(key, value) : binding.with(key, value);
+        }
+        ContextSnapshot snapshot = binding.call(Context::capture);
+
+        String text = snapshot.toString();
+
+        List<Integer> positions = new ArrayList<>();
+        for (String entry : entries) {
+            int position = text.indexOf(entry);
+            assertThat(position).as("position of %s in %s", entry, text).isNotNegative();
+            assertThat(text.indexOf(entry, position + 1)).as("second occurrence of %s in %s", entry, text).isNegative();
+            positions.add(position);
+        }
+        assertThat(positions).as("positions of %s in %s", entries, text).isSorted();
+    }
+
+    @Test
     @DisplayName("CORE-03 snapshot find rejects a null key with NullPointerException")
     void snapshotFindRejectsANullKey() {
         ContextSnapshot snapshot = Context.with(TENANT, "t1").call(Context::capture);

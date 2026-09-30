@@ -1,6 +1,7 @@
 package io.github.boundrail.context;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,6 +46,7 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
     @Override
     public String toString() {
         return values.entrySet().stream()
+                .sorted(Comparator.comparing(entry -> entry.getKey().name()))
                 .map(entry -> entry.getKey().name() + "=" + entry.getValue())
                 .collect(Collectors.joining(", ", "ContextSnapshot[", "]"));
     }

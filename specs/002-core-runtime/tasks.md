@@ -151,7 +151,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `CORE-03 snapshot find rejects a null key with NullPointerException` (on `EMPTY` and on a non-empty snapshot). Green: `find` (checking
       its key first), `keys`, `isEmpty` and `toString` in `ImmutableContextSnapshot` (CORE-03, CORE-06, CORE-12). Verify: Unit
       `ContextSnapshotTest`
-- [ ] T025 [US1] Snapshot `toString` order. Added after T007 was committed, for the amended CORE-12 (ascending order of key name by
+- [x] T025 [US1] Snapshot `toString` order. Added after T007 was committed, for the amended CORE-12 (ascending order of key name by
       `String.compareTo`); numbered after T024 so existing IDs stay stable, and placed here because it only amends T007. Red: in
       `ContextSnapshotTest`, `CORE-12 toString lists entries in ascending order of key name`: one binding binds 16 keys with distinct names, in
       descending order of name (so insertion order is the reverse of the required order), each to a distinct `String` value (`v01` – `v16`).
