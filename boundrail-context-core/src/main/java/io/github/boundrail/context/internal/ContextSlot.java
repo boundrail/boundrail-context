@@ -1,10 +1,14 @@
 package io.github.boundrail.context.internal;
 
 import io.github.boundrail.context.ContextCallable;
+import io.github.boundrail.context.ContextRuntime;
 import io.github.boundrail.context.ContextSnapshot;
 
 /** The single slot per thread of execution that holds the current snapshot (RT-01). */
 public interface ContextSlot {
+
+    /** {@return the backend this slot uses} */
+    ContextRuntime.Backend backend();
 
     /** {@return the current snapshot, or {@link ContextSnapshot#EMPTY} if none is current} */
     ContextSnapshot current();

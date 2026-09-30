@@ -165,7 +165,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       choice of start slot and direction. Green: in `ImmutableContextSnapshot.toString()`, sort the entries by `getKey().name()` (natural
       `String` order) before joining, each value still printed only through its own `toString()` (CORE-12). T007's CORE-12 test stays as it
       is. Verify: Unit `ContextSnapshotTest`
-- [ ] T008 [US1] Backend report and override property. Red: `test/internal/BackendOverrideTest.java` with `RT-04 thread-local forces the
+- [x] T008 [US1] Backend report and override property. Red: `test/internal/BackendOverrideTest.java` with `RT-04 thread-local forces the
       ThreadLocal backend`, `RT-04 auto and unset select automatically` (no warning), and `RT-04 an unrecognised value logs a warning and falls
       back to automatic selection` (parameterised: `THREAD-LOCAL`, `Thread-Local`, `threadlocal`, the empty string; a recording
       `System.Logger` passed in receives one `WARNING`); `test/internal/SlotFactoryTest.java` with `RT-02 the base SlotFactory creates the

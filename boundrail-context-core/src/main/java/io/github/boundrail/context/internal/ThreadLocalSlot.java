@@ -1,6 +1,7 @@
 package io.github.boundrail.context.internal;
 
 import io.github.boundrail.context.ContextCallable;
+import io.github.boundrail.context.ContextRuntime;
 import io.github.boundrail.context.ContextSnapshot;
 
 /**
@@ -10,6 +11,11 @@ import io.github.boundrail.context.ContextSnapshot;
 final class ThreadLocalSlot implements ContextSlot {
 
     private final ThreadLocal<ContextSnapshot> current = new ThreadLocal<>();
+
+    @Override
+    public ContextRuntime.Backend backend() {
+        return ContextRuntime.Backend.THREAD_LOCAL;
+    }
 
     @Override
     public ContextSnapshot current() {
