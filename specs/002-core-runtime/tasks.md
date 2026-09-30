@@ -236,7 +236,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       and `codec`, each checking its arguments first, with `propagateTo` also checking each element of its array at the call; `Builder.key` runs the
       rules consumer once, on a fresh `KeyRules`, before it returns (plan design, decided in OD-2, [plan.md](plan.md#research-notes))
       (CORE-03, POL-01, POL-02, POL-03). Verify: Unit `ContextPolicyTest`
-- [ ] T014 [US2] Build validation. Red: `test/ContextPolicyValidationTest.java` with `POL-03 build fails when an application key lists a remote
+- [x] T014 [US2] Build validation. Red: `test/ContextPolicyValidationTest.java` with `POL-03 build fails when an application key lists a remote
       boundary without a codec`, `… without a wire name`, `POL-05 build fails on two different keys with the same name`, `POL-05 build fails on
       two different keys with wire names equal ignoring case`, `POL-05 build accepts one key registered twice with equal rules` (same
       `Codecs.string()` instance, same wire name, flags and boundaries; the built policy reports those rules), `POL-05 build fails when one key

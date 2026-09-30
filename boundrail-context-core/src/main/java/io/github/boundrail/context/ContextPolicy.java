@@ -1,7 +1,11 @@
 package io.github.boundrail.context;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -16,6 +20,9 @@ import java.util.function.Consumer;
 public final class ContextPolicy {
 
     private static final Set<Boundary> UNREGISTERED_BOUNDARIES = Set.of(Boundary.ATTACHED, Boundary.DETACHED);
+    private static final Set<Boundary> REMOTE_BOUNDARIES = EnumSet.of(Boundary.INTERNAL_CALL, Boundary.EXTERNAL_CALL, Boundary.MESSAGE);
+    private static final String RESERVED_WIRE_NAME = "Authorization";
+    private static final String RESERVED_WIRE_PREFIX = "Boundrail-";
 
     private final Map<ContextKey<?>, Rules> rules;
 
@@ -112,7 +119,14 @@ public final class ContextPolicy {
          */
         <T> Builder key(ContextKey<T> key, Consumer<KeyRules<T>> rules);
 
-        /** {@return a policy with the rules registered so far; later use of this builder does not change it} */
+        /**
+         * Builds a policy with the rules registered so far; later use of this builder does not change it.
+         *
+         * @return the policy
+         * @throws IllegalStateException if a key lists a remote boundary without both a codec and a wire name (POL-03), one key is
+         *     registered with conflicting rules, two different keys have the same name or wire names equal ignoring case (POL-05), or a wire
+         *     name is reserved (POL-09)
+         */
         ContextPolicy build();
     }
 
@@ -159,11 +173,21 @@ public final class ContextPolicy {
     }
 
     private record Rules(ContextCodec<?> codec, String wireName, boolean required, boolean loggable, Set<Boundary> boundaries) {
+
+        /**
+         * Returns whether these rules equal the other rules (POL-05). Not {@code equals}, which would compare codecs with their own
+         * {@code equals}: codecs compare by instance.
+         */
+        boolean sameAs(Rules other) {
+            return codec == other.codec && Objects.equals(wireName, other.wireName) && required == other.required
+                    && loggable == other.loggable && boundaries.equals(other.boundaries);
+        }
     }
 
     private static final class PolicyBuilder implements Builder {
 
         private final Map<ContextKey<?>, Rules> rules = new HashMap<>();
+        private final List<String> conflicts = new ArrayList<>();
 
         @Override
         public <T> Builder key(ContextKey<T> key, Consumer<KeyRules<T>> rules) {
@@ -171,12 +195,44 @@ public final class ContextPolicy {
             Objects.requireNonNull(rules, "rules");
             MutableKeyRules<T> keyRules = new MutableKeyRules<>();
             rules.accept(keyRules);
-            this.rules.putIfAbsent(key, keyRules.toRules());
+            Rules registered = keyRules.toRules();
+            Rules first = this.rules.putIfAbsent(key, registered);
+            if (first != null && !first.sameAs(registered)) {
+                conflicts.add("Context key " + key.name() + " is registered with conflicting rules");
+            }
             return this;
         }
 
         @Override
         public ContextPolicy build() {
+            if (!conflicts.isEmpty()) {
+                throw new IllegalStateException(conflicts.getFirst());
+            }
+            Map<String, ContextKey<?>> names = new HashMap<>();
+            Map<String, ContextKey<?>> wireNames = new HashMap<>();
+            rules.forEach((key, keyRules) -> {
+                if (names.putIfAbsent(key.name(), key) != null) {
+                    throw new IllegalStateException("Two different context keys are named " + key.name());
+                }
+                String wireName = keyRules.wireName();
+                boolean remote = keyRules.boundaries().stream().anyMatch(REMOTE_BOUNDARIES::contains);
+                if (remote && (keyRules.codec() == null || wireName == null)) {
+                    throw new IllegalStateException(
+                            "Context key " + key.name() + " propagates to a remote boundary without both a codec and a wire name");
+                }
+                if (wireName == null) {
+                    return;
+                }
+                if (wireName.equalsIgnoreCase(RESERVED_WIRE_NAME)
+                        || wireName.regionMatches(true, 0, RESERVED_WIRE_PREFIX, 0, RESERVED_WIRE_PREFIX.length())) {
+                    throw new IllegalStateException("Context key " + key.name() + " uses the reserved wire name " + wireName);
+                }
+                ContextKey<?> other = wireNames.putIfAbsent(wireName.toLowerCase(Locale.ROOT), key);
+                if (other != null) {
+                    throw new IllegalStateException(
+                            "Context keys " + other.name() + " and " + key.name() + " have wire names equal ignoring case: " + wireName);
+                }
+            });
             return new ContextPolicy(rules);
         }
     }
