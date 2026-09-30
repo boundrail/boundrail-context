@@ -36,11 +36,13 @@ public final class ContextBinding {
      * @param value the value
      * @param <T> the value type
      * @return a new binding
-     * @throws NullPointerException if the key is {@code null}
+     * @throws NullPointerException if the key or the value is {@code null}
+     * @throws ClassCastException if the value is not an instance of the key's type (CORE-04)
      */
     public <T> ContextBinding with(ContextKey<T> key, T value) {
         Objects.requireNonNull(key, "key");
-        return adding(new Change(key, value));
+        Objects.requireNonNull(value, "value");
+        return adding(new Change(key, key.type().cast(value)));
     }
 
     /**

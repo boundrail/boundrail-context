@@ -1,6 +1,7 @@
 package io.github.boundrail.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
@@ -317,5 +318,25 @@ class ContextBindingTest {
         assertThatNullPointerException().isThrownBy(() -> Context.with(TENANT, "t1").call(null));
 
         assertThat(TENANT.isBound()).isFalse();
+    }
+
+    @Test
+    @DisplayName("CORE-03 binding null throws NullPointerException at the with call")
+    void bindingNullThrowsNullPointerExceptionAtTheWithCall() {
+        ContextBinding binding = Context.with(REGION, "us");
+
+        assertThatNullPointerException().isThrownBy(() -> Context.with(TENANT, null));
+        assertThatNullPointerException().isThrownBy(() -> binding.with(TENANT, null));
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    @DisplayName("CORE-04 binding a value of the wrong type throws ClassCastException at the with call")
+    void bindingAValueOfTheWrongTypeThrowsClassCastExceptionAtTheWithCall() {
+        ContextKey raw = TENANT;
+        ContextBinding binding = Context.with(REGION, "us");
+
+        assertThatExceptionOfType(ClassCastException.class).isThrownBy(() -> Context.with(raw, 42));
+        assertThatExceptionOfType(ClassCastException.class).isThrownBy(() -> binding.with(raw, 42));
     }
 }

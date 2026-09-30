@@ -1,9 +1,12 @@
 package io.github.boundrail.context.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import io.github.boundrail.context.Context;
+import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.MissingContextException;
 import java.io.IOException;
@@ -152,11 +155,19 @@ class RuntimeConformanceIT {
     }
 
     @Test
-    @Disabled("Pending: M1")
-    @DisplayName("RC-7 null and wrong-type values are rejected when binding")
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    @DisplayName("RC-7 Null and wrong-type values are rejected when binding")
     void rc7NullAndWrongTypeValuesAreRejectedWhenBinding() {
         // RC-7: Binding `null` throws `NullPointerException`, and binding a value of the wrong type throws `ClassCastException` at the
         // binding call. *(CORE-03, CORE-04)*
+        ContextKey<String> tenant = ContextKey.of("rc.tenant", String.class);
+        ContextKey raw = tenant;
+        ContextBinding binding = Context.with(ContextKey.of("rc.region", String.class), "eu");
+
+        assertThatNullPointerException().isThrownBy(() -> Context.with(tenant, null));
+        assertThatNullPointerException().isThrownBy(() -> binding.with(tenant, null));
+        assertThatExceptionOfType(ClassCastException.class).isThrownBy(() -> Context.with(raw, 42));
+        assertThatExceptionOfType(ClassCastException.class).isThrownBy(() -> binding.with(raw, 42));
     }
 
     @Test

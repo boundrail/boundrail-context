@@ -121,7 +121,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       The reviewer also checks that `call` checks its operation before entering the scope; this is plan design, not a CORE-03 requirement
       (with the `finally`, a `NullPointerException` from inside the scope also satisfies CORE-03 and passes the test). Verify: Unit
       `ContextBindingTest`; RC
-- [ ] T004 [US1] Value checks. Red: in `ContextBindingTest`, `CORE-03 binding null throws NullPointerException at the with call` and `CORE-04
+- [x] T004 [US1] Value checks. Red: in `ContextBindingTest`, `CORE-03 binding null throws NullPointerException at the with call` and `CORE-04
       binding a value of the wrong type throws ClassCastException at the with call` (through a raw key), each for `Context.with` and
       `ContextBinding.with`, asserting the exception from `with` alone, without calling `run` or `get`; enable RC-7, which asserts both
       exceptions at the `with` call in the same way. Green: `requireNonNull` and `key.type().cast` in both `with` methods (CORE-03, CORE-04;
