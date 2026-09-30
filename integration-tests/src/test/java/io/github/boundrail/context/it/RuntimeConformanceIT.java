@@ -8,12 +8,16 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextKey;
+import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.MissingContextException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -31,8 +35,12 @@ class RuntimeConformanceIT {
         return Stream.of(keys).map(key -> key.isBound() ? key.name() + "=" + key.get() : key.name() + " unbound").toList();
     }
 
-    /** What a pooled task observed: the thread it ran on and the keys bound there. */
-    private record Observed(Thread thread, List<String> boundValues) {
+    /** What a pooled task observed: the thread it ran on, the keys bound there and the captured snapshot. */
+    private record Observed(Thread thread, List<String> boundValues, ContextSnapshot captured) {
+    }
+
+    /** The snapshot captured just before a nested scope and just after it exits. */
+    private record Restored(ContextSnapshot before, ContextSnapshot after) {
     }
 
     @Test
@@ -55,28 +63,36 @@ class RuntimeConformanceIT {
         IOException checkedFailure = new IOException("boom");
         List<Throwable> thrown = new ArrayList<>();
         List<List<String>> seen = new ArrayList<>();
+        List<Restored> restored = new ArrayList<>();
 
         Context.with(tenant, "t1").with(region, "eu").run(() -> {
+            ContextSnapshot outer = Context.capture();
             Context.with(tenant, "t2").without(region).with(user, "alice").run(() -> {
                 seen.add(boundValues(tenant, region, user));
+                ContextSnapshot middle = Context.capture();
                 Context.without(tenant).with(region, "us").run(() -> seen.add(boundValues(tenant, region, user)));
+                restored.add(new Restored(middle, Context.capture()));
                 seen.add(boundValues(tenant, region, user));
             });
+            restored.add(new Restored(outer, Context.capture()));
             seen.add(boundValues(tenant, region, user));
             thrown.add(catchThrowableOfType(IllegalStateException.class,
                     () -> Context.with(tenant, "t3").without(region).with(user, "bob").run(() -> {
                         throw runtimeFailure;
                     })));
+            restored.add(new Restored(outer, Context.capture()));
             seen.add(boundValues(tenant, region, user));
             thrown.add(catchThrowableOfType(IOException.class,
                     () -> Context.without(tenant).with(region, "us").with(user, "carol").<Void, IOException>call(() -> {
                         throw checkedFailure;
                     })));
+            restored.add(new Restored(outer, Context.capture()));
             seen.add(boundValues(tenant, region, user));
         });
         seen.add(boundValues(tenant, region, user));
 
         assertThat(thrown).containsExactly(runtimeFailure, checkedFailure);
+        assertThat(restored).hasSize(4).allSatisfy(scope -> assertThat(scope.after()).isSameAs(scope.before()));
         assertThat(seen).containsExactly(
                 List.of("rc.tenant=t2", "rc.region unbound", "rc.user=alice"),
                 List.of("rc.tenant unbound", "rc.region=us", "rc.user=alice"),
@@ -88,18 +104,60 @@ class RuntimeConformanceIT {
     }
 
     @Test
-    @Disabled("Pending: M1")
-    @DisplayName("RC-3 snapshot run replaces the caller snapshot")
-    void rc3SnapshotRunReplacesTheCallerSnapshot() {
+    @DisplayName("RC-3 Snapshot run replaces the caller's snapshot")
+    void rc3SnapshotRunReplacesTheCallersSnapshot() {
         // RC-3: `snapshot.run` replaces the caller's snapshot rather than merging with it, and restores it afterwards. *(CORE-10)*
+        ContextKey<String> tenant = ContextKey.of("rc.tenant", String.class);
+        ContextKey<String> region = ContextKey.of("rc.region", String.class);
+        ContextSnapshot snapshot = Context.with(tenant, "t1").call(Context::capture);
+        List<List<String>> seen = new ArrayList<>();
+        List<Restored> restored = new ArrayList<>();
+
+        Context.with(tenant, "t0").with(region, "eu").run(() -> {
+            ContextSnapshot caller = Context.capture();
+            snapshot.run(() -> seen.add(boundValues(tenant, region)));
+            restored.add(new Restored(caller, Context.capture()));
+            seen.add(boundValues(tenant, region));
+        });
+
+        assertThat(seen).containsExactly(
+                List.of("rc.tenant=t1", "rc.region unbound"),
+                List.of("rc.tenant=t0", "rc.region=eu"));
+        assertThat(restored).singleElement().satisfies(scope -> assertThat(scope.after()).isSameAs(scope.before()));
     }
 
     @Test
-    @Disabled("Pending: M1")
-    @DisplayName("RC-4 one snapshot is shared safely across virtual threads")
-    void rc4OneSnapshotIsSharedSafelyAcrossVirtualThreads() {
+    @DisplayName("RC-4 One snapshot is shared safely across virtual threads")
+    void rc4OneSnapshotIsSharedSafelyAcrossVirtualThreads() throws Exception {
         // RC-4: One snapshot run concurrently on 1,000 virtual threads makes the same values visible on every thread, and bindings made
         // inside those threads never become visible to the others. *(CORE-11)*
+        int threads = 1_000;
+        ContextKey<String> tenant = ContextKey.of("rc.tenant", String.class);
+        ContextKey<String> region = ContextKey.of("rc.region", String.class);
+        ContextKey<String> user = ContextKey.of("rc.user", String.class);
+        ContextSnapshot snapshot = Context.with(tenant, "t1").with(region, "eu").call(Context::capture);
+        CountDownLatch allBound = new CountDownLatch(threads);
+        List<Future<List<String>>> seen = new ArrayList<>();
+
+        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < threads; i++) {
+                String name = "u" + i;
+                seen.add(pool.submit(() -> snapshot.call(() -> Context.with(user, name).call(() -> {
+                    // every thread holds its own user binding while the others read theirs
+                    allBound.countDown();
+                    if (!allBound.await(60, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("not all threads entered their scope");
+                    }
+                    return boundValues(tenant, region, user);
+                }))));
+            }
+        }
+
+        for (int i = 0; i < threads; i++) {
+            assertThat(seen.get(i).get()).containsExactly("rc.tenant=t1", "rc.region=eu", "rc.user=u" + i);
+        }
+        assertThat(snapshot.call(() -> boundValues(tenant, region, user)))
+                .containsExactly("rc.tenant=t1", "rc.region=eu", "rc.user unbound");
     }
 
     @Test
@@ -118,7 +176,8 @@ class RuntimeConformanceIT {
                 Context.with(tenant, "t1").run(() -> { });
                 return Thread.currentThread();
             }).get();
-            afterNormalExit = pool.submit(() -> new Observed(Thread.currentThread(), boundValues(tenant, region))).get();
+            afterNormalExit = pool.submit(
+                    () -> new Observed(Thread.currentThread(), boundValues(tenant, region), Context.capture())).get();
             throwingThread = pool.submit(() -> {
                 try {
                     Context.with(tenant, "t2").with(region, "eu").run(() -> {
@@ -129,13 +188,16 @@ class RuntimeConformanceIT {
                 }
                 return Thread.currentThread();
             }).get();
-            afterExceptionalExit = pool.submit(() -> new Observed(Thread.currentThread(), boundValues(tenant, region))).get();
+            afterExceptionalExit = pool.submit(
+                    () -> new Observed(Thread.currentThread(), boundValues(tenant, region), Context.capture())).get();
         }
 
         assertThat(afterNormalExit.thread()).isSameAs(normalThread);
         assertThat(afterNormalExit.boundValues()).containsExactly("rc.tenant unbound", "rc.region unbound");
+        assertThat(afterNormalExit.captured()).isSameAs(ContextSnapshot.EMPTY);
         assertThat(afterExceptionalExit.thread()).isSameAs(throwingThread);
         assertThat(afterExceptionalExit.boundValues()).containsExactly("rc.tenant unbound", "rc.region unbound");
+        assertThat(afterExceptionalExit.captured()).isSameAs(ContextSnapshot.EMPTY);
     }
 
     @Test

@@ -126,7 +126,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `ContextBinding.with`, asserting the exception from `with` alone, without calling `run` or `get`; enable RC-7, which asserts both
       exceptions at the `with` call in the same way. Green: `requireNonNull` and `key.type().cast` in both `with` methods (CORE-03, CORE-04;
       RC-7). Verify: Unit `ContextBindingTest`; RC
-- [ ] T005 [US1] Capture and re-entry. Red: `test/ContextSnapshotTest.java` with `CORE-09 capture returns the current snapshot without copying`
+- [x] T005 [US1] Capture and re-entry. Red: `test/ContextSnapshotTest.java` with `CORE-09 capture returns the current snapshot without copying`
       (same instance inside `snapshot.run`), `CORE-09 capture outside any scope returns EMPTY`, `CORE-10 snapshot run replaces the caller's
       snapshot and restores it`, `CORE-10 snapshot call returns the result and rethrows checked exceptions`, `CORE-11 one snapshot runs
       concurrently on many threads`, `CORE-03 snapshot run and call reject a null operation with NullPointerException and leave the current

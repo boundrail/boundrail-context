@@ -6,6 +6,11 @@ public final class Context {
     private Context() {
     }
 
+    /** {@return the current snapshot itself, not a copy, or {@link ContextSnapshot#EMPTY} if none is current (CORE-09)} */
+    public static ContextSnapshot capture() {
+        return ContextRuntime.SLOT.current();
+    }
+
     /**
      * Returns a binding of a key to a value.
      *

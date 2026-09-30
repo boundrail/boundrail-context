@@ -148,6 +148,7 @@ class ContextBindingTest {
         assertThatNullPointerException().isThrownBy(() -> Context.with(TENANT, "t1").run(null));
 
         assertThat(TENANT.isBound()).isFalse();
+        assertThat(Context.capture()).isSameAs(ContextSnapshot.EMPTY);
     }
 
     @Test
@@ -185,13 +186,21 @@ class ContextBindingTest {
     @DisplayName("CORE-07 nested bindings restore the exact previous snapshot")
     void nestedBindingsRestoreTheExactPreviousSnapshot() {
         List<List<String>> seen = new ArrayList<>();
+        AtomicReference<ContextSnapshot> beforeMiddle = new AtomicReference<>();
+        AtomicReference<ContextSnapshot> afterMiddle = new AtomicReference<>();
+        AtomicReference<ContextSnapshot> beforeInner = new AtomicReference<>();
+        AtomicReference<ContextSnapshot> afterInner = new AtomicReference<>();
 
         Context.with(TENANT, "t1").with(REGION, "us").run(() -> {
+            beforeMiddle.set(Context.capture());
             Context.with(TENANT, "t2").without(REGION).with(USER, "alice").run(() -> {
                 seen.add(boundValues());
+                beforeInner.set(Context.capture());
                 Context.without(TENANT).with(REGION, "ap").run(() -> seen.add(boundValues()));
+                afterInner.set(Context.capture());
                 seen.add(boundValues());
             });
+            afterMiddle.set(Context.capture());
             seen.add(boundValues());
         });
         seen.add(boundValues());
@@ -202,6 +211,8 @@ class ContextBindingTest {
                 List.of("acme.tenant=t2", "acme.region unbound", "acme.user=alice"),
                 List.of("acme.tenant=t1", "acme.region=us", "acme.user unbound"),
                 List.of("acme.tenant unbound", "acme.region unbound", "acme.user unbound"));
+        assertThat(afterInner.get()).isSameAs(beforeInner.get());
+        assertThat(afterMiddle.get()).isSameAs(beforeMiddle.get());
     }
 
     @Test
@@ -279,6 +290,7 @@ class ContextBindingTest {
     @DisplayName("RT-03 a pooled thread carries no residue after a scope exits exceptionally")
     void aPooledThreadCarriesNoResidueAfterAScopeExitsExceptionally() throws Exception {
         AtomicReference<Thread> nextThread = new AtomicReference<>();
+        AtomicReference<ContextSnapshot> nextCapture = new AtomicReference<>();
         Thread throwingThread;
         List<String> seenByNextTask;
 
@@ -295,12 +307,14 @@ class ContextBindingTest {
             }).get();
             seenByNextTask = pool.submit(() -> {
                 nextThread.set(Thread.currentThread());
+                nextCapture.set(Context.capture());
                 return boundValues();
             }).get();
         }
 
         assertThat(nextThread.get()).isSameAs(throwingThread);
         assertThat(seenByNextTask).containsExactly("acme.tenant unbound", "acme.region unbound", "acme.user unbound");
+        assertThat(nextCapture.get()).isSameAs(ContextSnapshot.EMPTY);
     }
 
     @Test
@@ -318,6 +332,7 @@ class ContextBindingTest {
         assertThatNullPointerException().isThrownBy(() -> Context.with(TENANT, "t1").call(null));
 
         assertThat(TENANT.isBound()).isFalse();
+        assertThat(Context.capture()).isSameAs(ContextSnapshot.EMPTY);
     }
 
     @Test
