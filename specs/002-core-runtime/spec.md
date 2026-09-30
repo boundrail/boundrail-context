@@ -215,7 +215,9 @@ SHALL throw `NullPointerException` for `null`. Each `Codecs` method SHALL return
   equals `l`, for example `Locale.ROOT` and `ja_JP_JP` but not `no_NO_NY` or `Locale.of("xyz123")`; other locales are encoded without error but
   do not round-trip. `decode` SHALL accept exactly the strings that match the `Language-Tag` production of RFC 5646 §2.1, ignoring case (so
   including private-use and grandfathered tags such as `x-foo` and `i-klingon`), and SHALL return `Locale.forLanguageTag(text)`. For example,
-  `en`, `EN-gb`, `zh-Hant-TW`, `es-419` and `und` are valid; the empty string, `en_GB`, `en-`, `e`, `en--GB` and ` en` are invalid.
+  `en`, `EN-gb`, `zh-Hant-TW`, `es-419` and `und` are valid; the empty string, `en_GB`, `en-`, `e`, `en--GB` and ` en` are invalid. `decode`
+  checks only well-formedness, not validity (RFC 5646 §2.2.9), and returns whatever `Locale.forLanguageTag` returns, even when that drops or
+  rewrites subtags: `en-a-bb-a-cc` (a duplicate singleton) decodes to `en-a-bb`, and `zh-abc-def-ghi` to `abc`.
 
 ### Built-in values
 
