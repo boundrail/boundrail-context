@@ -1,6 +1,8 @@
 <!--
 Sync Impact Report
-- Version: 1.1.2 → 1.2.0 (MINOR: principle VII adds approved TDD exceptions and debugging to root cause; the
+- Version: 1.2.0 → 1.2.1 (PATCH: the Test names rule states that a `@ParameterizedTest` counts by its method's `@DisplayName`,
+  not its invocation names; principle VII points to it)
+- 1.1.2 → 1.2.0 (MINOR: principle VII adds approved TDD exceptions and debugging to root cause; the
   workflow adds per-task review and commits on the feature branch, following the superpowers skills test-driven-development,
   systematic-debugging, verification-before-completion and requesting-code-review)
 - 1.1.1 → 1.1.2 (PATCH: Spec Kit reinstalled; the constitution is back at .specify/memory/constitution.md and the workflow names the
@@ -50,7 +52,8 @@ Micrometer, OpenTelemetry and Spring stay in charge of what they already do well
 
 - Behaviour exists only if a spec requirement describes it. A behaviour change starts as a spec change, then tests, then code.
 - Acceptance scenarios are written before the feature, disabled with `@Disabled("Pending: Mx")`, and enabled when the feature starts.
-- Tests are written and seen failing before the implementation (red, green, refactor). Test display names start with the IDs they verify.
+- Tests are written and seen failing before the implementation (red, green, refactor). Test display names start with the IDs they verify
+  (Test names under Specification Rules).
 - Config-only tasks (build scripts, CI, resource files) may skip test-first only as TDD exceptions the user approves with the plan,
   each naming the check that verifies it.
 - Failures are debugged to their root cause, with a failing test, before any fix. Three failed fixes on one problem make it a design
@@ -89,7 +92,8 @@ changed line traces to the task at hand; unrelated problems are reported, not fi
   when a requirement moves between feature folders. A removed requirement stays in place, marked *Withdrawn*. Scenario IDs are `IT-n.m` or `RC-n`.
 - **Test names.** Test display names start with the IDs they verify, for example
   `@DisplayName("IT-2.5 forged tenant header from public caller is ignored")` or
-  `@DisplayName("CORE-07 binding restores previous snapshot after exception")`.
+  `@DisplayName("CORE-07 binding restores previous snapshot after exception")`. For a `@ParameterizedTest`, the display name that counts is
+  the method's `@DisplayName`; invocation names such as `[1] "THREAD-LOCAL"` need not start with the ID.
 - Markdown lines are at most 150 characters (the `markdown-conventions` skill).
 
 ## Development Workflow
@@ -109,4 +113,4 @@ This constitution supersedes other practices. Principles I–VI restate the froz
 in the design.md decision log and a matching update here. Versioning follows semantic versioning: MAJOR for removing or redefining a principle,
 MINOR for adding one, PATCH for wording. Every plan's Constitution Check and every review verifies compliance.
 
-**Version**: 1.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-09-28
+**Version**: 1.2.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-09-30
