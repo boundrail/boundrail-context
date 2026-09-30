@@ -5,9 +5,13 @@
 **Input**: Feature specification from `/specs/002-core-runtime/spec.md`, contract [contracts/core-api.md](contracts/core-api.md)
 
 **Decisions**: the user decided Q1 – Q6 as recommended, and spec.md, the contract, 001's BLD-06 and `docs/roadmap.md` now say so. The gaps
-G1 – G10 of the earlier drafts are resolved in the spec (see [Spec Gaps](#spec-gaps)). Two questions are still open for the user
-([Open Decisions](#open-decisions)): G12, whether every public method rejects `null` arguments, which must be decided before T002; and G11,
-what `Deadline.after` and `within` do with durations too large to represent, which must be decided before T017 and affects one test case there.
+G1 – G16 of the earlier drafts are resolved in the spec (see [Spec Gaps](#spec-gaps)): G11 by DL-01's maximum budget, and G12 – G16 by CORE-03. A
+`null` argument, or a `null` element of a varargs argument (G14), to a method or factory declared in this feature's contract
+(`contracts/core-api.md`) throws `NullPointerException` at that call (G12), before the call's other argument checks (OD-1); `equals(Object)`
+returns `false` for `null`, and methods inherited from JDK types are not covered (G13); only the library's own implementations of its interfaces
+are bound, not application-written ones (G15); public classes in `internal` are not covered (G16). The user also decided the two later questions
+(see [Decisions](#decisions)): OD-1 approves the CORE-03 precedence sentence, added to the spec after G13 – G16 were decided, and OD-2 keeps
+`Builder.key` running its rules consumer once, before `key` returns, as plan design for 002, with nothing added to the spec.
 
 ## Summary
 
@@ -57,7 +61,7 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
 | IV Deadlines only shrink | Pass | DL-10, DL-11, RC-8 |
 | V Diagnostics report evidence | Pass | Only diagnostic in scope is the RT-04 warning for an unrecognised backend value, through `System.Logger` |
 | VI Interoperate | N/A | No integrations in this feature |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; each RC scenario is enabled as its task's failing test; no TDD exceptions (below); the behaviour G1 – G10 needed is in the spec, not decided in the code; the open questions (G11, G12) are not coded until the spec answers them |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; each RC scenario is enabled as its task's failing test; no TDD exceptions (below); the behaviour G1 – G16 needed is in the spec, not decided in the code |
 | VIII Simplicity | Pass | Only the contract's types; one internal slot interface with two implementations; no listeners, capture sites or Spring |
 | Technical constraints | Pass | Core stays dependency-free (SC-003, checked in T024); ScopedValue only in `java25`; selection through one class in both variants (RT-02) |
 
@@ -106,8 +110,8 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   `finally`. So the pooled task catches the scope's exception itself (or the task is submitted with `submit()`, whose `Future` holds the
   exception), and each task records `Thread.currentThread()`; the test asserts that the next task ran on the same `Thread` as the throwing
   one before asserting `EMPTY`. The RT-03 unit test in T003 is written the same way. RC-7 and the CORE-03 and CORE-04 unit tests assert the
-  exception at the `with` call itself, without calling `run`; T002's `with` only records the change (its `Map.copyOf` would throw
-  `NullPointerException` later, at `run`), so they fail until T004.
+  exception at the `with` call itself, without calling `run`; T002's `with` checks only that the key is not `null` and records the change
+  (its `Map.copyOf` would throw `NullPointerException` for a `null` value later, at `run`), so they fail until T004.
 - **RT-03's `remove()` is not observable through the API.** A test can observe "no residue" (RC-5, and the RT-03 unit test after an
   exceptional exit on a pooled thread) but not `remove()` versus `set(null)`. The reviewer checks the `remove()` call against RT-03 in T003.
 - **RC-1 JDK check (Q1).** 001's build already passes `boundrail.it.task=<task name>` to all three tasks
@@ -117,14 +121,16 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   both `Runtime.version().feature()` and `ContextRuntime.backend()`. This is the only JDK check in the ThreadLocal task, whose filter excludes
   `BuildSmokeIT`. T009 proves it can fail by temporarily removing the override property, pointing a task at the other launcher, and dropping
   `boundrail.it.task`; each change is reverted.
-- **Keys.** `ContextKey.of` requires a non-null name and type (CORE-03), then checks the name pattern, the reserved prefix and
-  `type.isPrimitive()` (CORE-01; `void.class` is primitive too), and `requireNonNull` on the default (CORE-03). Built-in keys are created
-  through a package-private factory that skips only the reserved-prefix check.
+- **Keys.** `ContextKey.of` requires a non-null name, type and default (CORE-03), then checks the name pattern, the reserved prefix and
+  `type.isPrimitive()` (CORE-01; `void.class` is primitive too). The `null` checks come first, as CORE-03's precedence requires (OD-1,
+  decided), so `of("x", long.class, null)` and `of(null, long.class)` throw `NullPointerException`, not `IllegalArgumentException`.
+  Built-in keys are created through a package-private factory that skips only the reserved-prefix check.
 - **Snapshots.** A package-private immutable implementation of `ContextSnapshot` in `io.github.boundrail.context` wraps `Map.copyOf` of
   `ContextKey<?>` to value. `ContextKey` does not override `equals`, so keys compare by instance (CORE-02). `capture()` returns the current
   reference (CORE-09). `ContextSnapshot` stays a plain interface as the contract shows; `filter` and `merge` use only its interface methods.
 - **Binding.** `ContextBinding` is an immutable list of changes (bind or remove, per key), applied in call order to the snapshot current when
-  the binding runs, so the last change for a key wins (CORE-07) and DL-10 compares against that snapshot. From T004, `with` checks
+  the binding runs, so the last change for a key wins (CORE-07) and DL-10 compares against that snapshot. From T002, `with` checks
+  `Objects.requireNonNull(key)` and `run` its operation; from T003, `without` its key and `call` its operation (CORE-03). From T004, `with` checks
   `Objects.requireNonNull(value)` and `key.type().cast(value)` at the call (CORE-03, CORE-04). `without(DEADLINE)` throws at the call, in both
   `Context.without` and `ContextBinding.without`, whether or not a deadline is current (DL-11). Because `without(DEADLINE)` always throws, a
   binding never removes `DEADLINE`, so the last-change rule and DL-10 do not interact beyond "a bound deadline is combined with the current one".
@@ -154,13 +160,59 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   key and adds the built-in rules to every policy it returns. Built-in rules are the same record instances in every policy, so `merge` finds
   them equal (POL-05, POL-06). Until T023, built policies hold application rules only; no earlier test depends on built-in keys in a built
   policy.
-- **Deadline.** A `long` instant from `System.nanoTime()`; `remaining()` is `max(0, instant - now)`; expired when `remaining()` is zero, so
-  `Deadline.after(Duration.ZERO)` and any negative duration are expired at once (DL-01). `earliest` compares instants with `a - b < 0`
-  (overflow-safe for `nanoTime`) and returns `this` unless `other` is strictly earlier; on a tie either is allowed (DL-01), so no test pins it
-  and no test-only factory exists. `within(max)` is `earliest(Deadline.after(max))`. `after`, `earliest` and `within` `requireNonNull` their
-  argument (CORE-03). DL-10 uses `current.earliest(bound)`. Unit tests avoid sleeps: they use zero, negative and long (one hour) budgets.
-  RC-8 asserts "at most" bounds only. Durations whose nanoseconds overflow `long`, or whose instant would overflow, are left to the open
-  decision G11; T017 does not test them and adds no handling for them.
+- **Deadline.** A `long` instant from `System.nanoTime()`. `after(d)` clamps `d` as a `Duration` before converting it, so `toNanos()` is never
+  called on a value that overflows: zero or negative gives 0 nanoseconds, `d.compareTo(MAX_BUDGET) >= 0` gives `Long.MAX_VALUE / 2`
+  (`MAX_BUDGET` is `Duration.ofNanos(Long.MAX_VALUE / 2)`, DL-01), anything else `d.toNanos()`. The instant is `now + nanos`, which may wrap
+  past `Long.MAX_VALUE`; that is allowed, because instants are only ever compared by subtraction. `remaining()` is `max(0, instant - now)`,
+  so it never exceeds the cap; expired when `remaining()` is zero, so `Deadline.after(Duration.ZERO)` and any negative duration are expired
+  at once (DL-01). `earliest` compares instants with `a - b < 0` and returns `this` unless `other` is strictly earlier; on a tie either is
+  allowed (DL-01), so no test pins it and no test-only factory exists. Every difference taken (instant minus `nanoTime()`, instant minus
+  instant) is at most the cap plus the time elapsed between readings, so it fits in a `long` for any `System.nanoTime()` origin. There is no
+  clock injection, so a test cannot choose the origin: the reviewer checks this arithmetic against DL-01's second paragraph (instants are
+  compared only through their difference, never with `<` directly, and `toNanos()` is never called before the clamp). `within(max)` is
+  `earliest(Deadline.after(max))`, so a `max` at or above the cap gives a deadline no earlier than any existing one, and `within` expires at
+  the same instant as `this`. `after`, `earliest` and `within` `requireNonNull` their
+  argument (CORE-03). DL-10 uses `current.earliest(bound)`. Unit tests avoid sleeps: they use zero, negative, long (one hour) and capped
+  budgets. RC-8 asserts "at most" bounds only.
+- **Null arguments (CORE-03).** CORE-03 covers the methods and factories declared in this feature's contract (`contracts/core-api.md`), as
+  implemented by the library. CORE-03 requires `NullPointerException` at the call, and requires the `null` check to take precedence over the call's
+  other argument checks, so `ContextKey.of(null, …)` throws `NullPointerException`, not CORE-01's `IllegalArgumentException` (OD-1, decided).
+  Only `ContextKey.of` has argument checks that compete with the null check. `with`/CORE-04, `without`/DL-11, `Builder.key` and `KeyRules.wireName`
+  (POL-06/POL-09 are checked at `build()`), `Authority.of`, `Initiator.of`, `Deadline` and the codecs have none, so the precedence creates no test
+  obligation elsewhere. Each method that takes
+  arguments therefore calls `Objects.requireNonNull` on each of them before any other check; `propagateTo`, the contract's only varargs method, also
+  checks each element of its array at the call (G14). Each is tested in the task that creates the method, with a test named `CORE-03 …` that asserts
+  the exception at the call itself: `with` without `run`, `wrap` without running the wrapper, `KeyRules` methods inside the rules consumer.
+  `Builder.key` runs its rules consumer once, on a fresh `KeyRules`, before it returns (plan design for 002, as the user decided in OD-2; the
+  spec and contract do not state the timing, and nothing is added to them).
+  The `KeyRules` tests do not rely on that timing: the consumer sets an `AtomicBoolean` after its `assertThrows`, and the test calls `key(…)` and
+  then `build()` before asserting the flag is `true`, so a consumer that never ran fails the test instead of passing it vacuously. Owners:
+  `ContextKey.of` T001; `Context.with`, `ContextBinding.with` (key) and `ContextBinding.run` T002; `Context.without`, `ContextBinding.without` and
+  `ContextBinding.call` T003; `with` (value) T004; `ContextSnapshot.run` and `call` T005; both `wrap` T006; `ContextSnapshot.find` T007; the
+  library's codecs T010 – T012 (required by WIRE-03, so those tests are named and tagged WIRE-03 only); `Builder.key`, `KeyRules.codec`, `wireName`
+  and `propagateTo` (a `null` array or a `null` element), and `propagates`, `isRequired`, `isLoggable`, `wireName` and `codec` T013; `filter` T015;
+  `merge` T016; `Deadline.after`, `earliest` and `within` T017; `Authority.of` T020; `Initiator.of` and `Initiator.equals(null)` T021. Methods
+  without arguments are not affected. The enums' `valueOf(null)` already throws `NullPointerException` (JDK), so no task covers it. The exception
+  types get no public constructor, since the contract lists none. Not covered, as decided: methods inherited from JDK types (G13), so `ContextKey`
+  and `Authority` keep `Object.equals` with no override, and the enums and exception types need nothing; `equals(Object)` returns `false` for `null`
+  (G13), which T021 asserts for `Initiator`, the only class the contract gives an `equals`, in its own test
+  `CORE-03 Initiator.equals(null) is false`; application-written implementations of `ContextSnapshot`, `ContextCodec`, `Builder` and `KeyRules`
+  (G15), so no task changes; and public classes in `internal` (G16), so `ThreadLocalSlot.call` (T002) and `ScopedValueSlot.call` (T009) get no
+  `null` check and no `CORE-03` test.
+- **Which `null` tests are red for the `requireNonNull` itself.** Several `null` arguments already fail in the planned design, but silently or
+  late: `with(null, v)` fails only at `run`, `without(null)` is a silent no-op, `wrap(null)` returns a wrapper that fails on the thread that
+  runs it, `propagates(unregisteredKey, null)` returns `false`, `filter(ContextSnapshot.EMPTY, null)` returns `EMPTY` without looking at
+  the boundary, `KeyRules.codec(null)` and `wireName(null)` lead to a misleading POL-03 failure at `build()`, and
+  `propagateTo(ATTACHED, null)` fails only at `build()`, in `Set.copyOf`. Their tests are red until
+  the `requireNonNull`. (`filter` with a non-empty snapshot and a `null` boundary would throw anyway once T013's `propagates` checks its
+  boundary, so it cannot show whether `filter` checks its own argument; T015 uses `EMPTY` for that case.) A `null` operation to `run` or
+  `call` would anyway throw `NullPointerException` from inside the scope, which CORE-03 also accepts ("that call" throws). The test therefore
+  also asserts that the current snapshot is unchanged afterwards, using a binding that changes it (for example `Context.with(k, v).run(null)`,
+  then `k.isBound()` is `false` and `capture()` is `EMPTY`). In T002 this is red without the `requireNonNull`, because `ThreadLocalSlot` has
+  no `finally` yet and the scope would stay bound. In T003 and T005 `finally` already restores, so these tests are red only because `call` and
+  the snapshot's `run`/`call` are new. That `requireNonNull` comes before the scope is entered is plan design, not a CORE-03 requirement (a
+  `NullPointerException` from inside the scope, with the snapshot restored, also satisfies CORE-03); the reviewer checks it as the planned
+  design. The same holds for immutable-map lookups (`find(null)`, `isRequired(null)`), which throw on their own.
 - **Initiator.** Value equality, `hashCode` of the value, and `toString()` returning the value (ID-07). Length is `String.length()`, so 128
   supplementary characters (256 chars) are accepted and 129 (258 chars) are rejected, which a code-point count would accept. A snapshot holding
   an initiator therefore prints it (CORE-12), while an authority still prints redacted (ID-01).
@@ -179,7 +231,8 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
 
 ## Spec Gaps
 
-G1 – G10 of the earlier drafts are resolved in spec.md, the contract, 001's BLD-06 and the roadmap. None blocks a task.
+G1 – G16 of the earlier drafts are resolved in spec.md, the contract, 001's BLD-06 and the roadmap. None blocks a task. The
+`Builder.key` timing is not a spec gap: the user settled it as plan design in OD-2 (see [Decisions](#decisions)).
 
 | # | Gap | Resolution in the spec | Planned in |
 |---|---|---|---|
@@ -191,15 +244,14 @@ G1 – G10 of the earlier drafts are resolved in spec.md, the contract, 001's BL
 | G6 | `Initiator` equality and `toString()` | ID-07 and the contract: value equality, `toString()` is the value; length is `String.length()` | T021 |
 | G7 | `ContextKey.of` with a primitive type | CORE-01 rejects it with `IllegalArgumentException` | T001 |
 | G8 | SC-002 needed a test named RT-06 | SC-002 exempts RT-06 (Q3) | T024 |
-| G9 | `null` arguments to the value factories | CORE-03: `ContextKey.of`, `Initiator.of`, `Authority.of`, `Deadline.after`, `earliest` and `within` throw `NullPointerException` | T001, T017, T020, T021 |
+| G9 | `null` arguments to the value factories | CORE-03: `ContextKey.of`, `Initiator.of`, `Authority.of`, `Deadline.after`, `earliest` and `within` throw `NullPointerException` (now part of the general rule, G12) | T001, T017, T020, T021 |
 | G10 | RT-09 tagged `[M1]` | Moved to 004 `[M3]` in spec.md and the roadmap (Q2) | none; T024 confirms 002 no longer lists it |
-
-Remaining gaps, for the spec-creator:
-
-| # | Gap | Effect on the plan |
-|---|---|---|
-| G11 | DL-01 does not say what `Deadline.after` and `within` do with a duration too large to represent (`Duration.toNanos()` overflows `long`, or `nanoTime() + nanos` overflows). Open for the user: cap it at the largest representable deadline, or throw `IllegalArgumentException`; the spec-creator recommends the cap. | Blocks only the huge-duration case, in T017 (`Deadline.after`, `within`; DL-10 and RC-8 reuse them but use small budgets). The rest of T017 proceeds. If the spec answers before T017 starts, one test (`DL-01 …` for the chosen behaviour, for both methods) joins T017; otherwise it becomes one new red-green task right after T017. Until then the code adds no handling. |
-| G12 | CORE-03 lists the calls that reject `null` arguments, but not the rest of the API: `Context.with(null, v)`, `without(null)`, `key` arguments to `find`, `run(null)`/`call(null)`/`wrap(null)`, the policy builder's arguments, `propagates`, `filter` and `merge` with `null`. Under the planned design several of these do not fail at all, or fail late and misleadingly: `Context.without(null)` and `ContextBinding.without(null)` record a removal of no key and are a silent no-op; `snapshot.wrap(null)` returns a wrapper that fails later, on the thread that runs it; `propagates(unregisteredKey, null)` returns `false` and `filter(snapshot, null)` drops unregistered keys silently (both fall through POL-02's boundary check); `KeyRules.codec(null)` and `wireName(null)` are likely stored as "none", so `build()` reports a misleading POL-03 failure (missing codec or wire name) instead of the `null`. Open for the user; the reviewer suggests the rule "IF `null` is passed as any argument of a public method or factory of the library, THEN that call SHALL throw `NullPointerException`." | Must be decided before T002. First affected tasks: T002 (a `null` key to `Context.with` and `ContextBinding.with`; `ContextBinding.run(null)`), T003 (`Context.without`, `ContextBinding.without`, `ContextBinding.call(null)`), T005 (`ContextSnapshot.run`, `call`), T006 (both `wrap` methods), T007 (`ContextSnapshot.find`), T013 (`Builder.key`, `KeyRules.codec`, `wireName`, `propagateTo`, and the `propagates`, `isRequired`, `isLoggable`, `wireName` and `codec` queries), T015 (`filter`), T016 (`merge`). The codecs (T010 – T012) are already covered by WIRE-03 and the value factories by CORE-03. If the user adopts the rule, each affected task gains one `null` test plus a `requireNonNull`; the task shapes do not change. Until then the code adds no checks. |
+| G11 | `Deadline.after` and `within` with a duration too large to represent | DL-01's second paragraph: the budget is capped at `Duration.ofNanos(Long.MAX_VALUE / 2)`; `after` at or above it (even when `toNanos()` overflows) gives the cap, `within` keeps the instant of `this`, a negative overflowing budget is expired; the arithmetic is correct for any `nanoTime()` origin | T017 |
+| G12 | `null` arguments to the rest of the public API | CORE-03: a `null` argument to a method or factory declared in this feature's contract (`contracts/core-api.md`) throws `NullPointerException` at that call, before the call's other argument checks (OD-1, decided) | T001 – T007, T013, T015 – T017, T020, T021 (see [Research Notes](#research-notes)) |
+| G13 | `equals(Object)` and methods inherited from JDK types under CORE-03 | CORE-03 and the contract header: `equals(Object)` returns `false` for `null`; methods inherited from JDK types (such as `Throwable.initCause`, `Enum.equals`) are not covered | T021 (`CORE-03 Initiator.equals(null) is false`); T001 and T020 add no `equals` override |
+| G14 | A `null` element in a varargs call, e.g. `KeyRules.propagateTo(ATTACHED, null)` | CORE-03 and the contract header: it throws `NullPointerException` at the call | T013 |
+| G15 | Application-written implementations of the library's interfaces | CORE-03: only the library's own implementations are bound, not those of `ContextSnapshot`, `ContextCodec`, `ContextPolicy.Builder` or `KeyRules` written by applications | none; the library's snapshot (T005 – T007), codecs (T010 – T012) and builder (T013) are tested |
+| G16 | Public classes in `internal` | CORE-03: not covered | none; `ThreadLocalSlot.call` (T002) and `ScopedValueSlot.call` (T009) get no `null` check |
 
 ## TDD Exceptions
 
@@ -211,12 +263,15 @@ There is nothing for the user to approve in this table.
 |---|---|---|
 | none | | |
 
-## Open Decisions
+## Decisions
 
-| Decision | Options | Tasks affected | Effect |
+The user decided G13 – G16 (the scope of CORE-03), and spec.md and the contract now say so; see [Spec Gaps](#spec-gaps). The user also
+decided OD-1 and OD-2:
+
+| # | Decision | Status | Affects |
 |---|---|---|---|
-| G11 huge durations for `Deadline.after` and `within` | cap at the largest representable deadline (spec-creator's recommendation), or `IllegalArgumentException` | T017 (the huge-duration case only); decide before T017 | Either way one test and a few lines in `Deadline.after`; `within` follows because it is `earliest(after(max))`. Not decided here. |
-| G12 `null` arguments to the rest of the public API | the reviewer's rule "IF `null` is passed as any argument of a public method or factory of the library, THEN that call SHALL throw `NullPointerException`", or leave the behaviour unspecified | T002, T003 (`with`, `without`), T005, T006, T007 (`run`, `call`, `wrap`, `find`), T013, T015, T016 (builder, `KeyRules`, queries, `filter`, `merge`); decide before T002 | With the rule, each affected task gains one `null` test and a `requireNonNull`; the task shapes do not change. Without it, the silent and late failures listed in [Spec Gaps](#spec-gaps) stay. Not decided here. |
+| OD-1 | CORE-03 null-check precedence over other argument checks (added after the G13 – G16 decisions) | Decided: approved as written in the spec | T001 only (`CORE-03 a null argument takes precedence over CORE-01 checks`; T024 and the Exit Checklist confirm it) |
+| OD-2 | `Builder.key` runs its rules consumer once, before `key` returns. The spec (POL-01) doesn't say when the consumer runs or what later calls on a retained `KeyRules` do | Decided: plan design for 002; nothing is added to the spec | T013 (design only; no test depends on it) |
 
 ## Project Structure
 
@@ -265,7 +320,7 @@ stays in `integration-tests`, the only project that loads the packaged multi-rel
 |---|---|
 | CORE-01 | T001, T018 |
 | CORE-02 | T002 |
-| CORE-03 | T001, T004, T017, T020, T021 (the rest of the API: G12) |
+| CORE-03 | T001 – T007, T013, T015 – T017, T020, T021 (T001 also owns the precedence test `CORE-03 a null argument takes precedence over CORE-01 checks`, OD-1 decided; T021 also owns `CORE-03 Initiator.equals(null) is false`; scope decided in G13 – G16; the codecs' `null` cases are WIRE-03, T010 – T012) |
 | CORE-04 | T004 |
 | CORE-05 | T002 |
 | CORE-06 | T003, T007 |
@@ -285,7 +340,7 @@ stays in `integration-tests`, the only project that loads the packaged multi-rel
 | POL-06 | T022, T023 |
 | POL-09 | T014 |
 | WIRE-03 | T010, T011, T012 |
-| DL-01 | T017 (huge durations: G11) |
+| DL-01 | T017 |
 | DL-02 | T018, T022 |
 | DL-10, DL-11 | T019 |
 | ID-01 | T020 |

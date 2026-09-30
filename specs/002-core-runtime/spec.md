@@ -80,13 +80,19 @@ never reveals its credential.
 
 ### Edge Cases
 
-- Invalid or reserved key names, and primitive key types: CORE-01. Null values and defaults, and null arguments to the key and value factories:
-  CORE-03. Wrong value types: CORE-04.
+- Invalid or reserved key names, and primitive key types: CORE-01. Null values and defaults, and a `null` argument or varargs element (such as
+  `propagateTo(ATTACHED, null)`) to a method or factory the contract declares, including operations passed to `run`, `call` or `wrap`: CORE-03 (that
+  call throws, not a later one). A `null` argument together with another invalid argument, such as a reserved name: CORE-03 (`NullPointerException`,
+  not CORE-01's `IllegalArgumentException`). `equals(null)`: CORE-03 (returns `false`). Methods inherited from JDK types, application-written
+  implementations of the library's interfaces, and the `internal` package: not covered by CORE-03. Wrong value types: CORE-04.
 - One binding that changes the same key twice: CORE-07 (the last change wins).
 - Conflicting keys, wire names or rule sets across merged policies: POL-05. The same key registered twice with equal rules: POL-05 (accepted).
   Reserved wire names: POL-09. Built-in keys re-registered: POL-06. Merging policies that both contain the built-in rules: POL-06 (accepted).
 - An unrecognised `boundrail.context.backend` value, including a different case such as `THREAD-LOCAL`: RT-04.
 - A zero or negative deadline budget: DL-01 (already expired). Two deadlines that expire at the same instant: DL-01 (`earliest` may return either).
+- A budget at or above the maximum budget, including one whose `toNanos()` overflows such as `ChronoUnit.FOREVER.getDuration()`: DL-01 (no
+  exception; `after` caps it at about 146 years, and `within` keeps the instant of `this`). A negative budget whose `toNanos()` overflows: DL-01
+  (no exception; already expired).
 
 ## Requirements *(mandatory)*
 
@@ -99,10 +105,13 @@ created with an invalid or reserved name, or with a primitive type such as `long
 **CORE-02** `[M1]` Key equality SHALL be by instance. Two keys with the same name are different keys; conflicts between them are rejected by the
 policy (POL-05).
 
-**CORE-03** `[M1]` Context values SHALL be non-null. IF `null` is passed as a value or default, THEN the library SHALL throw `NullPointerException`.
-Values SHOULD be immutable; the library does not copy them. IF `null` is passed as the name or type to `ContextKey.of`, as the value to
-`Initiator.of`, as either argument to `Authority.of`, or as the argument to `Deadline.after`, `Deadline.earliest` or `Deadline.within`, THEN that
-call SHALL throw `NullPointerException`.
+**CORE-03** `[M1]` Context values and key defaults SHALL be non-null. IF `null` is passed as an argument, or as an element of a varargs argument, to
+a method or factory declared in this feature's contract (`contracts/core-api.md`), THEN that call SHALL throw `NullPointerException`. The `null`
+check SHALL take precedence over the call's other argument checks, so a call with a `null` argument and another invalid argument (such as
+`ContextKey.of("boundrail.x", String.class, null)`) SHALL throw `NullPointerException`. Exception: `equals(Object)` SHALL return `false` for `null`.
+This binds the library's own classes and its own implementations of its interfaces only; it does not cover methods inherited from JDK types (such as
+`Throwable.initCause` or `Enum.equals`), implementations written by applications (such as of `ContextSnapshot`, `ContextCodec`,
+`ContextPolicy.Builder` or `KeyRules`), or public classes in the `internal` package. Values SHOULD be immutable; the library does not copy them.
 
 **CORE-04** `[M1]` IF a value is not an instance of the key's type, THEN binding it SHALL throw `ClassCastException` at the binding call (not at read
 time).
@@ -211,6 +220,15 @@ deadline is expired when its remaining time is zero, so `Deadline.after(Duration
 to `Deadline.after` or `within` SHALL give a deadline that is already expired. `check()` SHALL throw `DeadlineExceededException` with stage
 `APPLICATION` when the deadline has expired. `earliest(other)` SHALL return whichever of `this` and `other` expires first; when both expire at the
 same instant, it MAY return either. `within(max)` SHALL be equivalent to `earliest(Deadline.after(max))` evaluated when it is called.
+
+The maximum budget is `Duration.ofNanos(Long.MAX_VALUE / 2)`: 4,611,686,018,427,387,903 nanoseconds, about 146 years. `remaining()` SHALL never
+exceed it. `Deadline.after(d)` with a `d` at or above the maximum budget, including a `d` whose `toNanos()` overflows `long` such as
+`ChronoUnit.FOREVER.getDuration()`, SHALL NOT throw and SHALL give a deadline whose remaining time when created is the maximum budget, as if `d`
+were the maximum budget. Because no deadline has more remaining time than the maximum budget, `within(d)` with such a `d` SHALL return a deadline
+that expires at the same instant as `this`. A negative `d` whose `toNanos()` overflows SHALL NOT throw either, and gives an expired deadline. The
+maximum budget is half of `Long.MAX_VALUE` so that the difference between any two deadline instants or `System.nanoTime()` readings fits in a
+`long`; `remaining()`, `isExpired()` and `earliest` SHALL be correct for any `System.nanoTime()` origin, including when adding a budget to
+`System.nanoTime()` overflows `long`.
 
 **DL-02** `[M1]` `BuiltInKeys.DEADLINE` SHALL use the built-in default policy (table above), and `Deadlines.current()` SHALL be equivalent to
 `BuiltInKeys.DEADLINE.find()`.
