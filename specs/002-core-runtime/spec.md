@@ -273,7 +273,8 @@ Properties use the prefix `boundrail.context.`.
 
 - **SC-001**: RC-1 – RC-8 are enabled and green in `integrationTestJdk21`, `integrationTestJdk25` and `integrationTestJdk25ThreadLocal`.
 - **SC-002**: Every requirement in this spec except RT-06 has a unit or conformance test whose display name starts with its ID. RT-06 is verified
-  by SC-001 here and by RC-9 in 004-async-diagnostics.
+  by SC-001 here and by RC-9 in 004-async-diagnostics. For a `@ParameterizedTest`, the display name that counts is the method's `@DisplayName`;
+  invocation names such as `[1] "THREAD-LOCAL"` need not start with the ID.
 - **SC-003**: `boundrail-context-core` still has no runtime dependencies (BLD-03).
 
 ## Assumptions

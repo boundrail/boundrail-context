@@ -89,6 +89,11 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   (RT-04), so including `THREAD-LOCAL` and the empty string, is automatic and logs a `WARNING` through a `System.Logger` named
   `io.github.boundrail.context` (the logger name is an implementation choice). The parser takes the logger as a parameter so a unit test named
   after RT-04 can record the warning without restarting the JVM; the base variant also calls it, so an unrecognised value warns on Java 21 too.
+  Accepted test gap (user decision): no test checks that `SlotFactory.create()`, base or `java25`, passes `boundrail.context.backend` to
+  `BackendOverride` and logs through `io.github.boundrail.context`. T008's `BackendOverrideTest` covers `forcesThreadLocal(value, logger)`,
+  and T009's RC-1 covers the forced path on Java 25 through the packaged JAR (`integrationTestJdk25ThreadLocal`), but a base `create()` that
+  returned `create(false)` directly would drop the Java 21 warning with every test green. Closing it needs a service-loaded recording
+  `System.LoggerFinder`, too heavy for a two-line pass-through.
 - **RT-02 and RT-05 unit tests assert different things.** From class directories both would otherwise just see `THREAD_LOCAL`. The RT-02 test
   targets the selection class: the base `SlotFactory.create(forceThreadLocal)` gives the ThreadLocal slot whether or not the override forces it.
   The RT-05 test targets the public report: `ContextRuntime.backend()` returns the backend of the slot the runtime created (`THREAD_LOCAL` in
@@ -338,7 +343,7 @@ stays in `integration-tests`, the only project that loads the packaged multi-rel
 | CORE-10 | T005, T006 |
 | CORE-12 | T007, T020, T021, T025 (ascending order of key name, added after T007 for the amended CORE-12) |
 | RT-01 | T002 |
-| RT-02, RT-04, RT-05 | T008, T009 |
+| RT-02, RT-04, RT-05 | T008, T009 (RT-04: `SlotFactory.create()` passing the property and logger to `BackendOverride` is an accepted test gap; see Research Notes, the override property) |
 | RT-03 | T003 (T005 adds the `capture()` check to the RT-03 test) |
 | RT-06 | T009 (every enabled scenario on both backends), T024 (SC-001; exempt from SC-002) |
 | POL-01, POL-02 | T013 |
