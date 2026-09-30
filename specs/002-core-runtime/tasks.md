@@ -196,7 +196,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
 
 **Independent Test**: `./gradlew :boundrail-context-core:test --tests '*Codecs*' --tests '*ContextPolicy*'`
 
-- [ ] T010 [P] [US2] String and long codecs. Red: `test/CodecsTest.java` with `WIRE-03 each Codecs method returns the same instance on every
+- [x] T010 [P] [US2] String and long codecs. Red: `test/CodecsTest.java` with `WIRE-03 each Codecs method returns the same instance on every
       call` (for `string` and `longValue`), `WIRE-03 encode and decode throw NullPointerException for null`, `WIRE-03 string round-trips every
       string unchanged` (including the empty string), `WIRE-03 longValue round-trips valid values` (`0`, `-1`, `Long.MIN_VALUE`,
       `Long.MAX_VALUE`; `encode` is `Long.toString`) and `WIRE-03 longValue rejects invalid input with IllegalArgumentException`
