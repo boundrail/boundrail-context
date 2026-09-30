@@ -146,7 +146,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       snapshot afterwards, and `CORE-03 wrap rejects a null operation with NullPointerException at the wrap call` (both overloads; the
       exception comes from `wrap` itself, without running the wrapper, which without the check would fail only later on the thread that runs
       it). Green: both `ContextSnapshot.wrap` methods, each checking its operation first (CORE-03, CORE-10). Verify: Unit `ContextSnapshotTest`
-- [ ] T007 [US1] Snapshot inspection. Red: in `ContextSnapshotTest`, `CORE-06 snapshot exposes bindings read-only` (`find` returns bound values
+- [x] T007 [US1] Snapshot inspection. Red: in `ContextSnapshotTest`, `CORE-06 snapshot exposes bindings read-only` (`find` returns bound values
       only, never defaults; `keys()` rejects modification; `isEmpty`), `CORE-12 toString lists key names with each value's toString` and
       `CORE-03 snapshot find rejects a null key with NullPointerException` (on `EMPTY` and on a non-empty snapshot). Green: `find` (checking
       its key first), `keys`, `isEmpty` and `toString` in `ImmutableContextSnapshot` (CORE-03, CORE-06, CORE-12). Verify: Unit

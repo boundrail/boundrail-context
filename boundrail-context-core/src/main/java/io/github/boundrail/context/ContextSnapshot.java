@@ -1,6 +1,8 @@
 package io.github.boundrail.context;
 
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 /** An immutable set of key bindings; the current snapshot is the one visible to the running code. */
@@ -8,6 +10,22 @@ public interface ContextSnapshot {
 
     /** The snapshot with no bindings. */
     ContextSnapshot EMPTY = new ImmutableContextSnapshot(Map.of());
+
+    /**
+     * Returns the value bound to a key in this snapshot. Key defaults do not count (CORE-06).
+     *
+     * @param key the key
+     * @param <T> the value type
+     * @return the bound value, or empty if the key is not bound in this snapshot
+     * @throws NullPointerException if the key is {@code null}
+     */
+    <T> Optional<T> find(ContextKey<T> key);
+
+    /** {@return the keys bound in this snapshot, as a set that rejects modification (CORE-06)} */
+    Set<ContextKey<?>> keys();
+
+    /** {@return whether this snapshot binds no key} */
+    boolean isEmpty();
 
     /**
      * Runs an operation with exactly this snapshot as current, replacing the caller's snapshot, then restores the caller's snapshot

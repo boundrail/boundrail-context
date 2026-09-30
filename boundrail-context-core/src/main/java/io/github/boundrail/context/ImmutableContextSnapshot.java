@@ -1,8 +1,12 @@
 package io.github.boundrail.context;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 /** The library's snapshot: an immutable map from key to value. Keys compare by instance (CORE-02). */
 final class ImmutableContextSnapshot implements ContextSnapshot {
@@ -20,6 +24,29 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
 
     Map<ContextKey<?>, Object> values() {
         return values;
+    }
+
+    @Override
+    public <T> Optional<T> find(ContextKey<T> key) {
+        Objects.requireNonNull(key, "key");
+        return Optional.ofNullable(key.type().cast(values.get(key)));
+    }
+
+    @Override
+    public Set<ContextKey<?>> keys() {
+        return Collections.unmodifiableSet(values.keySet());
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return values.isEmpty();
+    }
+
+    @Override
+    public String toString() {
+        return values.entrySet().stream()
+                .map(entry -> entry.getKey().name() + "=" + entry.getValue())
+                .collect(Collectors.joining(", ", "ContextSnapshot[", "]"));
     }
 
     @Override

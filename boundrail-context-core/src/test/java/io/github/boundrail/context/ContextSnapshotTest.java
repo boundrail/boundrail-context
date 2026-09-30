@@ -1,6 +1,7 @@
 package io.github.boundrail.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
@@ -23,6 +24,7 @@ class ContextSnapshotTest {
     private static final ContextKey<String> TENANT = ContextKey.of("acme.tenant", String.class);
     private static final ContextKey<String> REGION = ContextKey.of("acme.region", String.class);
     private static final ContextKey<String> USER = ContextKey.of("acme.user", String.class);
+    private static final ContextKey<String> LOCALE = ContextKey.of("acme.locale", String.class, "en");
 
     /** The bound value of each test key in the current snapshot, or "unbound". */
     private static List<String> boundValues() {
@@ -215,5 +217,48 @@ class ContextSnapshotTest {
 
         assertThatNullPointerException().isThrownBy(() -> snapshot.wrap((Runnable) null));
         assertThatNullPointerException().isThrownBy(() -> snapshot.wrap((Callable<String>) null));
+    }
+
+    @Test
+    @DisplayName("CORE-06 snapshot exposes bindings read-only")
+    void snapshotExposesBindingsReadOnly() {
+        ContextSnapshot snapshot = Context.with(TENANT, "t1").call(Context::capture);
+        ContextSnapshot emptied = Context.with(TENANT, "t1").without(TENANT).call(Context::capture);
+
+        assertThat(snapshot.find(TENANT)).contains("t1");
+        assertThat(snapshot.find(REGION)).isEmpty();
+        assertThat(snapshot.find(LOCALE)).isEmpty();
+        assertThat(ContextSnapshot.EMPTY.find(LOCALE)).isEmpty();
+
+        assertThat(snapshot.keys()).containsExactly(TENANT);
+        assertThat(ContextSnapshot.EMPTY.keys()).isEmpty();
+        assertThatExceptionOfType(UnsupportedOperationException.class).isThrownBy(() -> snapshot.keys().add(REGION));
+        assertThatExceptionOfType(UnsupportedOperationException.class).isThrownBy(() -> snapshot.keys().remove(TENANT));
+        assertThatExceptionOfType(UnsupportedOperationException.class).isThrownBy(() -> snapshot.keys().clear());
+        assertThat(snapshot.keys()).containsExactly(TENANT);
+        assertThat(snapshot.find(TENANT)).contains("t1");
+
+        assertThat(snapshot.isEmpty()).isFalse();
+        assertThat(ContextSnapshot.EMPTY.isEmpty()).isTrue();
+        assertThat(emptied.isEmpty()).isTrue();
+    }
+
+    @Test
+    @DisplayName("CORE-12 toString lists key names with each value's toString")
+    void toStringListsKeyNamesWithEachValuesToString() {
+        record Ticket(String id) { }
+        ContextKey<Ticket> ticket = ContextKey.of("acme.ticket", Ticket.class);
+        ContextSnapshot snapshot = Context.with(TENANT, "t1").with(ticket, new Ticket("42")).call(Context::capture);
+
+        assertThat(snapshot.toString()).contains("acme.tenant=t1", "acme.ticket=Ticket[id=42]");
+    }
+
+    @Test
+    @DisplayName("CORE-03 snapshot find rejects a null key with NullPointerException")
+    void snapshotFindRejectsANullKey() {
+        ContextSnapshot snapshot = Context.with(TENANT, "t1").call(Context::capture);
+
+        assertThatNullPointerException().isThrownBy(() -> ContextSnapshot.EMPTY.find(null));
+        assertThatNullPointerException().isThrownBy(() -> snapshot.find(null));
     }
 }
