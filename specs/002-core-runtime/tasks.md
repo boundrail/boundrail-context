@@ -70,7 +70,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
 
 **Independent Test**: The RC command above: RC-1 – RC-7 green in all three integration test tasks.
 
-- [ ] T001 [US1] Keys. Red: `test/ContextKeyTest.java` with `CORE-01 accepts names matching the key name pattern`, `CORE-01 rejects invalid
+- [x] T001 [US1] Keys. Red: `test/ContextKeyTest.java` with `CORE-01 accepts names matching the key name pattern`, `CORE-01 rejects invalid
       names` (parameterised: empty, upper case, leading digit, trailing or double dot), `CORE-01 rejects the reserved boundrail. prefix`,
       `CORE-01 rejects primitive types` (parameterised: `long.class`, `int.class`, `boolean.class`, in both `of` factories), `CORE-03 rejects a
       null name or type with NullPointerException` (both factories), `CORE-03 rejects a null default` and `CORE-03 a null argument takes
