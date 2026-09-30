@@ -175,7 +175,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `create()` (reads `boundrail.context.backend` through `BackendOverride` with a `System.Logger` named `io.github.boundrail.context`) and
       package-private `create(boolean forceThreadLocal)`; `ContextSlot.backend()`; `ContextRuntime.Backend` and `ContextRuntime.backend()`
       (RT-02, RT-04, RT-05). Verify: Unit `BackendOverrideTest`, `SlotFactoryTest`, `ContextRuntimeTest`
-- [ ] T009 [US1] ScopedValue backend on Java 25. Red: enable RC-1 with the JDK check: it reads `boundrail.it.task`, fails (not skips) when it is
+- [x] T009 [US1] ScopedValue backend on Java 25. Red: enable RC-1 with the JDK check: it reads `boundrail.it.task`, fails (not skips) when it is
       missing or names another task, and asserts `Runtime.version().feature()` and `ContextRuntime.backend()` per task (21 and `THREAD_LOCAL`;
       25 and `SCOPED_VALUE`; 25 and `THREAD_LOCAL`); see it fail in `integrationTestJdk25`. Green: `core25/internal/SlotFactory.java` (same
       signatures as the base; ScopedValue unless `BackendOverride` forces ThreadLocal), `core25/internal/ScopedValueSlot.java`

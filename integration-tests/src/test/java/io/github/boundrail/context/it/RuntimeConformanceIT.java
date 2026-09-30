@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextKey;
+import io.github.boundrail.context.ContextRuntime;
 import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.MissingContextException;
 import java.io.IOException;
@@ -44,11 +45,26 @@ class RuntimeConformanceIT {
     }
 
     @Test
-    @Disabled("Pending: M1")
-    @DisplayName("RC-1 active backend matches the JDK and the override")
+    @DisplayName("RC-1 Active backend matches the JDK and the override")
     void rc1ActiveBackendMatchesTheJDKAndTheOverride() {
         // RC-1: The active backend is `SCOPED_VALUE` under `integrationTestJdk25`, and `THREAD_LOCAL` under `integrationTestJdk21` and
-        // `integrationTestJdk25ThreadLocal`. *(RT-02, RT-04, RT-05)*
+        // `integrationTestJdk25ThreadLocal`. The runtime feature version (`Runtime.version().feature()`) is 21 under
+        // `integrationTestJdk21` and 25 under the other two tasks, so the override is proven on JDK 25. The task is read from the system
+        // property `boundrail.it.task` (BLD-06); RC-1 fails, and is not skipped, when that property is missing or names a task other than
+        // these three. *(RT-02, RT-04, RT-05, BLD-06)*
+        String task = System.getProperty("boundrail.it.task");
+        record Expected(int feature, ContextRuntime.Backend backend) {
+        }
+        Expected expected = switch (task) {
+            case "integrationTestJdk21" -> new Expected(21, ContextRuntime.Backend.THREAD_LOCAL);
+            case "integrationTestJdk25" -> new Expected(25, ContextRuntime.Backend.SCOPED_VALUE);
+            case "integrationTestJdk25ThreadLocal" -> new Expected(25, ContextRuntime.Backend.THREAD_LOCAL);
+            case null -> throw new AssertionError("system property boundrail.it.task is missing");
+            default -> throw new AssertionError("system property boundrail.it.task names an unknown task: " + task);
+        };
+
+        assertThat(new Expected(Runtime.version().feature(), ContextRuntime.backend())).as("JDK and backend under %s", task)
+                .isEqualTo(expected);
     }
 
     @Test
