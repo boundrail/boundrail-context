@@ -206,7 +206,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       hexadecimal digits in either case`, `WIRE-03 uuid rejects invalid input with IllegalArgumentException` (parameterised: `1-2-3-4-5`, a
       value in braces, a `urn:uuid:` prefix, 32 digits without hyphens, a non-hexadecimal digit), and the singleton and `null` cases for
       `uuid`. Green: `Codecs.uuid()` (WIRE-03). Verify: Unit `CodecsTest`
-- [ ] T012 [US2] Locale codec. Red: in `CodecsTest`, `WIRE-03 locale round-trips locales whose language tag maps back to them` (`Locale.ROOT`,
+- [x] T012 [US2] Locale codec. Red: in `CodecsTest`, `WIRE-03 locale round-trips locales whose language tag maps back to them` (`Locale.ROOT`,
       `ja_JP_JP`, `en_GB`, `zh-Hant-TW`; `encode` equals `toLanguageTag()`, for `ja_JP_JP` on JDK 25 `ja-JP-u-ca-japanese-x-lvariant-JP`, and
       `decode` gives back the locale), `WIRE-03 locale encodes other locales without error` (`no_NO_NY`, `Locale.of("xyz123")`), `WIRE-03
       locale decodes RFC 5646 language tags ignoring case` (parameterised: `en`, `EN-gb`, `zh-Hant-TW`, `es-419`, `und`, `x-foo`, `i-klingon`,
