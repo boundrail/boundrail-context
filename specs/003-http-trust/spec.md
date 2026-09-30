@@ -219,3 +219,5 @@ Properties use the prefix `boundrail.context.`.
 
 - 002-core-runtime is complete.
 - Only servlet-based Spring MVC, `RestClient` and `RestTemplate` are covered; WebFlux and WebClient are out of scope for v0.1.
+- What an adapter may log or report when an inbound value fails to decode (WIRE-05, IN-06) is open: codec messages echo the raw input
+  (DESIGN Q6).

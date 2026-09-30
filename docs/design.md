@@ -538,6 +538,7 @@ Reactions like these identify the real product:
 | Q3 | Should the Kafka consumer optionally start a fresh per-message processing deadline? | Useful, but not needed for v0.1. | After v0.1 |
 | Q4 | How should Kafka listeners be scoped: container advice chain, or AOP around listener methods? | Must be around-style. Decide in a spike. | M6 spike |
 | Q5 | Which tooling should publish to Maven Central? | Choose at release time. | M7 |
+| Q6 | What may an inbound adapter log or report when a value fails to decode (WIRE-03, WIRE-05, IN-06)? Codec `decode` messages echo the raw input (`Invalid long: "…"`, the JDK's `For input string: "…"`), which is untrusted (principle III), unbounded, may contain CR/LF, and may belong to a key that is not loggable. | Adapters never copy a decode exception's message into a log entry or violation report; they report the key name, wire name and boundary instead. The alternative is that `decode` messages must not echo the value, which also means wrapping the JDK's exception. | M2 ([003-http-trust](../specs/003-http-trust/spec.md)) |
 
 ---
 
