@@ -220,7 +220,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       whose four unbounded repetitions are possessive: `*+` on the variant and extension loops in `langtag`, `++` on the subtag loops inside
       `extension` and `privateuse` (plan note, [plan.md](plan.md#research-notes)) (WIRE-03). The reviewer checks the expression against the
       RFC's ABNF, including the 26 grandfathered tags. Verify: Unit `CodecsTest`
-- [ ] T013 [US2] Policy builder and queries. Red: `test/ContextPolicyTest.java` with
+- [x] T013 [US2] Policy builder and queries. Red: `test/ContextPolicyTest.java` with
       `POL-01 a built policy reports each key's codec, wire name, required, loggable and boundaries` (`codec(key)` returns the registered instance
       and `wireName(key)` the registered name), `POL-01 codec and wireName are empty when none is registered` (a registered key without them, and an
       unregistered key), `POL-01 a built policy does not change when its builder is used again`,
