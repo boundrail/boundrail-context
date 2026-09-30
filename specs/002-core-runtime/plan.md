@@ -151,6 +151,12 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}` before `UUID.fromString`, which alone would accept
   `1-2-3-4-5`. `locale()` checks one case-insensitive, precompiled regular expression transcribed from the ABNF of RFC 5646 §2.1
   (`langtag / privateuse / grandfathered`, with the 26 grandfathered tags listed) before `Locale.forLanguageTag`, which never throws on its own.
+  Its four unbounded repetitions are possessive (`*+` for the variant and extension loops in `langtag`, `++` for the subtag loops inside
+  `extension` and `privateuse`), because `java.util.regex` matches a greedy `*` or `+` over a group by recursion, one frame per repetition:
+  header input of about 4.5 KB then throws `StackOverflowError`, well-formed or not, where WIRE-03 requires acceptance or
+  `IllegalArgumentException`. Possessive loops never give back a repetition, which the grammar never needs at those points: no subtag class
+  contains `-`, variant subtags have 4 – 8 characters while a singleton has one, the extension singleton is never `x`, and extension subtags
+  have at least 2 characters. Atomic groups do not remove the recursion.
   The locale task is kept separate because that expression is the largest single piece of review in US2.
 - **`ja_JP_JP` round-trips on JDK 25.** On JDK 25, `toLanguageTag()` of `ja_JP_JP` is `ja-JP-u-ca-japanese-x-lvariant-JP` (not
   `ja-JP-u-ca-japanese`, as an earlier draft said), and `Locale.forLanguageTag` of that tag gives back a locale equal to `ja_JP_JP`, so WIRE-03

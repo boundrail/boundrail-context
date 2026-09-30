@@ -210,10 +210,16 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `ja_JP_JP`, `en_GB`, `zh-Hant-TW`; `encode` equals `toLanguageTag()`, for `ja_JP_JP` on JDK 25 `ja-JP-u-ca-japanese-x-lvariant-JP`, and
       `decode` gives back the locale), `WIRE-03 locale encodes other locales without error` (`no_NO_NY`, `Locale.of("xyz123")`), `WIRE-03
       locale decodes RFC 5646 language tags ignoring case` (parameterised: `en`, `EN-gb`, `zh-Hant-TW`, `es-419`, `und`, `x-foo`, `i-klingon`,
-      each equal to `Locale.forLanguageTag(text)`), `WIRE-03 locale rejects invalid input with IllegalArgumentException` (parameterised: the
-      empty string, `en_GB`, `en-`, `e`, `en--GB`, ` en`), and the singleton and `null` cases for `locale`. Green: `Codecs.locale()` with a
-      precompiled case-insensitive expression for the `Language-Tag` production of RFC 5646 §2.1 (WIRE-03). The reviewer checks the expression
-      against the RFC's ABNF, including the 26 grandfathered tags. Verify: Unit `CodecsTest`
+      `I-KLINGON`, each equal to `Locale.forLanguageTag(text)`; `I-KLINGON` is red without the case-insensitive flag, since the grandfathered
+      literals are written in one case), `WIRE-03 locale rejects invalid input with IllegalArgumentException` (parameterised: the
+      empty string, `en_GB`, `en-`, `e`, `en--GB`, ` en`), `WIRE-03 locale decodes and rejects long tags without stack overflow` (parameterised
+      over three well-formed tags of at least 6 KB each: `"x" + "-ab".repeat(3000)`, `"en-a" + "-bc".repeat(3000)` and
+      `"en" + "-abcde".repeat(1500)`; each decodes to `Locale.forLanguageTag(text)`, and each with `-!` appended throws
+      `IllegalArgumentException`; red against greedy repetitions, which throw `StackOverflowError`), and the singleton and `null` cases for
+      `locale`. Green: `Codecs.locale()` with a precompiled case-insensitive expression for the `Language-Tag` production of RFC 5646 §2.1,
+      whose four unbounded repetitions are possessive: `*+` on the variant and extension loops in `langtag`, `++` on the subtag loops inside
+      `extension` and `privateuse` (plan note, [plan.md](plan.md#research-notes)) (WIRE-03). The reviewer checks the expression against the
+      RFC's ABNF, including the 26 grandfathered tags. Verify: Unit `CodecsTest`
 - [ ] T013 [US2] Policy builder and queries. Red: `test/ContextPolicyTest.java` with
       `POL-01 a built policy reports each key's codec, wire name, required, loggable and boundaries` (`codec(key)` returns the registered instance
       and `wireName(key)` the registered name), `POL-01 codec and wireName are empty when none is registered` (a registered key without them, and an
