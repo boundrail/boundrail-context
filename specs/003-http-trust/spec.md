@@ -69,6 +69,8 @@ values are ignored and reported, and never fail the request.
 
 - A header set by application code on an internal call differs from the context value: OUT-04 (application wins).
 - A destination matches both an internal and an external host pattern: DEST-02 (internal patterns are checked first).
+- A hostname with an underscore, such as `http://orders_svc:8080/` in Docker Compose: DEST-02 (no host pattern matches, so it is `UNKNOWN`;
+  the client needs a declared destination, OUT-03, to send context).
 - The violation mode is `report`: DIAG-02 (the call continues without the key).
 - A required key is unbound, but application code set its wire header on an internal call: POL-08 (still `MISSING_REQUIRED`; the check reads the
   context, not the headers, and runs before OUT-04).
@@ -132,6 +134,8 @@ SPI.
 
 Host patterns SHALL be exact hostnames or a leading `*.` wildcard matching one or more labels, compared case-insensitively. A host-pattern match SHALL
 yield no service name.
+A URI whose `getHost()` is `null`, because it has no host or its host is not a valid RFC 2396 name such as `orders_svc`, SHALL match no host
+pattern. `HostPatternClassifier.of` SHALL copy both lists, so later changes to them have no effect on the classifier.
 
 **DEST-03** `[M2]` Every adapter SHALL treat `UNKNOWN` exactly like `EXTERNAL`.
 

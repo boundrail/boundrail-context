@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and five unit
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and seven unit
 tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ tests already pass before their task; each red is shown against a temporary code
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; eight guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; ten guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -290,6 +290,8 @@ the initiator" asserts the initiator is bound and the deadline is not.
 
 | Task | Scenario or test | Why green first | Red shown against (temporary, reverted) |
 |---|---|---|---|
+| T001, rewritten in T003 | `DEST-02 a URI whose host does not parse is UNKNOWN` | `URI.getHost()` is already `null` for `orders_svc`, and T001's `classify` treats a `null` host as matching no pattern. T003 makes the pattern `orders_svc` invalid (DEST-04), so it rewrites the test to the pattern `*.svc.test` and the URI `http://orders_x.svc.test:8080/`, whose `getHost()` is also `null`, and shows it red again | In `HostPatternClassifier.classify`, the URI's raw authority host used when `getHost()` is `null` (both in T001 and in T003) |
+| T001 | `DEST-02 of copies its lists` | T001's `of` copies both lists in the same green step that makes the CORE-13 test pass | In `HostPatternClassifier.of`, the caller's lists kept instead of copied, still rejecting `null` elements so the CORE-13 test stays green |
 | T013 | IT-2.2 External call carries no context | After T010, the interceptor writes nothing to `EXTERNAL` | In `ContextClientInterceptor`, the classified destination replaced by `Destination(INTERNAL, empty)` |
 | T013 | IT-2.3 Unknown means external | After T010, the interceptor writes nothing to `UNKNOWN` | The same change |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |

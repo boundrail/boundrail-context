@@ -13,7 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Eight guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test in T012, and two unit tests each in T024 and T028.
+- Ten guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test in T012, and two unit tests each in T001, T024 and
+  T028.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -63,7 +64,7 @@ this feature needs is added in the green step of the first task whose test needs
 
 ## Phase 2: Foundational — core types (blocks every story)
 
-- [ ] T001 [P] Destinations and classification order.
+- [x] T001 [P] Destinations and classification order.
   - Red, in `coretest/HostPatternClassifierTest.java`, all with exact host names:
     - `DEST-02 a declared destination wins over host patterns`: a declared `INTERNAL("orders")` for a host in the external list, and a declared
       `EXTERNAL` for a host in the internal list, come back unchanged, service name included;
@@ -71,8 +72,14 @@ this feature needs is added in the green step of the first task whose test needs
     - `DEST-02 an external pattern match is EXTERNAL`;
     - `DEST-02 a host matching no pattern is UNKNOWN`, also for a URI without a host;
     - `DEST-02 a host-pattern match yields no service name`;
+    - `DEST-02 a URI whose host does not parse is UNKNOWN`: `http://orders_svc:8080/` is `UNKNOWN`. This is a guard: show it red with
+      `classify` temporarily falling back to the URI's raw authority host when `getHost()` is `null`, then revert
+      ([plan.md](plan.md#guard-tests));
+    - `DEST-02 of copies its lists`: changing either list after `of` returns doesn't change a classification. This is a guard: show it red
+      with `of` temporarily keeping the caller's lists instead of copying them, still rejecting `null` elements, then revert
+      ([plan.md](plan.md#guard-tests));
     - `DEST-01 destination types depend on no HTTP library`: by reflection, the four classes' fields, constructors and method signatures name
-      only `java.*` and core types;
+      only `java.*` and core types, and none from `java.net.http` or `com.sun.net.httpserver`;
     - `CORE-13 destination types reject null`: `Destination` with a `null` kind or service, `OutboundRequest` with a `null` URI or declaration,
       `HostPatternClassifier.of` with a `null` list or list element, and `classify(null)` each throw `NullPointerException`.
   - Green: `core/Destination.java` (record with `Kind`), `core/OutboundRequest.java`, `core/DestinationClassifier.java`, and
@@ -95,6 +102,10 @@ this feature needs is added in the green step of the first task whose test needs
     - `DEST-04 valid host patterns are accepted`: `orders`, `orders.svc.test`, `*.svc.test`, `ORDERS.svc.test`, `a-b.c`, `123.example`, a
       63-character label, a 253-character name, and `*.` followed by a 253-character name;
     - `CORE-13 a null pattern list is rejected before pattern validation`: `of(List.of("*"), null)` throws `NullPointerException`.
+  - Rewrite T001's guard `DEST-02 a URI whose host does not parse is UNKNOWN`, whose pattern `orders_svc` is invalid under DEST-04: it now
+    builds the classifier with the pattern `*.svc.test` in both lists and expects `http://orders_x.svc.test:8080/` to be `UNKNOWN` with no
+    service name. `getHost()` is `null` for that URI, and a raw-authority fallback would match it. Show it red again with `classify`
+    temporarily falling back to the URI's raw authority host when `getHost()` is `null`, then revert ([plan.md](plan.md#guard-tests)).
   - Green: per-pattern validation in `of` ([plan.md](plan.md#core)).
   - Completes: DEST-04; CORE-13 (precedence).
   - Verify: Unit `HostPatternClassifierTest`.
@@ -624,7 +635,7 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T012 unit guard and the two unit guards each in T024 and T028) shown red against their temporary
-  change, and the change reverted
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T012 unit guard and the two unit guards each in T001, T024 and T028) shown red against their
+  temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

@@ -31,6 +31,7 @@ public interface DestinationClassifier {
 }
 
 public final class HostPatternClassifier implements DestinationClassifier {
+    /** Copies both lists (DEST-02). */
     public static HostPatternClassifier of(List<String> internalHosts, List<String> externalHosts);  // IllegalArgumentException: DEST-04
 }
 ```
