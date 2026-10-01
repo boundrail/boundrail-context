@@ -31,6 +31,7 @@ public final class Context {
      * @param key the key
      * @return a new binding
      * @throws NullPointerException if the key is {@code null}
+     * @throws IllegalArgumentException if the key is {@link BuiltInKeys#DEADLINE}, which can be shortened but never removed (DL-11)
      */
     public static ContextBinding without(ContextKey<?> key) {
         return ContextBinding.removing(key);

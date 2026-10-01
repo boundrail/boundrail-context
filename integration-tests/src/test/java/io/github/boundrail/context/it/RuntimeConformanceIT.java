@@ -5,13 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextRuntime;
 import io.github.boundrail.context.ContextSnapshot;
+import io.github.boundrail.context.Deadline;
 import io.github.boundrail.context.MissingContextException;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -249,11 +252,29 @@ class RuntimeConformanceIT {
     }
 
     @Test
-    @Disabled("Pending: M1")
-    @DisplayName("RC-8 deadlines can be shortened but never extended or removed")
+    @DisplayName("RC-8 Deadlines can be shortened but never extended or removed")
     void rc8DeadlinesCanBeShortenedButNeverExtendedOrRemoved() {
         // RC-8: Within a scope whose deadline has 100ms remaining, binding a deadline of 10s leaves at most 100ms remaining, binding one
         // of 10ms shortens it to at most 10ms, and `Context.without(DEADLINE)` throws `IllegalArgumentException`. *(DL-10, DL-11)*
+        List<Duration> remaining = new ArrayList<>();
+        List<Throwable> rejected = new ArrayList<>();
+
+        Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofMillis(100))).run(() -> {
+            Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofSeconds(10)))
+                    .run(() -> remaining.add(BuiltInKeys.DEADLINE.get().remaining()));
+            Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofMillis(10)))
+                    .run(() -> remaining.add(BuiltInKeys.DEADLINE.get().remaining()));
+            try {
+                Context.without(BuiltInKeys.DEADLINE);
+            } catch (IllegalArgumentException expected) {
+                rejected.add(expected);
+            }
+        });
+
+        assertThat(remaining).hasSize(2);
+        assertThat(remaining.get(0)).isLessThanOrEqualTo(Duration.ofMillis(100));
+        assertThat(remaining.get(1)).isLessThanOrEqualTo(Duration.ofMillis(10));
+        assertThat(rejected).hasSize(1);
     }
 
     @Test

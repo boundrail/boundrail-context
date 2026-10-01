@@ -51,9 +51,13 @@ public final class ContextBinding {
      * @param key the key
      * @return a new binding
      * @throws NullPointerException if the key is {@code null}
+     * @throws IllegalArgumentException if the key is {@link BuiltInKeys#DEADLINE}, which can be shortened but never removed (DL-11)
      */
     public ContextBinding without(ContextKey<?> key) {
         Objects.requireNonNull(key, "key");
+        if (key == BuiltInKeys.DEADLINE) {
+            throw new IllegalArgumentException("boundrail.deadline cannot be removed (DL-11)");
+        }
         return adding(new Change(key, REMOVED));
     }
 
@@ -92,12 +96,18 @@ public final class ContextBinding {
         return ContextRuntime.SLOT.call(applied(), op);
     }
 
-    /** {@return the current snapshot with this binding's changes applied in call order, so the last change for a key wins} */
+    /**
+     * {@return the current snapshot with this binding's changes applied in call order, so the last change for a key wins; a bound
+     * deadline is combined with the current one, so it can only shrink (DL-10)}
+     */
     private ImmutableContextSnapshot applied() {
-        Map<ContextKey<?>, Object> values = new HashMap<>(ImmutableContextSnapshot.current().values());
+        Map<ContextKey<?>, Object> current = ImmutableContextSnapshot.current().values();
+        Map<ContextKey<?>, Object> values = new HashMap<>(current);
         for (Change change : changes) {
             if (change.value() == REMOVED) {
                 values.remove(change.key());
+            } else if (change.key() == BuiltInKeys.DEADLINE && current.get(BuiltInKeys.DEADLINE) instanceof Deadline deadline) {
+                values.put(change.key(), deadline.earliest((Deadline) change.value()));
             } else {
                 values.put(change.key(), change.value());
             }

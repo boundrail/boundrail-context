@@ -291,7 +291,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       DEADLINE.find` (bound and unbound). Green: `core/BuiltInKeys.java` (the three constants, through a package-private `ContextKey` factory
       that skips only the reserved-prefix check), `core/Deadlines.java`, and bare `core/Authority.java` and `core/Initiator.java` class
       declarations for the key types (their factories and behaviour come in T020 and T021) (CORE-01, DL-02). Verify: Unit `BuiltInKeysTest`
-- [ ] T019 [US3] Deadlines only shrink. Red: `test/DeadlineScopeTest.java` with `DL-10 binding a later deadline keeps the current one`,
+- [x] T019 [US3] Deadlines only shrink. Red: `test/DeadlineScopeTest.java` with `DL-10 binding a later deadline keeps the current one`,
       `DL-10 binding an earlier deadline shortens it`, `DL-10 binding a deadline with none current binds it`,
       `DL-10 only the last change to DEADLINE in a binding applies` (with `current = after(3h)` current, `with(DEADLINE, after(1h))
       .with(DEADLINE, after(2h))` binds the 2h deadline, which is `current.earliest(b)`, so the 1h `a` has no effect; with none current,
