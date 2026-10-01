@@ -244,6 +244,12 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   such as a record-style one, which would compare and hash credentials. T020's red comes from a compile failure, then a signature stub on which
   the other four tests fail: the exact `toString`, the snapshot's `toString`, the CORE-03 null checks and the accessors. The user accepted this
   (review point I-1 of T020); it is not a TDD exception.
+- **Which T021 tests are red.** `CORE-03 Initiator.equals(null) is false` is green before T021's change: T018's bare `Initiator` class
+  already inherits `Object.equals`, which returns `false` for `null`. It is a guard test: it fails a cast-based or unguarded `equals` that
+  throws `NullPointerException` or `ClassCastException`. T021's red comes from a compile failure, then a signature stub on which the other
+  eight tests fail: the 1- and 256-character accept, the UTF-16 count, the empty and over-256 rejects, value `equals`/`hashCode`, `toString`,
+  the `of(null)` `NullPointerException` and the CORE-12 snapshot rendering. The user accepted this (review point I-1 of T021); it is not a TDD
+  exception.
 - **Initiator.** Value equality, `hashCode` of the value, and `toString()` returning the value (ID-07). Length is `String.length()`, so 128
   supplementary characters (256 chars) are accepted and 129 (258 chars) are rejected, which a code-point count would accept. A snapshot holding
   an initiator therefore prints it (CORE-12), while an authority still prints redacted (ID-01).
