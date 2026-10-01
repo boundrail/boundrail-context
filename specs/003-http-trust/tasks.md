@@ -233,7 +233,7 @@ enforces required keys, the length limit and valid field values.
 
 **Independent Test**: IT-2.2, IT-2.3, IT-2.4 and IT-2.9 in the IT command. IT-2.1 also needs US2's inbound path and is enabled in T028.
 
-- [ ] T008 [US1] Interceptor on every auto-configured client builder.
+- [x] T008 [US1] Interceptor on every auto-configured client builder.
   - Red, in `springtest/ClientRegistrationTest.java`:
     - `OUT-01 the interceptor is added to the auto-configured RestClient.Builder`: the context's builder, read through
       `requestInterceptors(list -> …)`, contains the library's interceptor;

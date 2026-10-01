@@ -9,10 +9,13 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.restclient.RestClientCustomizer;
+import org.springframework.boot.restclient.RestTemplateCustomizer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
 @AutoConfiguration
@@ -54,6 +57,22 @@ public class BoundrailContextAutoConfiguration {
                             "boundary", violation.boundary().name().toLowerCase(Locale.ROOT)).increment();
                 }
             };
+        }
+    }
+
+    /** Adds the library's interceptor to every auto-configured {@code RestClient.Builder} and {@code RestTemplateBuilder} (OUT-01). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass({ClientHttpRequestInterceptor.class, RestClientCustomizer.class, RestTemplateCustomizer.class})
+    static class ClientConfiguration {
+
+        @Bean
+        RestClientCustomizer boundrailRestClientCustomizer() {
+            return builder -> builder.requestInterceptor(new ContextClientInterceptor());
+        }
+
+        @Bean
+        RestTemplateCustomizer boundrailRestTemplateCustomizer() {
+            return restTemplate -> restTemplate.getInterceptors().add(new ContextClientInterceptor());
         }
     }
 }
