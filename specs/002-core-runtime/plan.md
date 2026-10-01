@@ -239,6 +239,11 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   implementation that folds every change into the deadline instead of taking the last one. T019's red comes from
   `DL-10 binding a later deadline keeps the current one`, the two DL-11 tests and RC-8. The user accepted this (review point I-1); it is not a
   TDD exception.
+- **Which T020 tests are red.** `ID-01 equals and hashCode are identity-based` is green before T020's change: T018's bare `Authority` class
+  already inherits `Object.equals` and `hashCode`, so it has identity equality. It is a guard test: it fails a value-based `equals`/`hashCode`,
+  such as a record-style one, which would compare and hash credentials. T020's red comes from a compile failure, then a signature stub on which
+  the other four tests fail: the exact `toString`, the snapshot's `toString`, the CORE-03 null checks and the accessors. The user accepted this
+  (review point I-1 of T020); it is not a TDD exception.
 - **Initiator.** Value equality, `hashCode` of the value, and `toString()` returning the value (ID-07). Length is `String.length()`, so 128
   supplementary characters (256 chars) are accepted and 129 (258 chars) are rejected, which a code-point count would accept. A snapshot holding
   an initiator therefore prints it (CORE-12), while an authority still prints redacted (ID-01).

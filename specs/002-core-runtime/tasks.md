@@ -307,7 +307,8 @@ None. 001-foundation built the core project, its test dependencies, the three in
       toString never contains the credential` (CORE-12 path), `ID-01 equals and hashCode are identity-based` (two authorities with the same
       subject and credential are not equal), `CORE-03 Authority.of rejects a null subject or credential with NullPointerException`, and
       `subject()`/`credential()` return what was given. Green: `Authority.of`, accessors, the redacted `toString` of the contract, no
-      `equals`/`hashCode` override (the inherited `Object.equals` is not covered by CORE-03, G13) (ID-01, CORE-03). Verify: Unit
+      `equals`/`hashCode` override (the inherited `Object.equals` is not covered by CORE-03, G13) (ID-01, CORE-03). The identity-equality
+      test is green before the change, because T018's bare class already has it ([plan.md](plan.md#research-notes)). Verify: Unit
       `AuthorityTest`
 - [ ] T021 [P] [US3] Initiator. Red: `test/InitiatorTest.java` with `ID-07 accepts values of 1 and 256 characters`,
       `ID-07 counts length in UTF-16 chars` (128 supplementary characters, 256 chars, are accepted; 129, 258 chars, are rejected),
