@@ -250,6 +250,13 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   eight tests fail: the 1- and 256-character accept, the UTF-16 count, the empty and over-256 rejects, value `equals`/`hashCode`, `toString`,
   the `of(null)` `NullPointerException` and the CORE-12 snapshot rendering. The user accepted this (review point I-1 of T021); it is not a TDD
   exception.
+- **Which T022 tests are red.** `POL-06 defaultPolicy holds only the built-in rules` is green on T022's signature stub
+  `return ContextPolicy.builder().build();`: that stub returns an empty policy, which also leaves the application key unregistered, with the
+  POL-02 defaults. It is a guard test: it fails a `defaultPolicy()` that registers rules for keys other than the three built-in ones or changes
+  the defaults for unregistered keys, such as through a shared or global registry, a merge with application rules, or a catch-all rule.
+  T022's red comes from a compile failure, then that stub, on which the other four tests fail on missing built-in rules: the three row tests
+  (`DEADLINE`, `AUTHORITY`, `INITIATOR`) on their boundaries, and the POL-03 test on `propagates(DEADLINE, INTERNAL_CALL)`. The user accepted
+  this (review point I-1 of T022); it is not a TDD exception.
 - **Initiator.** Value equality, `hashCode` of the value, and `toString()` returning the value (ID-07). Length is `String.length()`, so 128
   supplementary characters (256 chars) are accepted and 129 (258 chars) are rejected, which a code-point count would accept. A snapshot holding
   an initiator therefore prints it (CORE-12), while an authority still prints redacted (ID-01).
