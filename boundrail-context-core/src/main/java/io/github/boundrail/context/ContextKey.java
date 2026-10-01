@@ -37,7 +37,15 @@ public final class ContextKey<T> {
     public static <T> ContextKey<T> of(String name, Class<T> type) {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(type, "type");
-        validate(name, type);
+        validate(name, type, false);
+        return new ContextKey<>(name, type, null);
+    }
+
+    /** Creates a built-in key, with the checks of {@link #of(String, Class)} except the reserved prefix (CORE-01). */
+    static <T> ContextKey<T> builtIn(String name, Class<T> type) {
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(type, "type");
+        validate(name, type, true);
         return new ContextKey<>(name, type, null);
     }
 
@@ -56,15 +64,15 @@ public final class ContextKey<T> {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(defaultValue, "defaultValue");
-        validate(name, type);
+        validate(name, type, false);
         return new ContextKey<>(name, type, defaultValue);
     }
 
-    private static void validate(String name, Class<?> type) {
+    private static void validate(String name, Class<?> type, boolean builtIn) {
         if (!NAME.matcher(name).matches()) {
             throw new IllegalArgumentException("Invalid context key name: \"" + name + "\"");
         }
-        if (name.startsWith(RESERVED_PREFIX)) {
+        if (!builtIn && name.startsWith(RESERVED_PREFIX)) {
             throw new IllegalArgumentException("Context key name uses the reserved prefix " + RESERVED_PREFIX + ": " + name);
         }
         if (type.isPrimitive()) {

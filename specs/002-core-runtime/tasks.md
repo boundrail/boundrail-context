@@ -286,7 +286,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       Review note: without clock injection no test can choose the `System.nanoTime()` origin, so the reviewer checks that the arithmetic is
       overflow-safe for any origin (DL-01's second paragraph): instants compared only through their difference, `now + nanos` allowed to wrap, and
       no `toNanos()` before the clamp. Verify: Unit `DeadlineTest`
-- [ ] T018 [US3] Built-in keys. Red: `test/BuiltInKeysTest.java` with `CORE-01 built-in keys use their reserved names` (`boundrail.deadline`,
+- [x] T018 [US3] Built-in keys. Red: `test/BuiltInKeysTest.java` with `CORE-01 built-in keys use their reserved names` (`boundrail.deadline`,
       `boundrail.authority`, `boundrail.initiator`, with types `Deadline`, `Authority`, `Initiator`) and `DL-02 Deadlines.current is equivalent to
       DEADLINE.find` (bound and unbound). Green: `core/BuiltInKeys.java` (the three constants, through a package-private `ContextKey` factory
       that skips only the reserved-prefix check), `core/Deadlines.java`, and bare `core/Authority.java` and `core/Initiator.java` class
