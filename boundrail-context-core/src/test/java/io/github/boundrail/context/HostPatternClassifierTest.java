@@ -91,6 +91,45 @@ class HostPatternClassifierTest {
     }
 
     @Test
+    @DisplayName("DEST-02 host patterns compare case-insensitively")
+    void hostPatternsCompareCaseInsensitively() {
+        HostPatternClassifier classifier = HostPatternClassifier.of(
+                List.of("orders.svc.test", "*.MESH.Test"),
+                List.of("PARTNER.Example.COM"));
+
+        assertThat(classifier.classify(undeclared("http://Orders.SVC.test/x")))
+                .isEqualTo(new Destination(Destination.Kind.INTERNAL, Optional.empty()));
+        assertThat(classifier.classify(undeclared("http://partner.example.com/x")))
+                .isEqualTo(new Destination(Destination.Kind.EXTERNAL, Optional.empty()));
+        assertThat(classifier.classify(undeclared("http://billing.mesh.test/x")))
+                .isEqualTo(new Destination(Destination.Kind.INTERNAL, Optional.empty()));
+    }
+
+    @Test
+    @DisplayName("DEST-02 a leading *. wildcard matches one or more labels")
+    void aLeadingWildcardMatchesOneOrMoreLabels() {
+        HostPatternClassifier classifier = HostPatternClassifier.of(List.of("*.svc.test"), List.of("*.partner.test"));
+
+        assertThat(classifier.classify(undeclared("http://a.svc.test/x")))
+                .isEqualTo(new Destination(Destination.Kind.INTERNAL, Optional.empty()));
+        assertThat(classifier.classify(undeclared("http://a.b.svc.test/x")))
+                .isEqualTo(new Destination(Destination.Kind.INTERNAL, Optional.empty()));
+        assertThat(classifier.classify(undeclared("http://api.partner.test/x")))
+                .isEqualTo(new Destination(Destination.Kind.EXTERNAL, Optional.empty()));
+    }
+
+    @Test
+    @DisplayName("DEST-02 a wildcard does not match the bare suffix")
+    void aWildcardDoesNotMatchTheBareSuffix() {
+        HostPatternClassifier classifier = HostPatternClassifier.of(List.of("*.svc.test"), List.of());
+
+        assertThat(classifier.classify(undeclared("http://svc.test/x")))
+                .isEqualTo(new Destination(Destination.Kind.UNKNOWN, Optional.empty()));
+        assertThat(classifier.classify(undeclared("http://xsvc.test/x")))
+                .isEqualTo(new Destination(Destination.Kind.UNKNOWN, Optional.empty()));
+    }
+
+    @Test
     @DisplayName("DEST-02 of copies its lists")
     void ofCopiesItsLists() {
         List<String> internal = new ArrayList<>(List.of("orders.svc.test"));

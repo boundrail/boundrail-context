@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Ten guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test in T012, and two unit tests each in T001, T024 and
-  T028.
+- Eleven guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T012, and two unit tests each in
+  T001, T024 and T028.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -86,11 +86,13 @@ this feature needs is added in the green step of the first task whose test needs
     `core/HostPatternClassifier.java` with `of` (copies both lists) and `classify` in the DEST-02 order, exact names only.
   - Completes: DEST-01; DEST-02 (order); CORE-13 (DEST types).
   - Verify: Unit `HostPatternClassifierTest` in `:boundrail-context-core`.
-- [ ] T002 Wildcard and case-insensitive host patterns.
+- [x] T002 Wildcard and case-insensitive host patterns.
   - Red, in `HostPatternClassifierTest`:
     - `DEST-02 host patterns compare case-insensitively`: `Orders.SVC.test` against `orders.svc.test`, and a pattern written in upper case;
     - `DEST-02 a leading *. wildcard matches one or more labels`: `*.svc.test` matches `a.svc.test` and `a.b.svc.test`;
-    - `DEST-02 a wildcard does not match the bare suffix`: `*.svc.test` matches neither `svc.test` nor `xsvc.test`.
+    - `DEST-02 a wildcard does not match the bare suffix`: `*.svc.test` matches neither `svc.test` nor `xsvc.test`. This is a guard: show it
+      red with `classify` temporarily matching a wildcard with `host.endsWith(pattern.substring(2))`, with no leading dot, then revert
+      ([plan.md](plan.md#guard-tests)).
   - Green: wildcard and case-insensitive matching with `Locale.ROOT` in `HostPatternClassifier`.
   - Completes: DEST-02.
   - Verify: Unit `HostPatternClassifierTest`.
@@ -635,7 +637,7 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T012 unit guard and the two unit guards each in T001, T024 and T028) shown red against their
-  temporary change, and the change reverted
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T012 unit guards and the two unit guards each in T001, T024 and T028) shown red
+  against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

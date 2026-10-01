@@ -1,6 +1,7 @@
 package io.github.boundrail.context;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -36,12 +37,30 @@ public final class HostPatternClassifier implements DestinationClassifier {
         if (host == null) {
             return new Destination(Destination.Kind.UNKNOWN, Optional.empty());
         }
-        if (internalHosts.contains(host)) {
+        if (matchesAny(internalHosts, host)) {
             return new Destination(Destination.Kind.INTERNAL, Optional.empty());
         }
-        if (externalHosts.contains(host)) {
+        if (matchesAny(externalHosts, host)) {
             return new Destination(Destination.Kind.EXTERNAL, Optional.empty());
         }
         return new Destination(Destination.Kind.UNKNOWN, Optional.empty());
+    }
+
+    /**
+     * {@return whether {@code host} equals a pattern, or ends with {@code .suffix} for a {@code *.suffix} pattern, ignoring case;
+     * a non-null URI host never starts with a dot, so a suffix match has at least one label before it}
+     */
+    private static boolean matchesAny(List<String> patterns, String host) {
+        String lowerHost = host.toLowerCase(Locale.ROOT);
+        for (String pattern : patterns) {
+            String lowerPattern = pattern.toLowerCase(Locale.ROOT);
+            boolean matches = lowerPattern.startsWith("*.")
+                    ? lowerHost.endsWith(lowerPattern.substring(1))
+                    : lowerHost.equals(lowerPattern);
+            if (matches) {
+                return true;
+            }
+        }
+        return false;
     }
 }
