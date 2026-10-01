@@ -268,7 +268,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
 **Independent Test**: RC-8 in the RC command above, plus `./gradlew :boundrail-context-core:test --tests '*Deadline*' --tests '*BuiltInKeys*'
 --tests '*Authority*' --tests '*Initiator*'`
 
-- [ ] T017 [P] [US3] Deadline value. Red: `test/DeadlineTest.java` with `DL-01 remaining is never negative` (including a negative budget),
+- [x] T017 [P] [US3] Deadline value. Red: `test/DeadlineTest.java` with `DL-01 remaining is never negative` (including a negative budget),
       `DL-01 a zero or negative duration gives an already expired deadline` (through `after` and through `within`),
       `DL-01 a long budget is not expired`, `DL-01 check throws DeadlineExceededException with stage APPLICATION when expired`,
       `DL-01 check passes when not expired`, `DL-01 earliest returns the deadline that expires first` (either order; no tie case, since DL-01 allows
