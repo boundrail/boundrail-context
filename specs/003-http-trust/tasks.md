@@ -129,7 +129,7 @@ this feature needs is added in the green step of the first task whose test needs
   - Green: `core/Violation.java` (record with `Kind`, fields as the contract) and `core/ContextViolationException.java`.
   - Completes: DIAG-01; DIAG-02 (exception type); CORE-13 (violation types).
   - Verify: Unit `ViolationTest`.
-- [ ] T005 [P] Policy keys.
+- [x] T005 [P] Policy keys.
   - Red, in `coretest/ContextPolicyTest.java`:
     - `POL-10 keys() returns the registered and built-in keys`: a built policy reports exactly its registered keys plus `DEADLINE`, `AUTHORITY`
       and `INITIATOR`;
