@@ -117,7 +117,7 @@ this feature needs is added in the green step of the first task whose test needs
   - Green: per-pattern validation in `of` ([plan.md](plan.md#core)).
   - Completes: DEST-04; CORE-13 (precedence).
   - Verify: Unit `HostPatternClassifierTest`.
-- [ ] T004 [P] Violation and ContextViolationException.
+- [x] T004 [P] Violation and ContextViolationException.
   - Red, in `coretest/ViolationTest.java`:
     - `DIAG-01 Violation.Kind has exactly the six kinds of the contract`: `MISSING_REQUIRED`, `UNTRUSTED_HEADER`, `INVALID_VALUE`,
       `OVERSIZED_VALUE`, `FORBIDDEN_HEADER` and `MISSING_AUDIENCE`, in that order, and no other;
