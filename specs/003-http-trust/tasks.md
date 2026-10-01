@@ -260,12 +260,25 @@ enforces required keys, the length limit and valid field values.
     - `OUT-03 a DestinationClassifier bean replaces the default`;
     - `DEST-04 an invalid destinations pattern fails startup`: `destinations.internal-hosts=*`; `IllegalArgumentException` is the root cause;
     - `CORE-13 BoundrailClients.internal(null) throws NullPointerException`.
+  - Red, in `springtest/ClientRegistrationTest.java` (both red against T008's code):
+    - `OUT-01 customizing a RestTemplate twice adds the interceptor once`: the context's `RestTemplateCustomizer` bean run twice on one
+      `RestTemplate` leaves exactly one `ContextClientInterceptor` in `getInterceptors()`;
+    - `OUT-01 customizing a RestClient.Builder twice adds the interceptor once`: the context's `RestClientCustomizer` bean run twice on one
+      `RestClient.Builder` leaves exactly one `ContextClientInterceptor`, read through `requestInterceptors(list -> …)`.
+  - Tighten T008's two registration tests in `ClientRegistrationTest` (`… added to the auto-configured RestClient.Builder` and `… added to
+    the auto-configured RestTemplateBuilder`): assert exactly one interceptor, `filteredOn(ContextClientInterceptor.class::isInstance)
+    .hasSize(1)`, instead of "contains". They stay green.
+  - Fix `springtest/support/RecordingServer.java`, which T009's requests are the first after T008 to use: `uri()` builds the URI with the
+    multi-argument constructor, `new URI("http", null, host, port, null, null, null)`, which brackets an IPv6 host such as `::1`. Today it
+    concatenates the host string, so the URI is invalid when the loopback address is IPv6.
   - Green:
     - `spring/BoundrailClients.java` (request attribute through `defaultRequest`);
     - the `DestinationClassifier` bean (`@ConditionalOnMissingBean`) and the `destinations.*` properties;
-    - classification in `ContextClientInterceptor`.
-  - Completes: OUT-02; OUT-03; DEST-02 (Spring wiring); DEST-04 (startup); CORE-13 (`BoundrailClients`).
-  - Verify: Unit `BoundrailClientsTest`.
+    - classification in `ContextClientInterceptor`;
+    - each customizer adds the interceptor only when none is present: `noneMatch(ContextClientInterceptor.class::isInstance)` over the
+      template's `getInterceptors()` or the builder's interceptor list.
+  - Completes: OUT-01 (at most once per client); OUT-02; OUT-03; DEST-02 (Spring wiring); DEST-04 (startup); CORE-13 (`BoundrailClients`).
+  - Verify: Unit `BoundrailClientsTest`, `ClientRegistrationTest`.
 - [ ] T010 [US1] Writing context headers.
   - Red, in `springtest/ContextClientInterceptorTest.java` (real calls to `RecordingServer`):
     - `OUT-04 an internal call carries the bound keys that propagate to INTERNAL_CALL` and `WIRE-01 a key is sent in the header named by its

@@ -175,7 +175,9 @@ unit tests already pass before their task; each red is shown against a temporary
   spec.attribute(ATTRIBUTE, destination))`. The interceptor reads the attribute from `HttpRequest.getAttributes()` (Spring Framework 7).
   `RestTemplate` requests have no declaration and are classified by host only.
 - **Interceptor (OUT-01 – OUT-04, WIRE-01, WIRE-02, WIRE-04, WIRE-07, WIRE-08, POL-08).** Package-private `ContextClientInterceptor`, added by a
-  `RestClientCustomizer` bean and a `RestTemplateCustomizer` bean in a nested `@ConditionalOnClass` configuration. Per request:
+  `RestClientCustomizer` bean and a `RestTemplateCustomizer` bean in a nested `@ConditionalOnClass` configuration. Each customizer adds it
+  at most once per client: it skips a `RestTemplate` or `RestClient.Builder` whose interceptors already include a `ContextClientInterceptor`
+  (`noneMatch(ContextClientInterceptor.class::isInstance)`). Per request:
   1. Classify the request. The boundary is `INTERNAL_CALL` for `INTERNAL`, else `EXTERNAL_CALL`.
   2. Required-key check (POL-08, DIAG-02): collect the keys of `policy.keys()` that are required, propagate to the boundary, and are not bound
      (`key.isBound()`; a default does not count, CORE-05), sorted by `name()` with `String.compareTo`. Report one `MISSING_REQUIRED` for each,
@@ -411,7 +413,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | IN-06 | T027 (valid, missing, non-JWT), T028 (non-string, undecodable, no length check, other codec exceptions) |
 | IN-07 | T026 |
 | IN-08 | T021 (address families, IPv4-mapped remote, non-literal and zone-ID remote addresses, no DNS), T022 (strict entries, startup failure, no DNS) |
-| OUT-01 | T008 |
+| OUT-01 | T008, T009 (at most once per client) |
 | OUT-02, OUT-03 | T009 |
 | OUT-04 | T010, T014 |
 | DIAG-01 | T004 |

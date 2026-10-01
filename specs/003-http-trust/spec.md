@@ -95,6 +95,8 @@ values are ignored and reported, and never fail the request.
   `UNTRUSTED_HEADER` each).
 - Two required keys are unbound on one internal call: DIAG-02 (both reported, in key-name order; in `fail` mode the exception carries the first).
 - Application code sets a forbidden header twice on an external call: WIRE-07 (one `FORBIDDEN_HEADER`).
+- Application code customizes the same `RestTemplate` or `RestClient.Builder` twice: OUT-01 (the interceptor is added once, so a violation
+  is reported once per request).
 - An application codec's `decode` throws something other than `IllegalArgumentException`, or its `encode` throws anything: WIRE-05 (it
   propagates; no violation).
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
@@ -255,7 +257,9 @@ entry, and the verdict SHALL be `UNTRUSTED`, failing closed. The remote address 
 ### Outbound HTTP
 
 **OUT-01** `[M2]` The Spring module SHALL add the library's `ClientHttpRequestInterceptor` to every auto-configured `RestClient.Builder` and
-`RestTemplateBuilder`. The interceptor SHALL be around-style (`execution.execute`).
+`RestTemplateBuilder`. The interceptor SHALL be around-style (`execution.execute`). The interceptor SHALL be added at most once per client:
+IF a `RestTemplate` or `RestClient.Builder` already has the library's interceptor, for example because application code customized the same
+template or builder twice, THEN the customizer SHALL NOT add another, so that a violation is never reported twice for one request.
 
 **OUT-02** `[M2]` WHEN a request is about to be sent, the interceptor SHALL build an `OutboundRequest` from the request URI and the client's
 declaration, if any, and classify it with the effective `DestinationClassifier` (DEST-02, DEST-03).
