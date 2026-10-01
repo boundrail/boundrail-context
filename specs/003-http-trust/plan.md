@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and fifteen
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and eighteen
 unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; eighteen guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; twenty-one guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -141,6 +141,17 @@ unit tests already pass before their task; each red is shown against a temporary
   - `ApplicationContextRunner` does not run `SpringApplication`, so the property alone changes nothing in a runner test. T006a's test adds
     `LazyInitializationBeanFactoryPostProcessor` through `withInitializer`, as `SpringApplication` does for that property, and sets the property
     too.
+- **Invalid configuration under lazy initialization (POL-07, DEST-04, IN-08, DIAG-03).** Every invalid-configuration startup failure also
+  occurs with `spring.main.lazy-initialization=true`. Each bean whose creation validates configuration is `@Lazy(false)`:
+  - the effective policy (POL-07, T006a);
+  - the `boundrailDestinationClassifier` bean (DEST-04, T009);
+  - the `boundrailViolationReporter` bean (DIAG-03, T010);
+  - the `RestClientCustomizer` and `RestTemplateCustomizer` beans in `ClientConfiguration` (OUT-03, T010);
+  - the CIDR verifier bean (IN-08, T022).
+
+  A negative `log-interval` is rejected by the `Violations` compact constructor when `BoundrailContextProperties` is bound (DIAG-03). The
+  default classifier bean binds it, but an application `DestinationClassifier` bean replaces that bean (`@ConditionalOnMissingBean`), and then
+  nothing eager binds the properties. So the reporter, which reads `log-interval`, is `@Lazy(false)` (T010). Each test uses the T006a setup.
 - **Configuration.** One `@ConfigurationProperties("boundrail.context")` record, `BoundrailContextProperties`, with nested records:
   - `Violations`: `mode`, an enum `FAIL`/`REPORT`, and `logInterval`, a `Duration`;
   - `Inbound`: `trust`, an enum `NONE`/`CIDR`, and `trustedCidrs`;
@@ -174,6 +185,18 @@ unit tests already pass before their task; each red is shown against a temporary
 - **Per-client declaration (OUT-03).** `BoundrailClients.internal(service)` returns `builder -> builder.defaultRequest(spec ->
   spec.attribute(ATTRIBUTE, destination))`. The interceptor reads the attribute from `HttpRequest.getAttributes()` (Spring Framework 7).
   `RestTemplate` requests have no declaration and are classified by host only.
+  - `defaultRequest` composes its consumers with `andThen`, so when both `internal(..)` and `external()` are applied to one builder, the
+    later one overwrites the attribute and wins (OUT-03, T010 guard).
+  - Applied to a builder the library didn't customize, such as `RestClient.builder()`, the attribute is set but no interceptor reads it, so
+    the declaration has no effect (OUT-03). This is documented in the contract's Javadoc only; it has no test.
+- **Several classifier beans (OUT-03).** Each customizer injects a single `DestinationClassifier`: Spring resolves the `@Primary` bean, and
+  with several and none primary the customizer bean fails with `NoUniqueBeanDefinitionException`, so startup fails (T010 guards).
+  - Under lazy initialization the customizers are only created with the first `RestClient.Builder` or `RestTemplateBuilder`, so startup
+    would succeed. Both customizer beans are `@Lazy(false)`, so the failure occurs at startup whenever client support is active (user
+    decision; T010).
+  - Without client support (`ClientConfiguration`'s `@ConditionalOnClass` not met) no bean injects a single `DestinationClassifier`: the
+    default classifier is absent because application beans exist, and the reporter does not use a classifier. Startup succeeds, as OUT-03
+    requires. Nothing has to be built for this, so it has no test.
 - **Interceptor (OUT-01 – OUT-04, WIRE-01, WIRE-02, WIRE-04, WIRE-07, WIRE-08, POL-08).** Package-private `ContextClientInterceptor`, added by a
   `RestClientCustomizer` bean and a `RestTemplateCustomizer` bean in a nested `@ConditionalOnClass` configuration. Each customizer adds it
   at most once per client: it skips a `RestTemplate` or `RestClient.Builder` whose interceptors already include a `ContextClientInterceptor`
@@ -221,7 +244,7 @@ unit tests already pass before their task; each red is shown against a temporary
   replaces them.
   - The default bean returns `UNTRUSTED`.
   - With `inbound.trust=cidr`, the package-private `CidrInboundTrustVerifier` parses `trusted-cidrs` once at bean creation, so an invalid entry
-    fails startup.
+    fails startup. The bean is `@Lazy(false)`, so this holds under lazy initialization too (T022).
   - JDK 21 has no `InetAddress.ofLiteral`, so each address, entry or remote address, is first checked to be textually an IPv4 dotted quad or
     an IPv6 literal (hex digits, `:` and `.`, no `%`). Only then is it passed to `InetAddress.getByName`, which does no lookup for a literal.
     Hostnames and zone IDs are rejected without DNS: an invalid entry fails startup, and a remote address that fails the check matches no entry,
@@ -318,6 +341,9 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T006a | `POL-07 ContextPolicy beans in a parent context are merged` | T006's `ObjectProvider<ContextPolicy>.orderedStream()` searches ancestor contexts, so the parent's bean is already merged | In `boundrailEffectivePolicy`, the beans collected with the local-only `ListableBeanFactory.getBeansOfType(ContextPolicy.class)` instead |
 | T007 | `DIAG-03 the auto-configured reporter uses the configured log-interval` | T007's bean passes `properties.violations().logInterval()` in the same green step that makes the other log-interval tests pass | In `BoundrailContextAutoConfiguration`, the reporter bean built with `Duration.ofMinutes(1)` instead of the property |
 | T007 | `DIAG-03 without Micrometer on the classpath the violation is logged` (the `doesNotHaveBean(ViolationReporter.Counter.class)` assertion) | T007's nested configuration has `@ConditionalOnClass(MeterRegistry.class)` from its first green step | The `@ConditionalOnClass` removed from the nested counter configuration |
+| T010 | `OUT-03 with several DestinationClassifier beans the primary is used` | T009's customizers inject a single `DestinationClassifier`, which Spring resolves to the `@Primary` bean | In both customizers, the classifier taken from `ObjectProvider<DestinationClassifier>.orderedStream().findFirst().orElseThrow()`, with the test's non-primary bean registered first |
+| T010 | `OUT-03 with several DestinationClassifier beans and no primary startup fails` | The same single-bean injection already fails with `NoUniqueBeanDefinitionException` | The same change, under which startup succeeds |
+| T010 | `OUT-03 the last declaration applied to a builder wins` | `RestClient.Builder.defaultRequest` composes consumers with `andThen`, so the later `attribute` call overwrites the earlier | In `BoundrailClients.declare`, the attribute set with `attributes.putIfAbsent(DESTINATION_ATTRIBUTE, destination)`, so the first wins |
 | T013 | IT-2.2 External call carries no context | After T010, the interceptor writes nothing to `EXTERNAL` | In `ContextClientInterceptor`, the classified destination replaced by `Destination(INTERNAL, empty)` |
 | T013 | IT-2.3 Unknown means external | After T010, the interceptor writes nothing to `UNKNOWN` | The same change |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
@@ -397,7 +423,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | DEST-01 | T001, T029 (no HTTP dependency in core) |
 | DEST-02 | T001, T002, T006a (trailing dot), T009 |
 | DEST-03 | T010 (writing), T014 (stripping) |
-| DEST-04 | T003, T009 (startup failure) |
+| DEST-04 | T003, T009 (startup failure, also under lazy initialization) |
 | WIRE-01 | T010 (outbound), T016 (inbound) |
 | WIRE-02 | T010 (initiator out), T017 (initiator in; deadline and authority not bound) |
 | WIRE-04 | T011 (outbound, UTF-16 code units), T012 (before WIRE-08), T023 (inbound), T024 (before decode), T028 (not on claims) |
@@ -412,13 +438,14 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | IN-05 | T025 |
 | IN-06 | T027 (valid, missing, non-JWT), T028 (non-string, undecodable, no length check, other codec exceptions) |
 | IN-07 | T026 |
-| IN-08 | T021 (address families, IPv4-mapped remote, non-literal and zone-ID remote addresses, no DNS), T022 (strict entries, startup failure, no DNS) |
+| IN-08 | T021 (address families, IPv4-mapped remote, non-literal and zone-ID remote addresses, no DNS), T022 (strict entries, startup failure also under lazy initialization, no DNS) |
 | OUT-01 | T008, T009 (at most once per client) |
-| OUT-02, OUT-03 | T009 |
+| OUT-02 | T009 |
+| OUT-03 | T009, T010 (several classifier beans, none primary also under lazy initialization, last declaration wins) |
 | OUT-04 | T010, T014 |
 | DIAG-01 | T004 |
 | DIAG-02 | T004 (exception), T015 (report, then throw; several keys in name order, exception carries the first); report-only kinds under the default `fail` mode in T011, T012, T014, T018, T019, T023, T024, T026 |
-| DIAG-03 | T007 |
+| DIAG-03 | T007, T010 (startup failure under lazy initialization, also with an application classifier) |
 | DIAG-08 | T018, T019, T023, T024, T026, T028 |
 | DIAG-09 | T007 (log entry content), T011, T012, T023, T024, T028 (`Violation` records); IT-2.8 (log entries, counter tags) |
 | TEST-01 | T020 |

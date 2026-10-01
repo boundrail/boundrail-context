@@ -61,9 +61,14 @@ public final class JwtClaimContributor implements ContextContributor {
 ## Outbound HTTP (OUT) — `boundrail-context-spring`
 
 ```java
+/**
+ * Declares the destination of every request made through the configured client (OUT-03). If both methods are applied to one
+ * builder, the last one applied wins. No effect on a builder without the library's interceptor, i.e. one that is not
+ * auto-configured, such as {@code RestClient.builder()}.
+ */
 public final class BoundrailClients {
-    public static Consumer<RestClient.Builder> internal(String service);
-    public static Consumer<RestClient.Builder> external();
+    public static Consumer<RestClient.Builder> internal(String service);  // Destination(INTERNAL, service)
+    public static Consumer<RestClient.Builder> external();                // Destination(EXTERNAL, empty)
 }
 ```
 

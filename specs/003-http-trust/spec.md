@@ -100,8 +100,17 @@ values are ignored and reported, and never fail the request.
 - An application codec's `decode` throws something other than `IllegalArgumentException`, or its `encode` throws anything: WIRE-05 (it
   propagates; no violation).
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
-- Conflicting `ContextPolicy` beans with `spring.main.lazy-initialization=true`: POL-07 (startup still fails; the effective policy is built
-  eagerly).
+- Invalid configuration with `spring.main.lazy-initialization=true`: conflicting `ContextPolicy` beans, invalid host patterns, invalid CIDR
+  entries, a negative `violations.log-interval`, or several `DestinationClassifier` beans with none primary while HTTP client support is active,
+  still fail startup (POL-07, DEST-04, IN-08, DIAG-03, OUT-03).
+- More than one `DestinationClassifier` bean: OUT-03 (the `@Primary` one is used; with none primary, startup fails whenever HTTP client support
+  is active, that is `spring-web` and `spring-boot-restclient` are present, even with `spring.main.lazy-initialization=true`; without client
+  support no classifier is used and startup does not fail).
+- An application `DestinationClassifier` bean with an invalid pattern in `destinations.internal-hosts`: DEST-04, OUT-03 (the bean replaces the
+  `HostPatternClassifier`, so `destinations.*` is not validated and startup does not fail).
+- `BoundrailClients.internal(..)` or `external()` applied to a builder that is not auto-configured, such as `RestClient.builder()`: OUT-03
+  (no effect, because the builder has no interceptor; the declaration is not sent and context is not propagated).
+- `BoundrailClients.internal(..)` and `external()` both applied to one builder: OUT-03 (the last one applied wins).
 - A `ContextPolicy` bean declared only in a parent application context: POL-07 (merged, as is a bean in any ancestor context of the context
   that runs the auto-configuration).
 
@@ -157,7 +166,10 @@ not start or end with a hyphen (RFC 1123 §2.1); the last label is not all digit
 port (`orders:8080`) and a name with a trailing dot (`orders.svc.`) are invalid. IP literals are not host patterns: the last-label rule rejects
 IPv4 literals and the label rule rejects IPv6 literals. DEST-02 classifies by hostname; an IPv4 pattern would also make `*.` match address
 suffixes, and address ranges belong to CIDRs. A call to an IP address therefore matches no pattern and is `UNKNOWN`, unless its client declares a
-destination (OUT-03).
+destination (OUT-03). WHERE the Spring module creates the `HostPatternClassifier` bean (OUT-03), an invalid pattern in
+`destinations.internal-hosts` or `destinations.external-hosts` SHALL fail application startup, even when `spring.main.lazy-initialization` is
+`true`. WHERE an application `DestinationClassifier` bean replaces it, the Spring module creates no `HostPatternClassifier`, and
+`destinations.*` is not validated.
 
 ### Wire format
 
@@ -250,7 +262,8 @@ length (0 – 32 for IPv4, 0 – 128 for IPv6), or a bare address literal, which
 entries and an IPv6 remote address only IPv6 entries, except that an IPv4-mapped IPv6 remote address (`::ffff:a.b.c.d`) SHALL be matched as the
 IPv4 address `a.b.c.d`. Entries are strict: an entry with host bits set beyond its prefix length (`10.0.0.1/8`), an IPv4-mapped IPv6 entry
 (`::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`), an entry with an IPv6 zone ID (`fe80::1%eth0`) and a hostname are not valid. WHERE
-`inbound.trust=cidr`, IF an entry is not valid, THEN the application SHALL fail at startup. Entries SHALL be parsed without DNS lookups.
+`inbound.trust=cidr`, IF an entry is not valid, THEN the application SHALL fail at startup, even when
+`spring.main.lazy-initialization` is `true`. Entries SHALL be parsed without DNS lookups.
 IF the remote address is not an IPv4 or IPv6 address literal, or is an IPv6 literal with a zone ID (`fe80::1%eth0`), THEN it SHALL match no
 entry, and the verdict SHALL be `UNTRUSTED`, failing closed. The remote address SHALL also be parsed without DNS lookups.
 
@@ -265,9 +278,15 @@ template or builder twice, THEN the customizer SHALL NOT add another, so that a 
 declaration, if any, and classify it with the effective `DestinationClassifier` (DEST-02, DEST-03).
 
 **OUT-03** `[M2]` The Spring module SHALL provide a `HostPatternClassifier` bean configured from `boundrail.context.destinations.internal-hosts` and
-`boundrail.context.destinations.external-hosts`. A bean of type `DestinationClassifier` SHALL replace it. `BoundrailClients.internal(service)` SHALL
-declare `Destination(INTERNAL, service)`, and `BoundrailClients.external()` SHALL declare `Destination(EXTERNAL, empty)`, for every request made
-through the client it configures.
+`boundrail.context.destinations.external-hosts`. A bean of type `DestinationClassifier` SHALL replace it. IF the application context has more
+than one `DestinationClassifier` bean, THEN the `@Primary` one SHALL be used. WHERE the Spring module's HTTP client support is active
+(`spring-web` and `spring-boot-restclient` are on the classpath), IF none of them is primary, THEN application startup SHALL fail, even when
+`spring.main.lazy-initialization` is `true`. Without client support no classifier is used, and several `DestinationClassifier` beans with none
+primary SHALL NOT fail startup.
+`BoundrailClients.internal(service)` SHALL declare `Destination(INTERNAL, service)`, and `BoundrailClients.external()` SHALL declare
+`Destination(EXTERNAL, empty)`, for every request made through the client it configures. IF both are applied to one builder, THEN the last one
+applied SHALL win. The declaration is read by the library's interceptor (OUT-01, OUT-02): applied to a `RestClient.Builder` that has no such
+interceptor, because it is not auto-configured (for example `RestClient.builder()`), `internal` and `external` SHALL have no effect.
 
 **OUT-04** `[M2]` For `INTERNAL` destinations, the interceptor SHALL write the wire headers of bound keys that propagate to `INTERNAL_CALL`, after the
 required-key check (POL-08), except `AUTHORITY` and `DEADLINE`: `AUTHORITY` has no wire name (POL-03) and is carried by ID-03 `[M5]`, and
@@ -299,7 +318,7 @@ always be report-only.
 
 Every occurrence SHALL be counted, even when the log entry is rate-limited. The library SHALL NOT count violations in Micrometer's global registry
 (`Metrics.globalRegistry`), because violation reporting belongs to one application context (DESIGN D31, §11). IF `log-interval` is negative,
-THEN application startup SHALL fail.
+THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`.
 
 **DIAG-08** `[M2]` For a violation found on an inbound value, `boundary` SHALL be the boundary the value travelled over (`INTERNAL_CALL` for HTTP,
 `MESSAGE` for Kafka), and `destination` SHALL be empty. A value taken from the authentication of an HTTP request, such as a JWT claim (IN-06), is an
@@ -323,6 +342,11 @@ identity in tests. Neither the verifier nor `peer()` SHALL be auto-configured.
 ### Configuration
 
 Properties use the prefix `boundrail.context.`.
+
+Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: conflicting `ContextPolicy`
+beans (POL-07), invalid host patterns (DEST-04), invalid CIDR entries (IN-08), a negative `violations.log-interval` (DIAG-03), and, while
+HTTP client support is active (`spring-web` and `spring-boot-restclient` are present), several `DestinationClassifier` beans with none
+primary (OUT-03).
 
 | Property | Default | Meaning |
 |---|---|---|

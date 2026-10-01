@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Eighteen guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T012, and two unit tests
-  each in T001, T003, T006a, T007, T024 and T028.
+- Twenty-one guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T012, two unit tests
+  each in T001, T003, T006a, T007, T024 and T028, and three unit tests in T010.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -248,7 +248,7 @@ enforces required keys, the length limit and valid field values.
     - `compileOnly` and `testImplementation` for `spring-web` and `spring-boot-restclient`, with catalog entries.
   - Completes: OUT-01.
   - Verify: Unit `ClientRegistrationTest`.
-- [ ] T009 [US1] Classification and per-client declarations.
+- [x] T009 [US1] Classification and per-client declarations.
   - Red, in `springtest/BoundrailClientsTest.java`, through a recording `DestinationClassifier` bean that captures each `OutboundRequest`:
     - `OUT-03 internal(service) declares Destination(INTERNAL, service) for every request of the client`: two requests;
     - `OUT-03 external() declares Destination(EXTERNAL, empty)`: two requests;
@@ -259,6 +259,9 @@ enforces required keys, the length limit and valid field values.
       to empty;
     - `OUT-03 a DestinationClassifier bean replaces the default`;
     - `DEST-04 an invalid destinations pattern fails startup`: `destinations.internal-hosts=*`; `IllegalArgumentException` is the root cause;
+    - `DEST-04 an invalid destinations pattern fails startup with lazy initialization`: `destinations.internal-hosts=*` with
+      `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as in T006a;
+      `IllegalArgumentException` is the root cause;
     - `CORE-13 BoundrailClients.internal(null) throws NullPointerException`.
   - Red, in `springtest/ClientRegistrationTest.java` (both red against T008's code):
     - `OUT-01 customizing a RestTemplate twice adds the interceptor once`: the context's `RestTemplateCustomizer` bean run twice on one
@@ -273,11 +276,13 @@ enforces required keys, the length limit and valid field values.
     concatenates the host string, so the URI is invalid when the loopback address is IPv6.
   - Green:
     - `spring/BoundrailClients.java` (request attribute through `defaultRequest`);
-    - the `DestinationClassifier` bean (`@ConditionalOnMissingBean`) and the `destinations.*` properties;
+    - the `DestinationClassifier` bean (`@ConditionalOnMissingBean`, `@Lazy(false)`, so it is built at startup under lazy initialization)
+      and the `destinations.*` properties;
     - classification in `ContextClientInterceptor`;
     - each customizer adds the interceptor only when none is present: `noneMatch(ContextClientInterceptor.class::isInstance)` over the
       template's `getInterceptors()` or the builder's interceptor list.
-  - Completes: OUT-01 (at most once per client); OUT-02; OUT-03; DEST-02 (Spring wiring); DEST-04 (startup); CORE-13 (`BoundrailClients`).
+  - Completes: OUT-01 (at most once per client); OUT-02; OUT-03; DEST-02 (Spring wiring); DEST-04 (startup, also under lazy initialization);
+    CORE-13 (`BoundrailClients`).
   - Verify: Unit `BoundrailClientsTest`, `ClientRegistrationTest`.
 - [ ] T010 [US1] Writing context headers.
   - Red, in `springtest/ContextClientInterceptorTest.java` (real calls to `RecordingServer`):
@@ -297,11 +302,41 @@ enforces required keys, the length limit and valid field values.
       codec whose `encode` throws `IllegalStateException` and one whose `encode` throws `IllegalArgumentException` (WIRE-05: only `decode`
       has a rejection). On an internal call, the caller of the `RestClient` receives the same exception instance, `RecordingServer` received
       nothing, and the reporter recorded nothing.
-  - Green: header writing in `ContextClientInterceptor` from `policy.filter(Context.capture(), boundary)`, with `INITIATOR` encoded as
-    `value()`, and `AUTHORITY` and `DEADLINE` skipped. Nothing catches an exception from `encode`.
+  - Red, in `springtest/BoundrailClientsTest.java`:
+    - `OUT-03 with several DestinationClassifier beans the primary is used`: two recording classifier beans, the non-primary one registered
+      first and the second `@Primary`; an undeclared request is captured by the primary only. This is a guard: T009's customizers inject a
+      single `DestinationClassifier`, which Spring resolves to the primary. Show it red with both customizers temporarily taking
+      `ObjectProvider<DestinationClassifier>` and using `orderedStream().findFirst().orElseThrow()`, then revert
+      ([plan.md](plan.md#guard-tests));
+    - `OUT-03 with several DestinationClassifier beans and no primary startup fails`: two classifier beans, neither primary;
+      `NoUniqueBeanDefinitionException` is the root cause of the startup failure. This is a guard: the customizers' single
+      `DestinationClassifier` parameter already fails. Show it red with the same temporary change, then revert ([plan.md](plan.md#guard-tests));
+    - `OUT-03 with several DestinationClassifier beans and no primary startup fails with lazy initialization`: the same two beans, with
+      `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as in T006a;
+      `NoUniqueBeanDefinitionException` is the root cause. Red against T009's code, whose customizer beans are then lazy and never created;
+    - `OUT-03 the last declaration applied to a builder wins`: a builder customized with `internal("orders")` then `external()` declares
+      `Destination(EXTERNAL, empty)`; one customized with `external()` then `internal("orders")` declares `Destination(INTERNAL, "orders")`.
+      This is a guard: `RestClient.Builder.defaultRequest` composes its consumers with `andThen`, so the later attribute overwrites the
+      earlier. Show it red with `BoundrailClients.declare` temporarily setting the attribute with
+      `spec.attributes(attributes -> attributes.putIfAbsent(DESTINATION_ATTRIBUTE, destination))`, so the first wins, then revert
+      ([plan.md](plan.md#guard-tests)).
+  - Red, in `springtest/ViolationReporterTest.java`:
+    - `DIAG-03 a negative log-interval fails startup with lazy initialization`: `violations.log-interval=-1s` with
+      `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as in T006a;
+      `IllegalArgumentException` is the root cause. Two cases: without a `DestinationClassifier` bean, and with an application
+      `DestinationClassifier` bean. The second is red against T009's code: the application bean replaces the `@Lazy(false)` default
+      classifier, and no other eager bean binds `BoundrailContextProperties`, so startup succeeds.
+  - Green:
+    - header writing in `ContextClientInterceptor` from `policy.filter(Context.capture(), boundary)`, with `INITIATOR` encoded as `value()`,
+      and `AUTHORITY` and `DEADLINE` skipped. Nothing catches an exception from `encode`;
+    - `@Lazy(false)` on both customizer bean methods in `ClientConfiguration` in `spring/BoundrailContextAutoConfiguration.java`;
+    - `@Lazy(false)` on the `boundrailViolationReporter` bean method in the same file.
+
+    The three guards need no code.
   - Completes: OUT-04 (writing, `encode` exceptions); WIRE-01 (outbound); WIRE-02 (outbound initiator); WIRE-05 (outbound); WIRE-06
-    (outbound); DEST-03 (writing).
-  - Verify: Unit `ContextClientInterceptorTest`.
+    (outbound); DEST-03 (writing); OUT-03 (several classifier beans, none primary also under lazy initialization, last declaration wins);
+    DIAG-03 (startup failure under lazy initialization, also with an application classifier).
+  - Verify: Unit `ContextClientInterceptorTest`, `BoundrailClientsTest`, `ViolationReporterTest`.
 - [ ] T011 [US1] Outbound length limit.
   - Red, in `ContextClientInterceptorTest`:
     - `WIRE-04 an encoded value longer than max-value-length is not sent and is reported as OVERSIZED_VALUE`: for a 257-character tenant, no
@@ -523,9 +558,13 @@ authentication through contributors.
       `::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`, `fe80::1%eth0`, `localhost`, `orders.svc.test` and `10.0.0`. Each fails startup with
       `inbound.trust=cidr`;
     - `IN-08 entries are parsed without DNS lookups`: `localhost`, which would resolve, fails startup;
-    - `IN-08 invalid entries are ignored when inbound.trust is not cidr`: startup succeeds with `trust=none`.
-  - Green: strict parsing in `CidrInboundTrustVerifier` ([plan.md](plan.md#inbound)).
-  - Completes: IN-08 (entries, startup failure).
+    - `IN-08 invalid entries are ignored when inbound.trust is not cidr`: startup succeeds with `trust=none`;
+    - `IN-08 an invalid CIDR entry fails startup with lazy initialization`: `inbound.trust=cidr` and `trusted-cidrs=10.0.0.1/8` with
+      `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as in T006a;
+      `IllegalArgumentException` is the root cause.
+  - Green: strict parsing in `CidrInboundTrustVerifier` ([plan.md](plan.md#inbound)); `@Lazy(false)` on the CIDR verifier bean method, so it
+    is built, and its entries parsed, at startup under lazy initialization.
+  - Completes: IN-08 (entries, startup failure, also under lazy initialization).
   - Verify: Unit `CidrInboundTrustVerifierTest`.
 - [ ] T023 [US2] Inbound length limit.
   - Red, in `ContextInboundFilterTest`:
@@ -666,7 +705,7 @@ authentication through contributors.
 - Phase 2: T001 → T002 → T003. T004 and T005 are independent of T001 and of each other.
 - Phase 3: T006 needs nothing from Phase 2. T006a needs T003 and T006. T007 needs T004, T005 and T006a.
 - US1:
-  - T008 needs T006. T009 needs T003 and T008. T010 needs T009. T011 needs T007 and T010. T012 needs T011.
+  - T008 needs T006. T009 needs T003 and T008. T010 needs T007 and T009. T011 needs T007 and T010. T012 needs T011.
   - T013 needs T010.
   - T014 needs T005, T007 and T013. T015 needs T004, T005, T007 and T013.
 - US2:
@@ -687,8 +726,8 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T012 unit guards and the two unit guards each in T001, T003, T006a, T007, T024
-  and T028)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T012 unit guards, the two unit guards each in T001, T003, T006a, T007, T024
+  and T028, and the three unit guards in T010)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green
