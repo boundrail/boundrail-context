@@ -71,6 +71,8 @@ values are ignored and reported, and never fail the request.
 - A destination matches both an internal and an external host pattern: DEST-02 (internal patterns are checked first).
 - A hostname with an underscore, such as `http://orders_svc:8080/` in Docker Compose: DEST-02 (no host pattern matches, so it is `UNKNOWN`;
   the client needs a declared destination, OUT-03, to send context).
+- A hostname with a trailing dot, such as `http://orders.svc.test./` (`getHost()` is `orders.svc.test.`): DEST-02, DEST-04 (no host pattern
+  ends with a dot, so none matches and it is `UNKNOWN`; the client needs a declared destination, OUT-03, to send context).
 - The violation mode is `report`: DIAG-02 (the call continues without the key).
 - A required key is unbound, but application code set its wire header on an internal call: POL-08 (still `MISSING_REQUIRED`; the check reads the
   context, not the headers, and runs before OUT-04).
