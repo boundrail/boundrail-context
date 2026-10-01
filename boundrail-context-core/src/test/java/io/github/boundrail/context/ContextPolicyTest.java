@@ -83,6 +83,48 @@ class ContextPolicyTest {
     }
 
     @Test
+    @DisplayName("POL-01 a repeated codec, wireName or propagateTo call replaces the earlier value")
+    void aRepeatedCodecWireNameOrPropagateToCallReplacesTheEarlierValue() {
+        ContextCodec<String> first = new StringCodec();
+        ContextCodec<String> second = new StringCodec();
+
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(first).codec(second).wireName("X-One").wireName("X-Two")
+                        .propagateTo(ATTACHED).propagateTo(INTERNAL_CALL))
+                .build();
+
+        assertThat(policy.codec(TENANT)).containsSame(second);
+        assertThat(policy.wireName(TENANT)).contains("X-Two");
+        assertThat(Stream.of(Boundary.values()).filter(boundary -> policy.propagates(TENANT, boundary)))
+                .containsExactly(INTERNAL_CALL);
+    }
+
+    @Test
+    @DisplayName("POL-01 a boundary listed twice in one propagateTo call counts once")
+    void aBoundaryListedTwiceInOnePropagateToCallCountsOnce() {
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").propagateTo(INTERNAL_CALL, INTERNAL_CALL))
+                .build();
+
+        assertThat(Stream.of(Boundary.values()).filter(boundary -> policy.propagates(TENANT, boundary)))
+                .containsExactly(INTERNAL_CALL);
+    }
+
+    /** A codec with instance equality, so two instances are distinct. */
+    private static final class StringCodec implements ContextCodec<String> {
+
+        @Override
+        public String encode(String value) {
+            return value;
+        }
+
+        @Override
+        public String decode(String text) {
+            return text;
+        }
+    }
+
+    @Test
     @DisplayName("POL-02 an unregistered key propagates to ATTACHED and DETACHED only and is neither required nor loggable")
     void anUnregisteredKeyPropagatesToAttachedAndDetachedOnly() {
         ContextPolicy policy = ContextPolicy.builder()
@@ -107,6 +149,7 @@ class ContextPolicyTest {
 
         assertThat(Stream.of(INTERNAL_CALL, EXTERNAL_CALL, MESSAGE).filter(boundary -> policy.propagates(TENANT, boundary)))
                 .containsExactly(INTERNAL_CALL);
+        assertThat(Stream.of(ATTACHED, DETACHED).filter(boundary -> policy.propagates(TENANT, boundary))).isEmpty();
         assertThat(Stream.of(INTERNAL_CALL, EXTERNAL_CALL, MESSAGE).filter(boundary -> policy.propagates(ORDER, boundary)))
                 .containsExactly(EXTERNAL_CALL, MESSAGE);
         assertThat(Stream.of(INTERNAL_CALL, EXTERNAL_CALL, MESSAGE).filter(boundary -> policy.propagates(LOCALE, boundary)))

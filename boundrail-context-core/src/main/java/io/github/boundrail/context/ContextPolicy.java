@@ -26,7 +26,7 @@ public final class ContextPolicy {
 
     /**
      * The built-in rules (POL-03, POL-06): no codec, and the WIRE-02 header names for {@code DEADLINE} and {@code INITIATOR}. Every policy
-     * that holds them holds these instances.
+     * holds these same instances.
      */
     private static final Map<ContextKey<?>, Rules> BUILT_IN_RULES = Map.of(
             BuiltInKeys.DEADLINE, new Rules(null, "Boundrail-Deadline-Ms", false, false, Set.of(Boundary.ATTACHED, Boundary.INTERNAL_CALL)),

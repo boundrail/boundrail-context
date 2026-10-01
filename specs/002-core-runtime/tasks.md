@@ -256,7 +256,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       case, a different flag or boundary set), each failure with `IllegalStateException`, and `CORE-03 merge rejects null with
       NullPointerException`. Green: `ContextPolicy.merge`, checking its argument first and sharing the rule comparison of T014 (CORE-03,
       POL-05). Verify: Unit `ContextPolicyValidationTest`
-- [ ] T026 [US2] Repeated `KeyRules` calls and local boundaries. Added after T013 was committed, for the two POL-01 sentences and the POL-03
+- [x] T026 [US2] Repeated `KeyRules` calls and local boundaries. Added after T013 was committed, for the two POL-01 sentences and the POL-03
       local-boundary clause that 4051226 added to spec.md (the last call to `codec`, `wireName` or `propagateTo` wins; a boundary listed more
       than once in one `propagateTo` call counts once; `propagateTo(INTERNAL_CALL)` alone does not propagate to `ATTACHED` or `DETACHED`);
       numbered after T025 so existing IDs stay stable, and placed at the end of US2 because it amends T013's tests. Red: in
