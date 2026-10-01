@@ -360,7 +360,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
 
 ## Phase 5: Close
 
-- [ ] T024 Verify each requirement one by one against the code and its tests: CORE-01 – CORE-12, RT-01 – RT-06, POL-01 – POL-06, POL-09,
+- [x] T024 Verify each requirement one by one against the code and its tests: CORE-01 – CORE-12, RT-01 – RT-06, POL-01 – POL-06, POL-09,
       WIRE-03, DL-01, DL-02, DL-10, DL-11, ID-01, ID-07, and RC-1 – RC-8 (SC-001), using the coverage table in
       [plan.md](plan.md#requirement-coverage). Confirm SC-002 by listing test display names per ID (RT-06 is exempt and verified by SC-001), and
       SC-003 with `./gradlew :boundrail-context-core:dependencies --configuration runtimeClasspath` (no dependencies). Confirm spec.md and the
@@ -389,16 +389,16 @@ None. 001-foundation built the core project, its test dependencies, the three in
 
 ## Exit Checklist
 
-- [ ] Scenarios enabled and green on all three JDK tasks: RC-1, RC-2, RC-3, RC-4, RC-5, RC-6, RC-7, RC-8
-- [ ] Requirements implemented with tests named after their IDs: CORE-01 – CORE-12, RT-01 – RT-05, POL-01 – POL-06, POL-09, WIRE-03, DL-01,
+- [x] Scenarios enabled and green on all three JDK tasks: RC-1, RC-2, RC-3, RC-4, RC-5, RC-6, RC-7, RC-8
+- [x] Requirements implemented with tests named after their IDs: CORE-01 – CORE-12, RT-01 – RT-05, POL-01 – POL-06, POL-09, WIRE-03, DL-01,
       DL-02, DL-10, DL-11, ID-01, ID-07
-- [ ] RT-06 verified by SC-001 (exempt from SC-002); RT-09 not listed in 002
-- [ ] CORE-03 scope as decided: `equals(null)` is `false` for `Initiator` (G13), a `null` varargs element throws at the call (G14), and
+- [x] RT-06 verified by SC-001 (exempt from SC-002); RT-09 not listed in 002
+- [x] CORE-03 scope as decided: `equals(null)` is `false` for `Initiator` (G13), a `null` varargs element throws at the call (G14), and
       no `null` checks in `internal` (G16)
-- [ ] CORE-03 precedence as decided in OD-1: a `null` argument to `ContextKey.of` throws `NullPointerException` before any CORE-01 check
+- [x] CORE-03 precedence as decided in OD-1: a `null` argument to `ContextKey.of` throws `NullPointerException` before any CORE-01 check
       (T001)
-- [ ] CORE-12 order as amended: `ContextSnapshot.toString()` lists entries in ascending order of key name by `String.compareTo` (T025)
-- [ ] POL-01 and POL-03 as amended in 4051226: the last `codec`, `wireName` or `propagateTo` call on one `KeyRules` wins, a boundary listed
+- [x] CORE-12 order as amended: `ContextSnapshot.toString()` lists entries in ascending order of key name by `String.compareTo` (T025)
+- [x] POL-01 and POL-03 as amended in 4051226: the last `codec`, `wireName` or `propagateTo` call on one `KeyRules` wins, a boundary listed
       twice in one `propagateTo` call counts once, and `propagateTo(INTERNAL_CALL)` alone does not propagate to `ATTACHED` or `DETACHED` (T026)
-- [ ] `boundrail-context-core` still has no runtime dependencies (SC-003)
-- [ ] `./gradlew check` green
+- [x] `boundrail-context-core` still has no runtime dependencies (SC-003)
+- [x] `./gradlew check` green
