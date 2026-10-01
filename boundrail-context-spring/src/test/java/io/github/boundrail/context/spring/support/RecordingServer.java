@@ -8,6 +8,7 @@ import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -55,9 +56,13 @@ public final class RecordingServer implements AutoCloseable {
         return new RecordingServer(responseBody);
     }
 
-    /** {@return the base URI, such as {@code http://127.0.0.1:54321}} */
+    /** {@return the base URI, such as {@code http://127.0.0.1:54321}, with an IPv6 host in brackets} */
     public URI uri() {
-        return URI.create("http://" + server.getAddress().getHostString() + ":" + server.getAddress().getPort());
+        try {
+            return new URI("http", null, server.getAddress().getHostString(), server.getAddress().getPort(), null, null, null);
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** {@return the requests received so far, in order} */

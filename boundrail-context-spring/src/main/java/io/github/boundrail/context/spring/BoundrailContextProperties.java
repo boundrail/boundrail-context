@@ -1,6 +1,7 @@
 package io.github.boundrail.context.spring;
 
 import java.time.Duration;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -8,9 +9,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * Configuration properties under {@code boundrail.context}.
  *
  * @param violations how violations are reported
+ * @param destinations how outbound destinations are classified
  */
 @ConfigurationProperties("boundrail.context")
-public record BoundrailContextProperties(@DefaultValue Violations violations) {
+public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Destinations destinations) {
 
     /**
      * Violation reporting (DIAG-03).
@@ -26,5 +28,14 @@ public record BoundrailContextProperties(@DefaultValue Violations violations) {
                 throw new IllegalArgumentException("boundrail.context.violations.log-interval must not be negative: " + logInterval);
             }
         }
+    }
+
+    /**
+     * Host patterns of the default {@code HostPatternClassifier} (DEST-02, OUT-03).
+     *
+     * @param internalHosts host patterns classified as internal
+     * @param externalHosts host patterns classified as external
+     */
+    public record Destinations(@DefaultValue List<String> internalHosts, @DefaultValue List<String> externalHosts) {
     }
 }

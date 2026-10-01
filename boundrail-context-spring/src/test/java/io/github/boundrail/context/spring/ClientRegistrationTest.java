@@ -17,6 +17,7 @@ import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 class ClientRegistrationTest {
 
@@ -31,7 +32,7 @@ class ClientRegistrationTest {
             List<ClientHttpRequestInterceptor> interceptors = new ArrayList<>();
             context.getBean(RestClient.Builder.class).requestInterceptors(interceptors::addAll);
 
-            assertThat(interceptors).hasAtLeastOneElementOfType(ContextClientInterceptor.class);
+            assertThat(interceptors).filteredOn(ContextClientInterceptor.class::isInstance).hasSize(1);
         });
     }
 
@@ -39,7 +40,37 @@ class ClientRegistrationTest {
     @DisplayName("OUT-01 the interceptor is added to the auto-configured RestTemplateBuilder")
     void theInterceptorIsAddedToTheAutoConfiguredRestTemplateBuilder() {
         runner.run(context -> assertThat(context.getBean(RestTemplateBuilder.class).build().getInterceptors())
-                .hasAtLeastOneElementOfType(ContextClientInterceptor.class));
+                .filteredOn(ContextClientInterceptor.class::isInstance).hasSize(1));
+    }
+
+    @Test
+    @DisplayName("OUT-01 customizing a RestTemplate twice adds the interceptor once")
+    void customizingARestTemplateTwiceAddsTheInterceptorOnce() {
+        runner.run(context -> {
+            RestTemplateCustomizer customizer = context.getBean(RestTemplateCustomizer.class);
+            RestTemplate restTemplate = new RestTemplate();
+
+            customizer.customize(restTemplate);
+            customizer.customize(restTemplate);
+
+            assertThat(restTemplate.getInterceptors()).filteredOn(ContextClientInterceptor.class::isInstance).hasSize(1);
+        });
+    }
+
+    @Test
+    @DisplayName("OUT-01 customizing a RestClient.Builder twice adds the interceptor once")
+    void customizingARestClientBuilderTwiceAddsTheInterceptorOnce() {
+        runner.run(context -> {
+            RestClientCustomizer customizer = context.getBean(RestClientCustomizer.class);
+            RestClient.Builder builder = RestClient.builder();
+
+            customizer.customize(builder);
+            customizer.customize(builder);
+
+            List<ClientHttpRequestInterceptor> interceptors = new ArrayList<>();
+            builder.requestInterceptors(interceptors::addAll);
+            assertThat(interceptors).filteredOn(ContextClientInterceptor.class::isInstance).hasSize(1);
+        });
     }
 
     @Test
