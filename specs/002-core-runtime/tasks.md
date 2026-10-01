@@ -303,7 +303,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       last-change rule, so that test is green on its first run; it guards against folding every change into the deadline instead of taking the
       last one, which would bind the 1h deadline in both cases. Budgets are an hour apart, so no result depends on timing. Verify: Unit
       `DeadlineScopeTest`; RC
-- [ ] T020 [P] [US3] Authority. Red: `test/AuthorityTest.java` with `ID-01 toString never contains the credential`, `ID-01 a snapshot's
+- [x] T020 [P] [US3] Authority. Red: `test/AuthorityTest.java` with `ID-01 toString never contains the credential`, `ID-01 a snapshot's
       toString never contains the credential` (CORE-12 path), `ID-01 equals and hashCode are identity-based` (two authorities with the same
       subject and credential are not equal), `CORE-03 Authority.of rejects a null subject or credential with NullPointerException`, and
       `subject()`/`credential()` return what was given. Green: `Authority.of`, accessors, the redacted `toString` of the contract, no
