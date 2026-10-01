@@ -256,6 +256,27 @@ None. 001-foundation built the core project, its test dependencies, the three in
       case, a different flag or boundary set), each failure with `IllegalStateException`, and `CORE-03 merge rejects null with
       NullPointerException`. Green: `ContextPolicy.merge`, checking its argument first and sharing the rule comparison of T014 (CORE-03,
       POL-05). Verify: Unit `ContextPolicyValidationTest`
+- [ ] T026 [US2] Repeated `KeyRules` calls and local boundaries. Added after T013 was committed, for the two POL-01 sentences and the POL-03
+      local-boundary clause that 4051226 added to spec.md (the last call to `codec`, `wireName` or `propagateTo` wins; a boundary listed more
+      than once in one `propagateTo` call counts once; `propagateTo(INTERNAL_CALL)` alone does not propagate to `ATTACHED` or `DETACHED`);
+      numbered after T025 so existing IDs stay stable, and placed at the end of US2 because it amends T013's tests. Red: in
+      `test/ContextPolicyTest.java`, `POL-01 a repeated codec, wireName or propagateTo call replaces the earlier value` (one `KeyRules` calls
+      `codec(A)` then `codec(B)` with two distinct codec instances, `wireName("X-One")` then `wireName("X-Two")`, and `propagateTo(ATTACHED)`
+      then `propagateTo(INTERNAL_CALL)`; the built policy reports `B` by instance, `X-Two`, and among all `Boundary` values propagates exactly to
+      `INTERNAL_CALL`) and `POL-01 a boundary listed twice in one propagateTo call counts once` (with a codec and a wire name,
+      `propagateTo(INTERNAL_CALL, INTERNAL_CALL)` and `build()` throw nothing, and among all `Boundary` values the key propagates exactly to
+      `INTERNAL_CALL`); extend T013's `POL-03 a key propagates to a remote boundary only if the policy lists it` so that it also asserts the key
+      registered with `propagateTo(INTERNAL_CALL)` alone does not propagate to `ATTACHED` or `DETACHED`, tying POL-03's local-boundary clause to
+      its ID (final review point M-2). Every new and extended assertion is green before the change by design ([plan.md](plan.md#research-notes)):
+      T013's code already satisfies POL-01 and POL-03, since `KeyRules` overwrites its fields and `propagateTo` uses `Set.copyOf`. They are guard
+      tests, each catching a break: `Set.of` in `propagateTo`, which throws `IllegalArgumentException` on a duplicate boundary (the
+      duplicate-boundary test); first-call-wins for `codec`, `wireName` or `propagateTo` (the repeated-call test); a `propagateTo` that adds to the
+      boundary set instead of replacing it (the repeated-call test); an `INTERNAL_CALL` rule that also leaks to `ATTACHED` or `DETACHED` (the
+      extended POL-03 test). So that each can be seen red, show each test failing against a temporary mutation of `ContextPolicy` for each break
+      it catches, then revert the mutation. Green: no code change is needed, because the code already satisfies POL-01 and POL-03; the only
+      change to `core/ContextPolicy.java` is comment-only: the Javadoc on `BUILT_IN_RULES` now states that every policy holds these same
+      instances, since from T023 every built policy holds the built-in rules (final review point M-1) (POL-01, POL-03). Verify: Unit
+      `ContextPolicyTest`
 
 **Checkpoint**: POL-01 – POL-05, POL-09 and WIRE-03 tested; POL-06 follows in Phase 4, once the built-in keys exist.
 
@@ -357,7 +378,8 @@ None. 001-foundation built the core project, its test dependencies, the three in
   `SlotFactory.create(boolean)`, `backend()`) and runs every RC scenario enabled so far on `SCOPED_VALUE`.
 - US2: T010 can run any time after T001; T010 → T011 → T012 (they share `Codecs.java` and `CodecsTest.java`). T013 needs T001 and T010
   (`ContextCodec`). T013 → T014 → T015 → T016. T015 also needs T007 (it builds and reads snapshots through `keys()` and `find`). T012 is
-  independent of T013 – T016.
+  independent of T013 – T016. T026 needs only T013 (it extends `ContextPolicyTest`) and T023 (its comment states what T023 built); it is
+  listed at the end of US2 but runs after T023 and before T024.
 - US3: T017 needs nothing from US2 and can start after T001. T018 needs T002 and T017. T019 needs T003, T017 and T018. T020 and T021 need
   T018 and T007. T022 needs T013, T014 and T018. T023 needs T015, T016 and T022.
 - T024 comes last.
@@ -376,5 +398,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
 - [ ] CORE-03 precedence as decided in OD-1: a `null` argument to `ContextKey.of` throws `NullPointerException` before any CORE-01 check
       (T001)
 - [ ] CORE-12 order as amended: `ContextSnapshot.toString()` lists entries in ascending order of key name by `String.compareTo` (T025)
+- [ ] POL-01 and POL-03 as amended in 4051226: the last `codec`, `wireName` or `propagateTo` call on one `KeyRules` wins, a boundary listed
+      twice in one `propagateTo` call counts once, and `propagateTo(INTERNAL_CALL)` alone does not propagate to `ATTACHED` or `DETACHED` (T026)
 - [ ] `boundrail-context-core` still has no runtime dependencies (SC-003)
 - [ ] `./gradlew check` green

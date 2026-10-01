@@ -257,6 +257,15 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   T022's red comes from a compile failure, then that stub, on which the other four tests fail on missing built-in rules: the three row tests
   (`DEADLINE`, `AUTHORITY`, `INITIATOR`) on their boundaries, and the POL-03 test on `propagates(DEADLINE, INTERNAL_CALL)`. The user accepted
   this (review point I-1 of T022); it is not a TDD exception.
+- **Which T026 tests are red.** Every T026 assertion is green before the change by design: it pins spec sentences that 4051226 added to
+  POL-01 and POL-03 after T013 was committed, and T013's code already satisfies them (`KeyRules` overwrites its fields, and `propagateTo`
+  uses `Set.copyOf`, which drops duplicates). They are guard tests. `POL-01 a repeated codec, wireName or propagateTo call replaces the earlier
+  value` fails first-call-wins for `codec`, `wireName` or `propagateTo`, and a `propagateTo` that adds to the boundary set instead of
+  replacing it. `POL-01 a boundary listed twice in one propagateTo call counts once` fails `Set.of` in `propagateTo`, which throws
+  `IllegalArgumentException` on a duplicate. The extended `POL-03 a key propagates to a remote boundary only if the policy lists it` fails an
+  `INTERNAL_CALL` rule that also leaks to `ATTACHED` or `DETACHED`. The red is shown against a temporary mutation of `ContextPolicy` for each
+  break, each reverted. T026's only change to the code is the comment on `BUILT_IN_RULES` (final review point M-1). The user accepted this
+  (final review point I-1); it is not a TDD exception.
 - **Initiator.** Value equality, `hashCode` of the value, and `toString()` returning the value (ID-07). Length is `String.length()`, so 128
   supplementary characters (256 chars) are accepted and 129 (258 chars) are rejected, which a code-point count would accept. A snapshot holding
   an initiator therefore prints it (CORE-12), while an authority still prints redacted (ID-01).
@@ -377,8 +386,9 @@ stays in `integration-tests`, the only project that loads the packaged multi-rel
 | RT-02, RT-04, RT-05 | T008, T009 (RT-04: `SlotFactory.create()` passing the property and logger to `BackendOverride` is an accepted test gap; see Research Notes, the override property) |
 | RT-03 | T003 (T005 adds the `capture()` check to the RT-03 test) |
 | RT-06 | T009 (every enabled scenario on both backends), T024 (SC-001; exempt from SC-002) |
-| POL-01, POL-02 | T013 |
-| POL-03 | T013, T014, T022 |
+| POL-01 | T013, T026 (repeated `KeyRules` calls and duplicate boundaries, added after T013 for the sentences 4051226 added to POL-01) |
+| POL-02 | T013 |
+| POL-03 | T013, T014, T022, T026 (the local-boundary clause: `propagateTo(INTERNAL_CALL)` alone does not propagate to `ATTACHED` or `DETACHED`) |
 | POL-04 | T015 |
 | POL-05 | T014, T016, T023 |
 | POL-06 | T022, T023 |
