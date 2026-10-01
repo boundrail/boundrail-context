@@ -244,7 +244,9 @@ maximum budget is half of `Long.MAX_VALUE` so that the difference between any tw
 `BuiltInKeys.DEADLINE.find()`.
 
 **DL-10** `[M1]` WHEN a binding binds `DEADLINE` while a deadline is current, the resulting snapshot SHALL contain the earlier of the current and the
-new deadline. A child operation can shorten a deadline but never extend it.
+new deadline. A child operation can shorten a deadline but never extend it. When a binding changes `DEADLINE` more than once, only its last
+change SHALL apply (CORE-07), combined as above with the deadline of the snapshot current when the binding runs, so
+`Context.with(DEADLINE, a).with(DEADLINE, b)` binds the earlier of the current deadline and `b`, or `b` when none is current, and `a` has no effect.
 
 **DL-11** `[M1]` IF `Context.without` or `ContextBinding.without` is called with `DEADLINE`, THEN that call SHALL throw `IllegalArgumentException`,
 whether or not a deadline is current. Work that must outlive the request's deadline SHALL use a detached boundary (EXE-02) or explicit snapshot

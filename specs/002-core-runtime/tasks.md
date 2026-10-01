@@ -265,7 +265,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
 
 **Goal**: The three built-in values, their keys and fixed policies, and deadlines that only shrink.
 
-**Independent Test**: RC-8 in the RC command above, plus `./gradlew :boundrail-context-core:test --tests '*Deadline*' --tests '*BuiltInKeys*'
+**Independent Test**: RC-8 in the RC command above and DL-10 in `DeadlineScopeTest`, plus `./gradlew :boundrail-context-core:test --tests '*Deadline*' --tests '*BuiltInKeys*'
 --tests '*Authority*' --tests '*Initiator*'`
 
 - [x] T017 [P] [US3] Deadline value. Red: `test/DeadlineTest.java` with `DL-01 remaining is never negative` (including a negative budget),
@@ -292,10 +292,17 @@ None. 001-foundation built the core project, its test dependencies, the three in
       that skips only the reserved-prefix check), `core/Deadlines.java`, and bare `core/Authority.java` and `core/Initiator.java` class
       declarations for the key types (their factories and behaviour come in T020 and T021) (CORE-01, DL-02). Verify: Unit `BuiltInKeysTest`
 - [ ] T019 [US3] Deadlines only shrink. Red: `test/DeadlineScopeTest.java` with `DL-10 binding a later deadline keeps the current one`,
-      `DL-10 binding an earlier deadline shortens it`, `DL-10 binding a deadline with none current binds it`, `DL-11 Context.without(DEADLINE)
+      `DL-10 binding an earlier deadline shortens it`, `DL-10 binding a deadline with none current binds it`,
+      `DL-10 only the last change to DEADLINE in a binding applies` (with `current = after(3h)` current, `with(DEADLINE, after(1h))
+      .with(DEADLINE, after(2h))` binds the 2h deadline, which is `current.earliest(b)`, so the 1h `a` has no effect; with none current,
+      `with(DEADLINE, after(1h)).with(DEADLINE, after(2h))` binds the 2h deadline; both assert `isSameAs`), `DL-11 Context.without(DEADLINE)
       throws IllegalArgumentException`, `DL-11 ContextBinding.without(DEADLINE) throws IllegalArgumentException`, both with and without a
       deadline current; enable RC-8. Green: in `ContextBinding`, bind `current.earliest(bound)` when running a binding of `DEADLINE`, and reject
-      `without(DEADLINE)` at the call in `Context` and `ContextBinding` (DL-10, DL-11; RC-8). Verify: Unit `DeadlineScopeTest`; RC
+      `without(DEADLINE)` at the call in `Context` and `ContextBinding` (DL-10, DL-11; RC-8). The two earlier-deadline and none-current tests
+      and the last-change test are green before the change by design ([plan.md](plan.md#research-notes)): the code already satisfies the
+      last-change rule, so that test is green on its first run; it guards against folding every change into the deadline instead of taking the
+      last one, which would bind the 1h deadline in both cases. Budgets are an hour apart, so no result depends on timing. Verify: Unit
+      `DeadlineScopeTest`; RC
 - [ ] T020 [P] [US3] Authority. Red: `test/AuthorityTest.java` with `ID-01 toString never contains the credential`, `ID-01 a snapshot's
       toString never contains the credential` (CORE-12 path), `ID-01 equals and hashCode are identity-based` (two authorities with the same
       subject and credential are not equal), `CORE-03 Authority.of rejects a null subject or credential with NullPointerException`, and

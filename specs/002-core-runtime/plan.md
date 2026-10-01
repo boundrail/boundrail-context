@@ -232,6 +232,13 @@ ThreadLocal backend only; RuntimeConformanceIT in `integration-tests` on `integr
   the snapshot's `run`/`call` are new. That `requireNonNull` comes before the scope is entered is plan design, not a CORE-03 requirement (a
   `NullPointerException` from inside the scope, with the snapshot restored, also satisfies CORE-03); the reviewer checks it as the planned
   design. The same holds for immutable-map lookups (`find(null)`, `isRequired(null)`), which throw on their own.
+- **Which T019 tests are red.** `DL-10 binding an earlier deadline shortens it` and `DL-10 binding a deadline with none current binds it` are
+  green before T019's change, by design: plain last-value-wins already gives their results. They are guard tests: the first fails an
+  implementation that always keeps the current deadline or swaps `earliest`'s operands, the second one that fails when no deadline is current.
+  The same holds for `DL-10 only the last change to DEADLINE in a binding applies`, which the code already satisfies; it fails an
+  implementation that folds every change into the deadline instead of taking the last one. T019's red comes from
+  `DL-10 binding a later deadline keeps the current one`, the two DL-11 tests and RC-8. The user accepted this (review point I-1); it is not a
+  TDD exception.
 - **Initiator.** Value equality, `hashCode` of the value, and `toString()` returning the value (ID-07). Length is `String.length()`, so 128
   supplementary characters (256 chars) are accepted and 129 (258 chars) are rejected, which a code-point count would accept. A snapshot holding
   an initiator therefore prints it (CORE-12), while an authority still prints redacted (ID-01).
