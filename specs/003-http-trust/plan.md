@@ -134,8 +134,8 @@ unit tests already pass before their task; each red is shown against a temporary
   by a package-private `EffectivePolicy` bean: `BuiltInKeys.defaultPolicy()` merged, in bean order, with every `ContextPolicy` bean
   (`ObjectProvider.orderedStream()`). `merge` fails on conflicts (POL-05), so a conflicting pair fails startup with `IllegalStateException` as the
   root cause.
-  - Only the running context's beans count: `orderedStream()` does not look in a parent bean factory, so a parent's `ContextPolicy` is not
-    merged (T006a).
+  - Ancestor contexts count too: `orderedStream()` resolves through `beanNamesForTypeIncludingAncestors`, so a parent context's
+    `ContextPolicy` beans are merged (T006a).
   - The bean is `@Lazy(false)`, so it is built at startup even with `spring.main.lazy-initialization=true`.
     `LazyInitializationBeanFactoryPostProcessor` leaves a bean whose lazy flag is set explicitly unchanged (T006a).
   - `ApplicationContextRunner` does not run `SpringApplication`, so the property alone changes nothing in a runner test. T006a's test adds
@@ -307,7 +307,7 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T003 | `CORE-13 a null pattern list is rejected before pattern validation` | `List.copyOf` already throws `NullPointerException` for a `null` list | In `HostPatternClassifier.of`, the internal list validated before the external list is copied, so an `IllegalArgumentException` is thrown instead |
 | T005 | `POL-10 keys() is unmodifiable` | A `Set.of()` stub, the minimum `keys()` before the other POL-10 tests, cannot be changed either | `keys()` returning `new HashSet<>(rules.keySet())` |
 | T006a | `DEST-02 a host with a trailing dot is UNKNOWN` | T002's matching compares the whole host, and no valid pattern ends with a dot (DEST-04), so `orders.svc.test.` matches neither `orders.svc.test` nor `*.svc.test` | In `HostPatternClassifier.classify`, one trailing dot stripped from the host before matching |
-| T006a | `POL-07 ContextPolicy beans in a parent context are not merged` | T006's `ObjectProvider<ContextPolicy>.orderedStream()` sees only the beans of its own bean factory | In `boundrailEffectivePolicy`, the beans collected with `BeanFactoryUtils.beansOfTypeIncludingAncestors` instead |
+| T006a | `POL-07 ContextPolicy beans in a parent context are merged` | T006's `ObjectProvider<ContextPolicy>.orderedStream()` searches ancestor contexts, so the parent's bean is already merged | In `boundrailEffectivePolicy`, the beans collected with the local-only `ListableBeanFactory.getBeansOfType(ContextPolicy.class)` instead |
 | T013 | IT-2.2 External call carries no context | After T010, the interceptor writes nothing to `EXTERNAL` | In `ContextClientInterceptor`, the classified destination replaced by `Destination(INTERNAL, empty)` |
 | T013 | IT-2.3 Unknown means external | After T010, the interceptor writes nothing to `UNKNOWN` | The same change |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
@@ -381,7 +381,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | Requirement or scenario | Tasks |
 |---|---|
 | CORE-13 | T001 (DEST types), T003 (`null` before invalid pattern), T004 (`Violation`, exception), T009 (`BoundrailClients`), T016 (default verifier), T020 (test verifier), T021 (CIDR verifier), T025 (`put`, wrong type), T026 (`invalid`), T027 (`JwtClaimContributor`) |
-| POL-07 | T006, T006a (parent context not merged; eager under lazy initialization) |
+| POL-07 | T006, T006a (parent context merged; eager under lazy initialization) |
 | POL-08 | T015 (one violation per unbound required key) |
 | POL-10 | T005 |
 | DEST-01 | T001, T029 (no HTTP dependency in core) |

@@ -99,8 +99,8 @@ values are ignored and reported, and never fail the request.
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
 - Conflicting `ContextPolicy` beans with `spring.main.lazy-initialization=true`: POL-07 (startup still fails; the effective policy is built
   eagerly).
-- A `ContextPolicy` bean declared only in a parent application context: POL-07 (not merged; only the context that runs the auto-configuration
-  counts).
+- A `ContextPolicy` bean declared only in a parent application context: POL-07 (merged, as is a bean in any ancestor context of the context
+  that runs the auto-configuration).
 
 ## Requirements *(mandatory)*
 
@@ -114,8 +114,8 @@ to a record's constructor, SHALL throw `NullPointerException` at that call; an a
 ### Policy in Spring
 
 **POL-07** `[M2]` In Spring, the effective policy SHALL be the built-in default merged with every `ContextPolicy` bean in the application context.
-With no beans, the effective policy is the built-in default. Only beans in the application context that runs the auto-configuration SHALL count;
-`ContextPolicy` beans in a parent or ancestor context SHALL NOT be merged. The effective policy SHALL be built eagerly at startup, so that
+With no beans, the effective policy is the built-in default. `ContextPolicy` beans in the application context that runs the auto-configuration,
+and in its ancestor contexts, SHALL be merged. The effective policy SHALL be built eagerly at startup, so that
 conflicting `ContextPolicy` beans (POL-05) fail application startup, even when `spring.main.lazy-initialization` is `true`.
 
 **POL-08** `[M2]` WHEN an adapter is about to cross a remote boundary (`INTERNAL_CALL`, `EXTERNAL_CALL`, `MESSAGE`) and a key that is required and

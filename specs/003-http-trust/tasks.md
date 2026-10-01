@@ -173,17 +173,18 @@ this feature needs is added in the green step of the first task whose test needs
         `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as
         `SpringApplication` does for that property (`ApplicationContextRunner` does not run `SpringApplication`). `IllegalStateException` is
         the root cause of the startup failure. Red against T006's code, whose bean is then lazy and never created;
-      - `POL-07 ContextPolicy beans in a parent context are not merged`: a parent context with a `ContextPolicy` bean registering a key, set
-        with `withParent`; that key is not in the child's effective policy's `keys()`, and the built-in keys are. This is a guard: T006's
-        `ObjectProvider` code already passes it. Show it red with `boundrailEffectivePolicy` temporarily collecting the beans with
-        `BeanFactoryUtils.beansOfTypeIncludingAncestors`, then revert ([plan.md](plan.md#guard-tests));
+      - `POL-07 ContextPolicy beans in a parent context are merged`: a parent context with a `ContextPolicy` bean registering a key, set
+        with `withParent`; that key is in the child's effective policy's `keys()`, and so are the built-in keys. This is a guard: T006's
+        `ObjectProvider.orderedStream()` searches ancestor contexts, so the current code already passes it. Show it red with
+        `boundrailEffectivePolicy` temporarily collecting the beans with the local-only
+        `ListableBeanFactory.getBeansOfType(ContextPolicy.class)`, then revert ([plan.md](plan.md#guard-tests));
     - in `coretest/HostPatternClassifierTest.java`:
       - `DEST-02 a host with a trailing dot is UNKNOWN`: with `orders.svc.test` and `*.svc.test` in both lists, `http://orders.svc.test./` is
         `UNKNOWN` with no service name. This is a guard: the current code already returns `UNKNOWN`. Show it red with `classify` temporarily
         stripping one trailing dot from the host, then revert ([plan.md](plan.md#guard-tests)).
   - Green: `@Lazy(false)` on the `boundrailEffectivePolicy` bean method in `spring/BoundrailContextAutoConfiguration.java`
     ([plan.md](plan.md#spring-wiring)).
-  - Completes: POL-07 (parent context not merged; eager under lazy initialization); DEST-02 (trailing-dot edge case).
+  - Completes: POL-07 (parent context merged; eager under lazy initialization); DEST-02 (trailing-dot edge case).
   - Verify: Unit `EffectivePolicyTest` in `:boundrail-context-spring` and `HostPatternClassifierTest` in `:boundrail-context-core`;
     `./gradlew check`.
 - [ ] T007 Violation reporting.
