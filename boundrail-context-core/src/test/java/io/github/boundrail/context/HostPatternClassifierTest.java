@@ -95,6 +95,17 @@ class HostPatternClassifierTest {
     }
 
     @Test
+    @DisplayName("DEST-02 a host with a trailing dot is UNKNOWN")
+    void aHostWithATrailingDotIsUnknown() {
+        HostPatternClassifier classifier = HostPatternClassifier.of(
+                List.of("orders.svc.test", "*.svc.test"),
+                List.of("orders.svc.test", "*.svc.test"));
+
+        assertThat(classifier.classify(undeclared("http://orders.svc.test./")))
+                .isEqualTo(new Destination(Destination.Kind.UNKNOWN, Optional.empty()));
+    }
+
+    @Test
     @DisplayName("DEST-02 host patterns compare case-insensitively")
     void hostPatternsCompareCaseInsensitively() {
         HostPatternClassifier classifier = HostPatternClassifier.of(

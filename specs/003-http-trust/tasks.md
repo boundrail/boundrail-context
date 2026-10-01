@@ -166,7 +166,7 @@ this feature needs is added in the green step of the first task whose test needs
     `TopologySmokeIT` must stay green now that every topology service loads the auto-configuration.
   - Completes: POL-07.
   - Verify: Unit `AutoConfigurationImportsTest` and `EffectivePolicyTest` in `:boundrail-context-spring`; `./gradlew check`.
-- [ ] T006a Effective policy scope and eager startup.
+- [x] T006a Effective policy scope and eager startup.
   - Red:
     - in `springtest/EffectivePolicyTest.java`:
       - `POL-07 conflicting ContextPolicy beans fail startup with lazy initialization`: the two conflicting beans of T006's test, with
