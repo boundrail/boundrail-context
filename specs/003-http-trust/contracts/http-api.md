@@ -83,6 +83,8 @@ public final class ContextViolationException extends RuntimeException {
 }
 ```
 
+`key` is always the policy key name (such as `tenant`), never a header name, including for `UNTRUSTED_HEADER` and `FORBIDDEN_HEADER` (DIAG-01).
+
 When several required keys are unbound on one crossing, each is reported and the exception carries the first by key name (DIAG-02).
 
 `captureSite` and `executorEvidence` are populated from 004-async-diagnostics (DIAG-04, DIAG-05); `MISSING_AUDIENCE` is raised from 006-identity

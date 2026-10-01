@@ -84,7 +84,8 @@ values are ignored and reported, and never fail the request.
 - An inbound value is both oversized and undecodable, or an outbound value is both oversized and not a valid field value: WIRE-04 (reported once,
   as `OVERSIZED_VALUE`).
 - A trusted request repeats a policy wire header: IN-02 (unbound, one `INVALID_VALUE`). An untrusted request repeats one: IN-02 (one
-  `UNTRUSTED_HEADER` for that header name). A request repeats `Boundrail-Test-Peer`: TEST-01 (`UNTRUSTED`).
+  `UNTRUSTED_HEADER` for the key whose wire name it is; its `key` is the policy key name, not the header name as received, DIAG-01). A request
+  repeats `Boundrail-Test-Peer`: TEST-01 (`UNTRUSTED`).
 - A JWT claim value longer than `wire.max-value-length`: IN-06 (no length check; WIRE-04 applies only when the value is sent on the wire).
 - Two contributions for the same key: IN-05 (the first wins).
 - Invalid host patterns or CIDR entries: DEST-04, IN-08 (startup fails).
@@ -274,6 +275,9 @@ including an `IllegalArgumentException`, SHALL propagate unchanged, and no viola
 ### Violations
 
 **DIAG-01** `[M2]` The library SHALL recognise exactly the violation kinds listed in [contracts/http-api.md](contracts/http-api.md).
+A `Violation`'s `key` SHALL be the name of the policy key it concerns, such as `tenant`, for every kind, including `UNTRUSTED_HEADER` and
+`FORBIDDEN_HEADER`. It SHALL NOT be the header name as received or as set by application code: HTTP header names are case-insensitive (WIRE-06),
+and the log entry reports the wire name separately (DIAG-09).
 
 **DIAG-02** `[M2]` WHEN a `MISSING_REQUIRED` violation occurs and `boundrail.context.violations.mode=fail` (default), the adapter SHALL report the
 violation (DIAG-03) and then throw a `ContextViolationException` carrying it, before crossing the boundary. WHEN the mode is `report`, it SHALL
@@ -284,12 +288,14 @@ always be report-only.
 
 **DIAG-03** `[M2]` Reporting a violation SHALL:
 
-- log at WARN, rate-limited to one entry per (kind, key, boundary) per `boundrail.context.violations.log-interval` (default 1 minute);
+- log at WARN, rate-limited to one entry per (kind, key, boundary) per `boundrail.context.violations.log-interval` (default 1 minute); WHEN the
+  interval is zero, every occurrence SHALL be logged, with no rate limit;
 - WHERE the application context has a unique or primary `MeterRegistry` bean, increment the counter `boundrail.context.violations` in that
   registry, tagged with `kind`, `key` and `boundary` in lowercase.
 
 Every occurrence SHALL be counted, even when the log entry is rate-limited. The library SHALL NOT count violations in Micrometer's global registry
-(`Metrics.globalRegistry`), because violation reporting belongs to one application context (DESIGN D31, §11).
+(`Metrics.globalRegistry`), because violation reporting belongs to one application context (DESIGN D31, §11). IF `log-interval` is negative,
+THEN application startup SHALL fail.
 
 **DIAG-08** `[M2]` For a violation found on an inbound value, `boundary` SHALL be the boundary the value travelled over (`INTERNAL_CALL` for HTTP,
 `MESSAGE` for Kafka), and `destination` SHALL be empty. A value taken from the authentication of an HTTP request, such as a JWT claim (IN-06), is an
@@ -317,7 +323,7 @@ Properties use the prefix `boundrail.context.`.
 | Property | Default | Meaning |
 |---|---|---|
 | `violations.mode` | `fail` | `fail` or `report` (DIAG-02) |
-| `violations.log-interval` | `1m` | Rate limit for violation logs (DIAG-03) |
+| `violations.log-interval` | `1m` | Rate limit for violation logs; `0s` logs every occurrence, and a negative value fails startup (DIAG-03) |
 | `inbound.trust` | `none` | `none` or `cidr`; a verifier bean overrides it (IN-03) |
 | `inbound.trusted-cidrs` | `[]` | IPv4 or IPv6 CIDRs, or bare addresses, trusted when `inbound.trust=cidr` (IN-03, IN-08). Matched against `getRemoteAddr()`: with forwarded-header processing enabled, a proxy, or a client forging `Forwarded` or `X-Forwarded-For` headers that no proxy strips, decides that address |
 | `destinations.internal-hosts` | `[]` | Host patterns classified as internal (DEST-02, OUT-03) |

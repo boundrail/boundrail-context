@@ -11,4 +11,5 @@ dependencies {
     compileOnly(libs.micrometer.core)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.micrometer.core)
 }

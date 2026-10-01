@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and thirteen
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and fifteen
 unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; sixteen guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; eighteen guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -153,7 +153,13 @@ unit tests already pass before their task; each red is shown against a temporary
     (`Locale.ROOT`). It uses `ObjectProvider<MeterRegistry>.getIfUnique()`, which returns the only bean or the primary one, and is otherwise empty.
     It never touches `Metrics.globalRegistry`.
   - It logs at WARN through Commons Logging (`org.apache.commons.logging.Log`, Spring's own logging API), at most once per (kind, key, boundary)
-    per `log-interval`.
+    per `log-interval`. A repeat is logged when `now` is not before the last entry plus `log-interval`, so `0s` logs every occurrence. A
+    negative `log-interval` fails startup: the `Violations` compact constructor throws `IllegalArgumentException`. Both are user decisions
+    (DIAG-03).
+  - `Violation.key` is always the policy key's name (`ContextKey.name()`, e.g. `tenant`, `boundrail.initiator`), never the header name as
+    received or as written (user decision, DIAG-01). The reporter's counter tag `key` and the log entry's key name come from it, and the wire
+    name is looked up from it. Every later task that builds a violation (T011, T012, T014, T015, T018, T019, T023, T024, T026 – T028) passes the
+    key's name, also when the violation is found through a header, as in `FORBIDDEN_HEADER` and `UNTRUSTED_HEADER`.
   - The log entry holds the kind, the key name, the key's wire name when the policy gives it one (looked up through `EffectivePolicy` and
     `keys()`), the boundary, the destination and the thread. It never holds a value or an exception message.
   - A package-private constructor takes the `Log` and a `java.time.Clock`, so tests record entries and move time without sleeping.
@@ -308,6 +314,8 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T005 | `POL-10 keys() is unmodifiable` | A `Set.of()` stub, the minimum `keys()` before the other POL-10 tests, cannot be changed either | `keys()` returning `new HashSet<>(rules.keySet())` |
 | T006a | `DEST-02 a host with a trailing dot is UNKNOWN` | T002's matching compares the whole host, and no valid pattern ends with a dot (DEST-04), so `orders.svc.test.` matches neither `orders.svc.test` nor `*.svc.test` | In `HostPatternClassifier.classify`, one trailing dot stripped from the host before matching |
 | T006a | `POL-07 ContextPolicy beans in a parent context are merged` | T006's `ObjectProvider<ContextPolicy>.orderedStream()` searches ancestor contexts, so the parent's bean is already merged | In `boundrailEffectivePolicy`, the beans collected with the local-only `ListableBeanFactory.getBeansOfType(ContextPolicy.class)` instead |
+| T007 | `DIAG-03 the auto-configured reporter uses the configured log-interval` | T007's bean passes `properties.violations().logInterval()` in the same green step that makes the other log-interval tests pass | In `BoundrailContextAutoConfiguration`, the reporter bean built with `Duration.ofMinutes(1)` instead of the property |
+| T007 | `DIAG-03 without Micrometer on the classpath the violation is logged` (the `doesNotHaveBean(ViolationReporter.Counter.class)` assertion) | T007's nested configuration has `@ConditionalOnClass(MeterRegistry.class)` from its first green step | The `@ConditionalOnClass` removed from the nested counter configuration |
 | T013 | IT-2.2 External call carries no context | After T010, the interceptor writes nothing to `EXTERNAL` | In `ContextClientInterceptor`, the classified destination replaced by `Destination(INTERNAL, empty)` |
 | T013 | IT-2.3 Unknown means external | After T010, the interceptor writes nothing to `UNKNOWN` | The same change |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |

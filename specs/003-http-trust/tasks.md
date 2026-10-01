@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Sixteen guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T012, and two unit tests each
-  in T001, T003, T006a, T024 and T028.
+- Eighteen guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T012, and two unit tests
+  each in T001, T003, T006a, T007, T024 and T028.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -187,7 +187,7 @@ this feature needs is added in the green step of the first task whose test needs
   - Completes: POL-07 (parent context merged; eager under lazy initialization); DEST-02 (trailing-dot edge case).
   - Verify: Unit `EffectivePolicyTest` in `:boundrail-context-spring` and `HostPatternClassifierTest` in `:boundrail-context-core`;
     `./gradlew check`.
-- [ ] T007 Violation reporting.
+- [x] T007 Violation reporting.
   - Red, in `springtest/ViolationReporterTest.java`, with `springtest/support/RecordingLog.java` recording entries:
     - `DIAG-03 a violation is logged at WARN`: one WARN entry naming the kind, key, boundary, destination and thread;
     - `DIAG-09 the log entry identifies the value by key name, wire name and boundary`: `tenant` with `Tenant-Id` and `INTERNAL_CALL`; a key
@@ -197,6 +197,11 @@ this feature needs is added in the green step of the first task whose test needs
       - one with another kind, key or boundary is;
       - after the interval has passed, it is logged again;
     - `DIAG-03 log-interval defaults to one minute and is configurable`;
+    - `DIAG-03 the auto-configured reporter uses the configured log-interval` (`ApplicationContextRunner`): with
+      `boundrail.context.violations.log-interval=0s`, two identical violations reported through the context's `ViolationReporter` give two
+      log entries (`0s` logs every occurrence). This is a guard: show it red with the bean temporarily ignoring the property and using
+      `Duration.ofMinutes(1)`, then revert ([plan.md](plan.md#guard-tests));
+    - `DIAG-03 a negative log-interval fails startup`: `log-interval=-1s` fails the context;
     - `DIAG-03 every occurrence is counted even when the log entry is rate-limited`: three identical violations count 3 in
       `boundrail.context.violations` of the `MeterRegistry` bean;
     - `DIAG-03 counter tags are kind, key and boundary in lower case`: `kind=forbidden_header`, `key=tenant`, `boundary=external_call`;
@@ -204,12 +209,15 @@ this feature needs is added in the green step of the first task whose test needs
     - `DIAG-03 with several MeterRegistry beans and no primary the violation is logged and not counted`: startup succeeds;
     - `DIAG-03 without a MeterRegistry bean the violation is logged and the global registry is untouched`: a `SimpleMeterRegistry` added to
       `Metrics.globalRegistry` for the test, and removed after, has no `boundrail.context.violations` meter;
-    - `DIAG-03 without Micrometer on the classpath the violation is logged`: `FilteredClassLoader(MeterRegistry.class)`.
+    - `DIAG-03 without Micrometer on the classpath the violation is logged`: `FilteredClassLoader(MeterRegistry.class)`; the context has no
+      `ViolationReporter.Counter` bean (`doesNotHaveBean`). This is a guard: show it red with the `@ConditionalOnClass` temporarily removed
+      from the nested configuration, then revert ([plan.md](plan.md#guard-tests)).
   - Green:
     - package-private `spring/ViolationReporter.java`: `Log` and `Clock` through a package-private constructor; wire names through
       `EffectivePolicy` and `keys()`;
     - the counter function in a nested `@ConditionalOnClass(MeterRegistry.class)` configuration using `ObjectProvider.getIfUnique()`;
-    - `spring/BoundrailContextProperties.java` with `violations.log-interval`;
+    - `spring/BoundrailContextProperties.java` with `violations.log-interval`; the `Violations` compact constructor rejects a negative
+      `Duration` with `IllegalArgumentException`, and `0s` is accepted;
     - `micrometer-core` as `testImplementation`.
   - Completes: DIAG-03; DIAG-09 (log entry content).
   - Verify: Unit `ViolationReporterTest`.
@@ -335,14 +343,15 @@ enforces required keys, the length limit and valid field values.
     - in `ContextClientInterceptorTest`:
       - `WIRE-07 an application-set header named after a key that does not propagate to EXTERNAL_CALL is removed on an external call`, also
         `Boundrail-Initiator` and `Boundrail-Deadline-Ms`;
-      - `WIRE-07 one FORBIDDEN_HEADER violation is reported per removed header`: two headers give two violations, with destination `EXTERNAL`,
-        and the call continues in `fail` mode (DIAG-02);
+      - `WIRE-07 one FORBIDDEN_HEADER violation is reported per removed header`: `Tenant-Id` and `Boundrail-Initiator` give two violations,
+        with keys `tenant` and `boundrail.initiator` (key names, not header names) and destination `EXTERNAL`, and the call continues in
+        `fail` mode (DIAG-02);
       - `WIRE-07 Authorization is never removed`;
       - `WIRE-07 a header of a key that propagates to EXTERNAL_CALL is kept`;
       - `DEST-03 an UNKNOWN destination is stripped like EXTERNAL`;
-      - `WIRE-06 forbidden headers are matched ignoring case` (`tenant-id`);
+      - `WIRE-06 forbidden headers are matched ignoring case`: `tenant-id` is removed and reported with key `tenant`;
       - `WIRE-07 a removed header name with several values is reported once`: application code adds `Tenant-Id` twice, with two values, on
-        an external call; partner receives neither value, and one `FORBIDDEN_HEADER` is reported.
+        an external call; partner receives neither value, and one `FORBIDDEN_HEADER` with key `tenant` is reported.
   - Green:
     - stripping in `ContextClientInterceptor` over the wire names of `policy.keys()`, one violation per removed name;
     - topology test code: a `SimpleMeterRegistry` bean per service and `Running.violations(Service, Violation.Kind)` in `topology/Topology.java`;
@@ -437,13 +446,13 @@ authentication through contributors.
 - [ ] T019 [US2] Untrusted headers are reported.
   - Red, in `ContextInboundFilterTest` (default verifier):
     - `IN-02 one UNTRUSTED_HEADER violation is reported per policy wire header present`: `Tenant-Id`, `Priority` and `Boundrail-Initiator` give
-      three violations; nothing is bound;
+      three violations, with keys `tenant`, `priority` and `boundrail.initiator` (key names, not header names); nothing is bound;
     - `IN-02 a repeated untrusted header is reported once`: two `Tenant-Id` values, or `Tenant-Id` and `tenant-id`, give one
-      `UNTRUSTED_HEADER`;
+      `UNTRUSTED_HEADER`, with key `tenant`;
     - `DIAG-08 an untrusted header violation has boundary INTERNAL_CALL and no destination`;
     - `IN-02 untrusted headers never fail the request`: the chain runs, in the default `fail` mode (DIAG-02);
     - `IN-02 every wire name of the effective policy's keys is reported, not only those the trusted path binds`: `Boundrail-Deadline-Ms`
-      gives one `UNTRUSTED_HEADER` for the deadline key, and the header of a key that propagates only to `MESSAGE` gives one for that key;
+      gives one `UNTRUSTED_HEADER` with key `boundrail.deadline`, and the header of a key that propagates only to `MESSAGE` gives one for that key;
     - `IN-02 Authorization is not a policy wire header`: `Authorization: Bearer x` with `Tenant-Id` gives exactly one `UNTRUSTED_HEADER`,
       for `tenant`.
   - Green: reporting in the `UNTRUSTED` branch of `ContextInboundFilter`, over the wire names of every key in `policy.keys()`.
@@ -665,8 +674,8 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T012 unit guards and the two unit guards each in T001, T003, T006a, T024 and
-  T028)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T012 unit guards and the two unit guards each in T001, T003, T006a, T007, T024
+  and T028)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green
