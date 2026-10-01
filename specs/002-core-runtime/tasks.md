@@ -326,7 +326,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       Green: `BuiltInKeys.defaultPolicy()` through a package-private path of `ContextPolicy` that skips POL-03's check, POL-06's rejection and
       POL-09 (DL-02, POL-03, POL-06). The built-in-rules-only test is green on the signature stub, because an empty policy also leaves
       the application key unregistered ([plan.md](plan.md#research-notes)). Verify: Unit `BuiltInKeysTest`
-- [ ] T023 [US3] Built-in rules in every policy. Red: in `ContextPolicyValidationTest`, `POL-06 build fails when a builder registers a built-in
+- [x] T023 [US3] Built-in rules in every policy. Red: in `ContextPolicyValidationTest`, `POL-06 build fails when a builder registers a built-in
       key` (each of the three, with `IllegalStateException`), `POL-06 every built policy includes the built-in rules` (in `builder().build()`,
       `DEADLINE` does not propagate to `DETACHED`, `INITIATOR` reports `Boundrail-Initiator`, and `filter` drops `DEADLINE` at `DETACHED`),
       `POL-05 merging two built policies accepts their equal built-in rules` (the merge succeeds and the merged policy reports a built-in

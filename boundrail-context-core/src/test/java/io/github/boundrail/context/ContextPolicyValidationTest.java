@@ -1,6 +1,7 @@
 package io.github.boundrail.context;
 
 import static io.github.boundrail.context.Boundary.ATTACHED;
+import static io.github.boundrail.context.Boundary.DETACHED;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.MESSAGE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -8,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.junit.jupiter.api.Named.named;
 
+import java.time.Duration;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
@@ -232,6 +234,47 @@ class ContextPolicyValidationTest {
         ContextPolicy second = ContextPolicy.builder().key(TENANT, conflicting).build();
 
         assertThatIllegalStateException().isThrownBy(() -> first.merge(second));
+    }
+
+    static Stream<Named<ContextKey<?>>> builtInKeys() {
+        return Stream.of(
+                named("DEADLINE", BuiltInKeys.DEADLINE),
+                named("AUTHORITY", BuiltInKeys.AUTHORITY),
+                named("INITIATOR", BuiltInKeys.INITIATOR));
+    }
+
+    /** The rules are valid for an application key (no remote boundary, no wire name), so only POL-06 can reject them. */
+    @ParameterizedTest
+    @MethodSource("builtInKeys")
+    @DisplayName("POL-06 build fails when a builder registers a built-in key")
+    void buildFailsWhenABuilderRegistersABuiltInKey(ContextKey<?> builtIn) {
+        ContextPolicy.Builder builder = ContextPolicy.builder().key(builtIn, rules -> rules.propagateTo(ATTACHED));
+
+        assertThatIllegalStateException().isThrownBy(builder::build);
+    }
+
+    @Test
+    @DisplayName("POL-06 every built policy includes the built-in rules")
+    void everyBuiltPolicyIncludesTheBuiltInRules() {
+        ContextPolicy policy = ContextPolicy.builder().build();
+        ContextSnapshot snapshot = Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofHours(1))).call(Context::capture);
+
+        assertThat(policy.propagates(BuiltInKeys.DEADLINE, DETACHED)).isFalse();
+        assertThat(policy.wireName(BuiltInKeys.INITIATOR)).contains("Boundrail-Initiator");
+        assertThat(policy.filter(snapshot, DETACHED).keys()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("POL-05 merging two built policies accepts their equal built-in rules")
+    void mergingTwoBuiltPoliciesAcceptsTheirEqualBuiltInRules() {
+        ContextPolicy first = ContextPolicy.builder().key(TENANT, TENANT_RULES).build();
+        ContextPolicy second = ContextPolicy.builder()
+                .key(REGION, rules -> rules.codec(Codecs.string()).wireName("X-Region").propagateTo(INTERNAL_CALL))
+                .build();
+
+        ContextPolicy merged = first.merge(second);
+
+        assertThat(merged.wireName(BuiltInKeys.DEADLINE)).contains("Boundrail-Deadline-Ms");
     }
 
     @Test

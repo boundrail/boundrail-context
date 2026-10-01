@@ -209,12 +209,12 @@ public final class ContextPolicy {
         <T> Builder key(ContextKey<T> key, Consumer<KeyRules<T>> rules);
 
         /**
-         * Builds a policy with the rules registered so far; later use of this builder does not change it.
+         * Builds a policy with the rules registered so far and the built-in rules (POL-06); later use of this builder does not change it.
          *
          * @return the policy
          * @throws IllegalStateException if a key lists a remote boundary without both a codec and a wire name (POL-03), one key is
-         *     registered with conflicting rules, two different keys have the same name or wire names equal ignoring case (POL-05), or a wire
-         *     name is reserved (POL-09)
+         *     registered with conflicting rules, two different keys have the same name or wire names equal ignoring case (POL-05), a
+         *     built-in key is registered (POL-06), or a wire name is reserved (POL-09)
          */
         ContextPolicy build();
     }
@@ -297,6 +297,11 @@ public final class ContextPolicy {
             if (!conflicts.isEmpty()) {
                 throw new IllegalStateException(conflicts.getFirst());
             }
+            for (ContextKey<?> key : rules.keySet()) {
+                if (BUILT_IN_RULES.containsKey(key)) {
+                    throw new IllegalStateException("Built-in context key " + key.name() + " cannot be registered");
+                }
+            }
             rules.forEach((key, keyRules) -> {
                 String wireName = keyRules.wireName();
                 boolean remote = keyRules.boundaries().stream().anyMatch(REMOTE_BOUNDARIES::contains);
@@ -312,8 +317,10 @@ public final class ContextPolicy {
                     throw new IllegalStateException("Context key " + key.name() + " uses the reserved wire name " + wireName);
                 }
             });
-            checkDistinctNames(rules);
-            return new ContextPolicy(rules);
+            Map<ContextKey<?>, Rules> withBuiltIn = new HashMap<>(rules);
+            withBuiltIn.putAll(BUILT_IN_RULES);
+            checkDistinctNames(withBuiltIn);
+            return new ContextPolicy(withBuiltIn);
         }
     }
 
