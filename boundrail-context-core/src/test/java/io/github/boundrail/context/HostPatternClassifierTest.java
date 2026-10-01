@@ -1,6 +1,8 @@
 package io.github.boundrail.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 import java.lang.reflect.Constructor;
@@ -19,6 +21,8 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class HostPatternClassifierTest {
 
@@ -84,9 +88,9 @@ class HostPatternClassifierTest {
     @Test
     @DisplayName("DEST-02 a URI whose host does not parse is UNKNOWN")
     void aUriWhoseHostDoesNotParseIsUnknown() {
-        HostPatternClassifier classifier = HostPatternClassifier.of(List.of("orders_svc"), List.of("orders_svc"));
+        HostPatternClassifier classifier = HostPatternClassifier.of(List.of("*.svc.test"), List.of("*.svc.test"));
 
-        assertThat(classifier.classify(undeclared("http://orders_svc:8080/")))
+        assertThat(classifier.classify(undeclared("http://orders_x.svc.test:8080/")))
                 .isEqualTo(new Destination(Destination.Kind.UNKNOWN, Optional.empty()));
     }
 
@@ -206,5 +210,42 @@ class HostPatternClassifierTest {
         assertThatNullPointerException().isThrownBy(() -> HostPatternClassifier.of(withNull, List.of()));
         assertThatNullPointerException().isThrownBy(() -> HostPatternClassifier.of(List.of(), withNull));
         assertThatNullPointerException().isThrownBy(() -> CLASSIFIER.classify(null));
+    }
+
+    /** A 253-character name: three 63-character labels and a 61-character label, joined by three dots. */
+    private static final String NAME_253 = "a".repeat(63) + "." + "b".repeat(63) + "." + "c".repeat(63) + "." + "d".repeat(61);
+
+    /** A 254-character name: three 63-character labels and a 62-character label, joined by three dots. */
+    private static final String NAME_254 = "a".repeat(63) + "." + "b".repeat(63) + "." + "c".repeat(63) + "." + "d".repeat(62);
+
+    static Stream<String> invalidHostPatterns() {
+        return Stream.of("*", "*.", "a.*.b", "foo*", "", "orders:8080", "orders.svc.", "a..b", ".a", "-a.b", "a-.b",
+                "a".repeat(64), NAME_254, "10.0.0.1", "*.10.0.0.1", "::1", "[::1]");
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidHostPatterns")
+    @DisplayName("DEST-04 invalid host patterns are rejected")
+    void invalidHostPatternsAreRejected(String pattern) {
+        assertThatIllegalArgumentException().isThrownBy(() -> HostPatternClassifier.of(List.of(pattern), List.of()));
+        assertThatIllegalArgumentException().isThrownBy(() -> HostPatternClassifier.of(List.of(), List.of(pattern)));
+    }
+
+    static Stream<String> validHostPatterns() {
+        return Stream.of("orders", "orders.svc.test", "*.svc.test", "ORDERS.svc.test", "a-b.c", "123.example", "a".repeat(63), NAME_253,
+                "*." + NAME_253);
+    }
+
+    @ParameterizedTest
+    @MethodSource("validHostPatterns")
+    @DisplayName("DEST-04 valid host patterns are accepted")
+    void validHostPatternsAreAccepted(String pattern) {
+        assertThatCode(() -> HostPatternClassifier.of(List.of(pattern), List.of(pattern))).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("CORE-13 a null pattern list is rejected before pattern validation")
+    void aNullPatternListIsRejectedBeforePatternValidation() {
+        assertThatNullPointerException().isThrownBy(() -> HostPatternClassifier.of(List.of("*"), null));
     }
 }

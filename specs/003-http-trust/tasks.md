@@ -13,9 +13,12 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Eleven guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T012, and two unit tests each in
-  T001, T024 and T028.
+- Thirteen guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T012, and two unit tests each in
+  T001, T003, T024 and T028.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
+- A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
+  which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
+  checks it.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -96,14 +99,17 @@ this feature needs is added in the green step of the first task whose test needs
   - Green: wildcard and case-insensitive matching with `Locale.ROOT` in `HostPatternClassifier`.
   - Completes: DEST-02.
   - Verify: Unit `HostPatternClassifierTest`.
-- [ ] T003 Host pattern validation.
+- [x] T003 Host pattern validation.
   - Red, in `HostPatternClassifierTest`:
     - `DEST-04 invalid host patterns are rejected`: `HostPatternClassifier.of` throws `IllegalArgumentException` for each of `*`, `*.`,
       `a.*.b`, `foo*`, the empty string, `orders:8080`, `orders.svc.`, `a..b`, `.a`, `-a.b`, `a-.b`, a 64-character label, a 254-character
       name, `10.0.0.1`, `*.10.0.0.1`, `::1` and `[::1]`, in either list;
     - `DEST-04 valid host patterns are accepted`: `orders`, `orders.svc.test`, `*.svc.test`, `ORDERS.svc.test`, `a-b.c`, `123.example`, a
-      63-character label, a 253-character name, and `*.` followed by a 253-character name;
-    - `CORE-13 a null pattern list is rejected before pattern validation`: `of(List.of("*"), null)` throws `NullPointerException`.
+      63-character label, a 253-character name, and `*.` followed by a 253-character name. This is a guard: show it red with `of`
+      temporarily counting the 253-character limit over the whole pattern including `*.`, then revert ([plan.md](plan.md#guard-tests));
+    - `CORE-13 a null pattern list is rejected before pattern validation`: `of(List.of("*"), null)` throws `NullPointerException`. This is a
+      guard: show it red with `of` temporarily validating the internal list before copying the external list, then revert
+      ([plan.md](plan.md#guard-tests)).
   - Rewrite T001's guard `DEST-02 a URI whose host does not parse is UNKNOWN`, whose pattern `orders_svc` is invalid under DEST-04: it now
     builds the classifier with the pattern `*.svc.test` in both lists and expects `http://orders_x.svc.test:8080/` to be `UNKNOWN` with no
     service name. `getHost()` is `null` for that URI, and a raw-authority fallback would match it. Show it red again with `classify`
@@ -637,7 +643,7 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T012 unit guards and the two unit guards each in T001, T024 and T028) shown red
-  against their temporary change, and the change reverted
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T012 unit guards and the two unit guards each in T001, T003, T024 and T028)
+  shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green
