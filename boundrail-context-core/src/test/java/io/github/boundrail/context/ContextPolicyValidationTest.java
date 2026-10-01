@@ -5,6 +5,7 @@ import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.MESSAGE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.junit.jupiter.api.Named.named;
 
 import java.util.function.Consumer;
@@ -152,5 +153,92 @@ class ContextPolicyValidationTest {
                 .key(TENANT, rules -> rules.codec(Codecs.string()).wireName(wireName).propagateTo(INTERNAL_CALL));
 
         assertThatIllegalStateException().isThrownBy(builder::build);
+    }
+
+    @Test
+    @DisplayName("POL-05 merge combines the keys of both policies")
+    void mergeCombinesTheKeysOfBothPolicies() {
+        ContextPolicy tenantPolicy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").required().propagateTo(INTERNAL_CALL))
+                .build();
+        ContextPolicy regionPolicy = ContextPolicy.builder()
+                .key(REGION, rules -> rules.codec(CODEC).wireName("X-Region").loggable().propagateTo(MESSAGE))
+                .build();
+
+        ContextPolicy merged = tenantPolicy.merge(regionPolicy);
+
+        assertThat(merged.codec(TENANT)).containsSame(Codecs.string());
+        assertThat(merged.wireName(TENANT)).contains("X-Tenant");
+        assertThat(merged.isRequired(TENANT)).isTrue();
+        assertThat(merged.isLoggable(TENANT)).isFalse();
+        assertThat(Stream.of(Boundary.values()).filter(boundary -> merged.propagates(TENANT, boundary))).containsExactly(INTERNAL_CALL);
+        assertThat(merged.codec(REGION)).containsSame(CODEC);
+        assertThat(merged.wireName(REGION)).contains("X-Region");
+        assertThat(merged.isRequired(REGION)).isFalse();
+        assertThat(merged.isLoggable(REGION)).isTrue();
+        assertThat(Stream.of(Boundary.values()).filter(boundary -> merged.propagates(REGION, boundary))).containsExactly(MESSAGE);
+    }
+
+    @Test
+    @DisplayName("POL-05 merge accepts the same key with equal rules")
+    void mergeAcceptsTheSameKeyWithEqualRules() {
+        ContextPolicy first = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").required().loggable()
+                        .propagateTo(ATTACHED, INTERNAL_CALL))
+                .build();
+        ContextPolicy second = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").required().loggable()
+                        .propagateTo(INTERNAL_CALL, ATTACHED))
+                .build();
+
+        ContextPolicy merged = first.merge(second);
+
+        assertThat(merged.codec(TENANT)).containsSame(Codecs.string());
+        assertThat(merged.wireName(TENANT)).contains("X-Tenant");
+        assertThat(merged.isRequired(TENANT)).isTrue();
+        assertThat(merged.isLoggable(TENANT)).isTrue();
+        assertThat(Stream.of(Boundary.values()).filter(boundary -> merged.propagates(TENANT, boundary)))
+                .containsExactly(ATTACHED, INTERNAL_CALL);
+    }
+
+    @Test
+    @DisplayName("POL-05 merge fails on two different keys with the same name")
+    void mergeFailsOnTwoDifferentKeysWithTheSameName() {
+        ContextKey<String> otherTenant = ContextKey.of("acme.tenant", String.class);
+        ContextPolicy first = ContextPolicy.builder().key(TENANT, TENANT_RULES).build();
+        ContextPolicy second = ContextPolicy.builder()
+                .key(otherTenant, rules -> rules.codec(Codecs.string()).wireName("X-Other-Tenant").propagateTo(INTERNAL_CALL))
+                .build();
+
+        assertThatIllegalStateException().isThrownBy(() -> first.merge(second));
+    }
+
+    @Test
+    @DisplayName("POL-05 merge fails on two different keys with wire names equal ignoring case")
+    void mergeFailsOnTwoDifferentKeysWithWireNamesEqualIgnoringCase() {
+        ContextPolicy first = ContextPolicy.builder().key(TENANT, TENANT_RULES).build();
+        ContextPolicy second = ContextPolicy.builder()
+                .key(REGION, rules -> rules.codec(Codecs.string()).wireName("x-tenant").propagateTo(INTERNAL_CALL))
+                .build();
+
+        assertThatIllegalStateException().isThrownBy(() -> first.merge(second));
+    }
+
+    @ParameterizedTest
+    @MethodSource("conflictingRules")
+    @DisplayName("POL-05 merge fails on conflicting rules for one key")
+    void mergeFailsOnConflictingRulesForOneKey(Consumer<ContextPolicy.KeyRules<String>> conflicting) {
+        ContextPolicy first = ContextPolicy.builder().key(TENANT, TENANT_RULES).build();
+        ContextPolicy second = ContextPolicy.builder().key(TENANT, conflicting).build();
+
+        assertThatIllegalStateException().isThrownBy(() -> first.merge(second));
+    }
+
+    @Test
+    @DisplayName("CORE-03 merge rejects null with NullPointerException")
+    void mergeRejectsNull() {
+        ContextPolicy policy = ContextPolicy.builder().key(TENANT, TENANT_RULES).build();
+
+        assertThatNullPointerException().isThrownBy(() -> policy.merge(null));
     }
 }

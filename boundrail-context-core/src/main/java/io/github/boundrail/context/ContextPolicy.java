@@ -125,6 +125,53 @@ public final class ContextPolicy {
         return new ImmutableContextSnapshot(kept);
     }
 
+    /**
+     * Returns a policy with the rules of this policy and the other policy (POL-05). A key in both policies must have equal rules there, and
+     * is registered once.
+     *
+     * @param other the other policy
+     * @return the merged policy
+     * @throws NullPointerException if the other policy is {@code null}
+     * @throws IllegalStateException if one key has conflicting rules in the two policies, or the result has two different keys with the same
+     *     name or wire names equal ignoring case (POL-05)
+     */
+    public ContextPolicy merge(ContextPolicy other) {
+        Objects.requireNonNull(other, "other");
+        Map<ContextKey<?>, Rules> merged = new HashMap<>(rules);
+        other.rules.forEach((key, otherRules) -> {
+            Rules first = merged.putIfAbsent(key, otherRules);
+            if (first != null && !first.sameAs(otherRules)) {
+                throw new IllegalStateException("Context key " + key.name() + " has conflicting rules in the merged policies");
+            }
+        });
+        checkDistinctNames(merged);
+        return new ContextPolicy(merged);
+    }
+
+    /**
+     * Checks that no two different keys have the same name or wire names equal ignoring case (POL-05).
+     *
+     * @throws IllegalStateException if they do
+     */
+    private static void checkDistinctNames(Map<ContextKey<?>, Rules> rules) {
+        Map<String, ContextKey<?>> names = new HashMap<>();
+        Map<String, ContextKey<?>> wireNames = new HashMap<>();
+        rules.forEach((key, keyRules) -> {
+            if (names.putIfAbsent(key.name(), key) != null) {
+                throw new IllegalStateException("Two different context keys are named " + key.name());
+            }
+            String wireName = keyRules.wireName();
+            if (wireName == null) {
+                return;
+            }
+            ContextKey<?> other = wireNames.putIfAbsent(wireName.toLowerCase(Locale.ROOT), key);
+            if (other != null) {
+                throw new IllegalStateException(
+                        "Context keys " + other.name() + " and " + key.name() + " have wire names equal ignoring case: " + wireName);
+            }
+        });
+    }
+
     /** Registers the rules of each key and builds a policy. */
     public interface Builder {
 
@@ -228,12 +275,7 @@ public final class ContextPolicy {
             if (!conflicts.isEmpty()) {
                 throw new IllegalStateException(conflicts.getFirst());
             }
-            Map<String, ContextKey<?>> names = new HashMap<>();
-            Map<String, ContextKey<?>> wireNames = new HashMap<>();
             rules.forEach((key, keyRules) -> {
-                if (names.putIfAbsent(key.name(), key) != null) {
-                    throw new IllegalStateException("Two different context keys are named " + key.name());
-                }
                 String wireName = keyRules.wireName();
                 boolean remote = keyRules.boundaries().stream().anyMatch(REMOTE_BOUNDARIES::contains);
                 if (remote && (keyRules.codec() == null || wireName == null)) {
@@ -247,12 +289,8 @@ public final class ContextPolicy {
                         || wireName.regionMatches(true, 0, RESERVED_WIRE_PREFIX, 0, RESERVED_WIRE_PREFIX.length())) {
                     throw new IllegalStateException("Context key " + key.name() + " uses the reserved wire name " + wireName);
                 }
-                ContextKey<?> other = wireNames.putIfAbsent(wireName.toLowerCase(Locale.ROOT), key);
-                if (other != null) {
-                    throw new IllegalStateException(
-                            "Context keys " + other.name() + " and " + key.name() + " have wire names equal ignoring case: " + wireName);
-                }
             });
+            checkDistinctNames(rules);
             return new ContextPolicy(rules);
         }
     }

@@ -250,7 +250,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       which without the check would return `EMPTY`; a non-empty snapshot is not used for the `null` boundary, since T013's `propagates`
       already throws for it and would hide a missing check in `filter`). Green: `ContextPolicy.filter`, checking both
       arguments first (CORE-03, POL-04). Verify: Unit `ContextPolicyTest`
-- [ ] T016 [US2] Merging. Red: in `ContextPolicyValidationTest`, `POL-05 merge combines the keys of both policies`, `POL-05 merge accepts the same
+- [x] T016 [US2] Merging. Red: in `ContextPolicyValidationTest`, `POL-05 merge combines the keys of both policies`, `POL-05 merge accepts the same
       key with equal rules`, `POL-05 merge fails on two different keys with the same name`, `POL-05 merge fails on two different keys with wire
       names equal ignoring case`, `POL-05 merge fails on conflicting rules for one key` (another codec instance, a wire name differing only in
       case, a different flag or boundary set), each failure with `IllegalStateException`, and `CORE-03 merge rejects null with
