@@ -1,16 +1,630 @@
 ---
-description: "Task list for 003-http-trust (stub)"
+description: "Task list for 003-http-trust"
 ---
 
 # Tasks: HTTP Boundaries and Trust
 
 **Input**: Design documents from `/specs/003-http-trust/`
 
-**Status**: Stub. Generate the task list with `/speckit-tasks` (or the `planner` agent) once [plan.md](plan.md) is complete.
+**Prerequisites**: [plan.md](plan.md), [spec.md](spec.md), [contracts/http-api.md](contracts/http-api.md); 002-core-runtime merged (47ea70b)
+
+**Tests**: Required (constitution principle VII). Each task is one red-green cycle: its failing test, with the behaviour it pins down, and the
+minimum code that makes it pass, committed and reviewed together. Every task leaves `./gradlew check` green. Every test's display name starts
+with the requirement or scenario ID it covers.
+
+- No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
+- Eight guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test in T012, and two unit tests each in T024 and T028.
+  Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Can run in parallel (different files, no dependencies)
+- **[Story]**: The user story the task belongs to (US1: outbound, US2: inbound)
+
+Path abbreviations:
+
+| Short | Path |
+|---|---|
+| `core/` | `boundrail-context-core/src/main/java/io/github/boundrail/context/` |
+| `coretest/` | `boundrail-context-core/src/test/java/io/github/boundrail/context/` |
+| `spring/` | `boundrail-context-spring/src/main/java/io/github/boundrail/context/spring/` |
+| `springtest/` | `boundrail-context-spring/src/test/java/io/github/boundrail/context/spring/` |
+| `testmod/` | `boundrail-context-test/src/main/java/io/github/boundrail/context/test/` |
+| `testmodtest/` | `boundrail-context-test/src/test/java/io/github/boundrail/context/test/` |
+| `topology/` | `integration-tests/src/test/java/io/github/boundrail/context/it/topology/` |
+| `TrustBoundaryIT` | `integration-tests/src/test/java/io/github/boundrail/context/it/TrustBoundaryIT.java` |
+
+Verify commands:
+
+- **Unit**: `./gradlew :<project>:test --tests '<TestClass>'` (with `--tests` repeated for each class) for red and green, then `./gradlew check`
+  before commit.
+- **IT**: the scenario run, then `./gradlew check` before commit. `--tests` applies only to the task just before it, and `--continue` reports a
+  red run in both tasks:
+
+  ```bash
+  ./gradlew --continue :integration-tests:integrationTestJdk21 --tests '*TrustBoundaryIT' \
+            :integration-tests:integrationTestJdk25 --tests '*TrustBoundaryIT'
+  ```
+
+Enabling a scenario means:
+
+- remove `@Disabled`;
+- keep its `@DisplayName` (already `IT-2.n <title>`, as spec.md bolds it) and the comment with the spec text;
+- write the body.
+
+Each scenario asserts violation counts as a delta around its own request (`Running.violations`), never a total, because the topology is shared.
+
+## Phase 1: Setup
+
+None. 001-foundation built the projects, the integration test tasks, the topology skeleton and the disabled TrustBoundaryIT. Each dependency
+this feature needs is added in the green step of the first task whose test needs it ([plan.md](plan.md#build)).
+
+---
+
+## Phase 2: Foundational — core types (blocks every story)
+
+- [ ] T001 [P] Destinations and classification order.
+  - Red, in `coretest/HostPatternClassifierTest.java`, all with exact host names:
+    - `DEST-02 a declared destination wins over host patterns`: a declared `INTERNAL("orders")` for a host in the external list, and a declared
+      `EXTERNAL` for a host in the internal list, come back unchanged, service name included;
+    - `DEST-02 internal patterns are checked before external patterns`: a host in both lists is `INTERNAL`;
+    - `DEST-02 an external pattern match is EXTERNAL`;
+    - `DEST-02 a host matching no pattern is UNKNOWN`, also for a URI without a host;
+    - `DEST-02 a host-pattern match yields no service name`;
+    - `DEST-01 destination types depend on no HTTP library`: by reflection, the four classes' fields, constructors and method signatures name
+      only `java.*` and core types;
+    - `CORE-13 destination types reject null`: `Destination` with a `null` kind or service, `OutboundRequest` with a `null` URI or declaration,
+      `HostPatternClassifier.of` with a `null` list or list element, and `classify(null)` each throw `NullPointerException`.
+  - Green: `core/Destination.java` (record with `Kind`), `core/OutboundRequest.java`, `core/DestinationClassifier.java`, and
+    `core/HostPatternClassifier.java` with `of` (copies both lists) and `classify` in the DEST-02 order, exact names only.
+  - Completes: DEST-01; DEST-02 (order); CORE-13 (DEST types).
+  - Verify: Unit `HostPatternClassifierTest` in `:boundrail-context-core`.
+- [ ] T002 Wildcard and case-insensitive host patterns.
+  - Red, in `HostPatternClassifierTest`:
+    - `DEST-02 host patterns compare case-insensitively`: `Orders.SVC.test` against `orders.svc.test`, and a pattern written in upper case;
+    - `DEST-02 a leading *. wildcard matches one or more labels`: `*.svc.test` matches `a.svc.test` and `a.b.svc.test`;
+    - `DEST-02 a wildcard does not match the bare suffix`: `*.svc.test` matches neither `svc.test` nor `xsvc.test`.
+  - Green: wildcard and case-insensitive matching with `Locale.ROOT` in `HostPatternClassifier`.
+  - Completes: DEST-02.
+  - Verify: Unit `HostPatternClassifierTest`.
+- [ ] T003 Host pattern validation.
+  - Red, in `HostPatternClassifierTest`:
+    - `DEST-04 invalid host patterns are rejected`: `HostPatternClassifier.of` throws `IllegalArgumentException` for each of `*`, `*.`,
+      `a.*.b`, `foo*`, the empty string, `orders:8080`, `orders.svc.`, `a..b`, `.a`, `-a.b`, `a-.b`, a 64-character label, a 254-character
+      name, `10.0.0.1`, `*.10.0.0.1`, `::1` and `[::1]`, in either list;
+    - `DEST-04 valid host patterns are accepted`: `orders`, `orders.svc.test`, `*.svc.test`, `ORDERS.svc.test`, `a-b.c`, `123.example`, a
+      63-character label, a 253-character name, and `*.` followed by a 253-character name;
+    - `CORE-13 a null pattern list is rejected before pattern validation`: `of(List.of("*"), null)` throws `NullPointerException`.
+  - Green: per-pattern validation in `of` ([plan.md](plan.md#core)).
+  - Completes: DEST-04; CORE-13 (precedence).
+  - Verify: Unit `HostPatternClassifierTest`.
+- [ ] T004 [P] Violation and ContextViolationException.
+  - Red, in `coretest/ViolationTest.java`:
+    - `DIAG-01 Violation.Kind has exactly the six kinds of the contract`: `MISSING_REQUIRED`, `UNTRUSTED_HEADER`, `INVALID_VALUE`,
+      `OVERSIZED_VALUE`, `FORBIDDEN_HEADER` and `MISSING_AUDIENCE`, in that order, and no other;
+    - `DIAG-01 a violation exposes its evidence`: the seven accessors return what was given;
+    - `DIAG-02 ContextViolationException carries its violation`: `violation()` returns the constructor's argument; the exception is a
+      `RuntimeException`; its message names the kind, key and boundary;
+    - `CORE-13 violation types reject null`: each `null` component of `Violation`, and `new ContextViolationException(null)`, throws
+      `NullPointerException`.
+  - Green: `core/Violation.java` (record with `Kind`, fields as the contract) and `core/ContextViolationException.java`.
+  - Completes: DIAG-01; DIAG-02 (exception type); CORE-13 (violation types).
+  - Verify: Unit `ViolationTest`.
+- [ ] T005 [P] Policy keys.
+  - Red, in `coretest/ContextPolicyTest.java`:
+    - `POL-10 keys() returns the registered and built-in keys`: a built policy reports exactly its registered keys plus `DEADLINE`, `AUTHORITY`
+      and `INITIATOR`;
+    - `POL-10 the default policy reports the built-in keys`: `BuiltInKeys.defaultPolicy()` reports the three built-in keys;
+    - `POL-10 a merged policy reports the union of its keys`;
+    - `POL-10 keys() is unmodifiable`.
+  - Green: `keys()` in `core/ContextPolicy.java` over the rules map.
+  - Completes: POL-10.
+  - Verify: Unit `ContextPolicyTest`.
+
+**Checkpoint**: core has the destination model, pattern validation, `Violation`, `ContextViolationException` and `keys()`;
+`boundrail-context-core` still has no dependencies.
+
+---
+
+## Phase 3: Foundational — Spring auto-configuration (blocks every story)
+
+- [ ] T006 Auto-configuration skeleton and effective policy.
+  - Red:
+    - `springtest/AutoConfigurationImportsTest.java`: `POL-07 the auto-configuration is registered for Spring Boot`
+      (`ImportCandidates.load(AutoConfiguration.class, classLoader)` contains `BoundrailContextAutoConfiguration`);
+    - `springtest/EffectivePolicyTest.java` (`ApplicationContextRunner`):
+      - `POL-07 with no ContextPolicy bean the effective policy is the built-in policy`: an application key is unregistered, and `INITIATOR`
+        reports `Boundrail-Initiator`;
+      - `POL-07 every ContextPolicy bean is merged with the built-in policy`: with two beans with different keys, both keys' rules are present;
+      - `POL-07 conflicting ContextPolicy beans fail startup`: `IllegalStateException` is the root cause of the startup failure.
+  - Green:
+    - `boundrail-context-spring/build.gradle.kts`: `testImplementation(libs.spring.boot.starter.test)` (the catalog entry exists);
+    - `spring/BoundrailContextAutoConfiguration.java` (`@AutoConfiguration`);
+    - package-private `spring/EffectivePolicy.java`;
+    - `boundrail-context-spring/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+
+    `TopologySmokeIT` must stay green now that every topology service loads the auto-configuration.
+  - Completes: POL-07.
+  - Verify: Unit `AutoConfigurationImportsTest` and `EffectivePolicyTest` in `:boundrail-context-spring`; `./gradlew check`.
+- [ ] T007 Violation reporting.
+  - Red, in `springtest/ViolationReporterTest.java`, with `springtest/support/RecordingLog.java` recording entries:
+    - `DIAG-03 a violation is logged at WARN`: one WARN entry naming the kind, key, boundary, destination and thread;
+    - `DIAG-09 the log entry identifies the value by key name, wire name and boundary`: `tenant` with `Tenant-Id` and `INTERNAL_CALL`; a key
+      with no wire name is logged without one;
+    - `DIAG-03 log entries are rate-limited per kind, key and boundary` (with a test `Clock`):
+      - a second identical violation inside `log-interval` is not logged;
+      - one with another kind, key or boundary is;
+      - after the interval has passed, it is logged again;
+    - `DIAG-03 log-interval defaults to one minute and is configurable`;
+    - `DIAG-03 every occurrence is counted even when the log entry is rate-limited`: three identical violations count 3 in
+      `boundrail.context.violations` of the `MeterRegistry` bean;
+    - `DIAG-03 counter tags are kind, key and boundary in lower case`: `kind=forbidden_header`, `key=tenant`, `boundary=external_call`;
+    - `DIAG-03 with a primary MeterRegistry bean among several the counter is in the primary`: nothing is in the other bean;
+    - `DIAG-03 with several MeterRegistry beans and no primary the violation is logged and not counted`: startup succeeds;
+    - `DIAG-03 without a MeterRegistry bean the violation is logged and the global registry is untouched`: a `SimpleMeterRegistry` added to
+      `Metrics.globalRegistry` for the test, and removed after, has no `boundrail.context.violations` meter;
+    - `DIAG-03 without Micrometer on the classpath the violation is logged`: `FilteredClassLoader(MeterRegistry.class)`.
+  - Green:
+    - package-private `spring/ViolationReporter.java`: `Log` and `Clock` through a package-private constructor; wire names through
+      `EffectivePolicy` and `keys()`;
+    - the counter function in a nested `@ConditionalOnClass(MeterRegistry.class)` configuration using `ObjectProvider.getIfUnique()`;
+    - `spring/BoundrailContextProperties.java` with `violations.log-interval`;
+    - `micrometer-core` as `testImplementation`.
+  - Completes: DIAG-03; DIAG-09 (log entry content).
+  - Verify: Unit `ViolationReporterTest`.
+
+**Checkpoint**: every topology service loads the auto-configuration; the effective policy and the reporter exist.
+
+---
+
+## Phase 4: User Story 1 - Internal calls carry context, external calls carry none (Priority: P1) 🎯 MVP
+
+**Goal**: The outbound interceptor classifies every call, writes declared context to internal services only, strips forbidden headers, and
+enforces required keys, the length limit and valid field values.
+
+**Independent Test**: IT-2.2, IT-2.3, IT-2.4 and IT-2.9 in the IT command. IT-2.1 also needs US2's inbound path and is enabled in T028.
+
+- [ ] T008 [US1] Interceptor on every auto-configured client builder.
+  - Red, in `springtest/ClientRegistrationTest.java`:
+    - `OUT-01 the interceptor is added to the auto-configured RestClient.Builder`: the context's builder, read through
+      `requestInterceptors(list -> …)`, contains the library's interceptor;
+    - `OUT-01 the interceptor is added to the auto-configured RestTemplateBuilder`: a `RestTemplate` built from it lists the interceptor;
+    - `OUT-01 the interceptor executes the request exactly once and returns its response`: a real call through the builder to
+      `springtest/support/RecordingServer.java`, a JDK `HttpServer` recording requests, which receives one request; the response body is
+      returned;
+    - `OUT-01 without spring-boot-restclient no client customizer is registered` (`FilteredClassLoader`).
+  - Green:
+    - package-private `spring/ContextClientInterceptor.java`, which calls `execution.execute` once and nothing else yet;
+    - a `RestClientCustomizer` bean and a `RestTemplateCustomizer` bean in a nested `@ConditionalOnClass` configuration;
+    - `compileOnly` and `testImplementation` for `spring-web` and `spring-boot-restclient`, with catalog entries.
+  - Completes: OUT-01.
+  - Verify: Unit `ClientRegistrationTest`.
+- [ ] T009 [US1] Classification and per-client declarations.
+  - Red, in `springtest/BoundrailClientsTest.java`, through a recording `DestinationClassifier` bean that captures each `OutboundRequest`:
+    - `OUT-03 internal(service) declares Destination(INTERNAL, service) for every request of the client`: two requests;
+    - `OUT-03 external() declares Destination(EXTERNAL, empty)`: two requests;
+    - `OUT-02 the interceptor classifies the request URI and the declaration`: an undeclared client's captured request has the URI and an empty
+      declaration; likewise for `RestTemplate`;
+    - `OUT-03 the default classifier is a HostPatternClassifier from destinations.internal-hosts and external-hosts`: with the properties set,
+      an undeclared request to an internal host is `INTERNAL`, to an external host `EXTERNAL`, to any other host `UNKNOWN`; both lists default
+      to empty;
+    - `OUT-03 a DestinationClassifier bean replaces the default`;
+    - `DEST-04 an invalid destinations pattern fails startup`: `destinations.internal-hosts=*`; `IllegalArgumentException` is the root cause;
+    - `CORE-13 BoundrailClients.internal(null) throws NullPointerException`.
+  - Green:
+    - `spring/BoundrailClients.java` (request attribute through `defaultRequest`);
+    - the `DestinationClassifier` bean (`@ConditionalOnMissingBean`) and the `destinations.*` properties;
+    - classification in `ContextClientInterceptor`.
+  - Completes: OUT-02; OUT-03; DEST-02 (Spring wiring); DEST-04 (startup); CORE-13 (`BoundrailClients`).
+  - Verify: Unit `BoundrailClientsTest`.
+- [ ] T010 [US1] Writing context headers.
+  - Red, in `springtest/ContextClientInterceptorTest.java` (real calls to `RecordingServer`):
+    - `OUT-04 an internal call carries the bound keys that propagate to INTERNAL_CALL` and `WIRE-01 a key is sent in the header named by its
+      wire name, encoded by its codec`: `tenant=acme` as `Tenant-Id: acme`, `priority=5` as `Priority: 5`;
+    - `WIRE-02 an internal call carries the initiator's value in Boundrail-Initiator`;
+    - `OUT-04 an internal call writes no Authorization and no Boundrail-Deadline-Ms`: with `AUTHORITY` and `DEADLINE` bound, the same request
+      carries `Tenant-Id`;
+    - `OUT-04 unbound keys, keys with only a default, unregistered keys and keys not propagating to INTERNAL_CALL are not sent`: with
+      `Tenant-Id` sent in the same request;
+    - `OUT-04 an external call carries only keys that propagate to EXTERNAL_CALL`: an application key that does is sent; with the topology's
+      policy, none is;
+    - `DEST-03 an UNKNOWN destination is written like EXTERNAL`;
+    - `OUT-04 a wire header set by application code on an internal call is left unchanged`;
+    - `WIRE-06 the application-set check ignores the header name's case`: `tenant-id: mine` stays the only value;
+    - `OUT-04 an exception thrown by a codec's encode propagates unchanged and no violation is reported`, parametrized over an application
+      codec whose `encode` throws `IllegalStateException` and one whose `encode` throws `IllegalArgumentException` (WIRE-05: only `decode`
+      has a rejection). On an internal call, the caller of the `RestClient` receives the same exception instance, `RecordingServer` received
+      nothing, and the reporter recorded nothing.
+  - Green: header writing in `ContextClientInterceptor` from `policy.filter(Context.capture(), boundary)`, with `INITIATOR` encoded as
+    `value()`, and `AUTHORITY` and `DEADLINE` skipped. Nothing catches an exception from `encode`.
+  - Completes: OUT-04 (writing, `encode` exceptions); WIRE-01 (outbound); WIRE-02 (outbound initiator); WIRE-05 (outbound); WIRE-06
+    (outbound); DEST-03 (writing).
+  - Verify: Unit `ContextClientInterceptorTest`.
+- [ ] T011 [US1] Outbound length limit.
+  - Red, in `ContextClientInterceptorTest`:
+    - `WIRE-04 an encoded value longer than max-value-length is not sent and is reported as OVERSIZED_VALUE`: for a 257-character tenant, no
+      `Tenant-Id` is sent and one `OVERSIZED_VALUE` is reported for key `tenant`, boundary `INTERNAL_CALL`, with the classified destination. The
+      request is sent with the other keys, in the default `fail` mode (DIAG-02). The violation and its log entry do not contain the value
+      (DIAG-09);
+    - `WIRE-04 a value of exactly max-value-length is sent` (256);
+    - `WIRE-04 max-value-length is configurable and defaults to 256`: a limit of 10;
+    - `WIRE-04 the length is counted in UTF-16 code units`: with a limit of 10, a tenant of six U+1F600 characters (6 code points, 12 code
+      units) is not sent and gives one `OVERSIZED_VALUE`.
+  - Green: the length check (`String.length()`) before setting each header, `wire.max-value-length` in `BoundrailContextProperties`, and
+    reporting through `ViolationReporter`.
+  - Completes: WIRE-04 (outbound); DIAG-02 (report-only kind).
+  - Verify: Unit `ContextClientInterceptorTest`.
+- [ ] T012 [US1] Outbound field values.
+  - Red, in `ContextClientInterceptorTest`:
+    - `WIRE-08 a value that is not a valid field value is not written and is reported as INVALID_VALUE`, parametrized over CR, LF, CRLF, NUL,
+      DEL (U+007F), `é` (U+00E9), U+0080, an emoji, a leading space and a trailing tab. Each request is sent with the other keys, and one
+      `INVALID_VALUE` is reported for key `tenant` with the classified destination;
+    - `WIRE-08 visible ASCII with inner spaces and tabs is written`: `a b\tc`;
+    - `WIRE-08 an empty value is written`: `Tenant-Id` with an empty value;
+    - `WIRE-08 applies to Boundrail-Initiator`: an initiator `a\nb` is not written and is reported;
+    - `DIAG-09 an invalid outbound value is reported without the value`: neither the violation nor the log entry contains it;
+    - `WIRE-04 an outbound value both oversized and not a valid field value is reported once, as OVERSIZED_VALUE`. This is a guard: show it red
+      with the WIRE-08 check temporarily moved before the WIRE-04 check, then revert ([plan.md](plan.md#guard-tests)).
+  - Green: the field value check after the length check in `ContextClientInterceptor` ([plan.md](plan.md#outbound)).
+  - Completes: WIRE-08; WIRE-04 (order); DIAG-09 (outbound).
+  - Verify: Unit `ContextClientInterceptorTest`.
+- [ ] T013 [US1] Topology for TrustBoundaryIT; enable IT-2.2 and IT-2.3 (guard tests).
+  - Red (guard): enable IT-2.2 (edge calls partner through an `external()` client) and IT-2.3 (through an undeclared client to
+    `partner.example.test`):
+    - the edge endpoint binds `tenant`, `priority` and `INITIATOR` itself;
+    - partner received none of `Tenant-Id`, `Priority`, `Boundrail-Initiator` or `Boundrail-Deadline-Ms`;
+    - as a positive control in the same scenario, the same endpoint's internal call delivered `Tenant-Id: acme` to orders' headers.
+
+    Both pass with T010's code. Show each red with `ContextClientInterceptor` temporarily treating every destination as `INTERNAL`, then revert
+    ([plan.md](plan.md#guard-tests)).
+  - Topology (test code, part of this task):
+    - `topology/AppKeys.java`, and `topology/TopologyPolicy.java`, the topology table's policy as a `ContextPolicy` bean on every service;
+    - `boundrail.context.destinations.internal-hosts=*.svc.test` on every service, in `topology/Topology.java`;
+    - `topology/EdgeApp.java` endpoints calling orders and partner through internal, external and undeclared clients built from edge's
+      `RestClient.Builder`.
+  - Green: `integration-tests/build.gradle.kts` adds `spring-boot-starter-restclient` (catalog entry). No library change. `TopologySmokeIT`
+    stays green.
+  - Completes: IT-2.2; IT-2.3 (OUT-02, OUT-03, OUT-04, DEST-02, DEST-03 end to end).
+  - Verify: IT.
+- [ ] T014 [US1] Forbidden headers on external calls; enable IT-2.4.
+  - Red:
+    - enable IT-2.4: edge application code sets `Tenant-Id: acme` and `Authorization: Bearer partner-key` on a call through an `external()`
+      client. Partner receives the `Authorization` header and no `Tenant-Id`, edge's `FORBIDDEN_HEADER` count rises by exactly 1, and the call
+      succeeds;
+    - in `ContextClientInterceptorTest`:
+      - `WIRE-07 an application-set header named after a key that does not propagate to EXTERNAL_CALL is removed on an external call`, also
+        `Boundrail-Initiator` and `Boundrail-Deadline-Ms`;
+      - `WIRE-07 one FORBIDDEN_HEADER violation is reported per removed header`: two headers give two violations, with destination `EXTERNAL`,
+        and the call continues in `fail` mode (DIAG-02);
+      - `WIRE-07 Authorization is never removed`;
+      - `WIRE-07 a header of a key that propagates to EXTERNAL_CALL is kept`;
+      - `DEST-03 an UNKNOWN destination is stripped like EXTERNAL`;
+      - `WIRE-06 forbidden headers are matched ignoring case` (`tenant-id`);
+      - `WIRE-07 a removed header name with several values is reported once`: application code adds `Tenant-Id` twice, with two values, on
+        an external call; partner receives neither value, and one `FORBIDDEN_HEADER` is reported.
+  - Green:
+    - stripping in `ContextClientInterceptor` over the wire names of `policy.keys()`, one violation per removed name;
+    - topology test code: a `SimpleMeterRegistry` bean per service and `Running.violations(Service, Violation.Kind)` in `topology/Topology.java`;
+    - `micrometer-core` in `integration-tests/build.gradle.kts`.
+
+    Review note: interceptors registered after the library's can still add headers ([plan.md](plan.md#risks)).
+  - Completes: WIRE-07; OUT-04 (external); DEST-03 (stripping); WIRE-06; IT-2.4.
+  - Verify: Unit `ContextClientInterceptorTest`; IT.
+- [ ] T015 [US1] Required keys before a remote call; enable IT-2.9.
+  - Red:
+    - enable IT-2.9: the edge endpoint binds `tenant`, runs `Context.without(tenant)` and calls orders through `internal("orders")`. It catches
+      `ContextViolationException` and returns its kind. The response is `MISSING_REQUIRED`, edge's `MISSING_REQUIRED` count rises by exactly 1,
+      and orders' observation count is unchanged;
+    - in `ContextClientInterceptorTest`:
+      - `POL-08 an unbound required key that propagates to INTERNAL_CALL is a MISSING_REQUIRED violation before sending`;
+      - `DIAG-02 in fail mode the violation is reported, then ContextViolationException is thrown, and the request is not sent`:
+        `RecordingServer` received nothing; the reporter recorded the violation before the exception left the interceptor; `violation()` has
+        kind `MISSING_REQUIRED`, key `tenant`, boundary `INTERNAL_CALL` and the destination;
+      - `DIAG-02 in report mode the violation is reported and the call continues without the key`;
+      - `DIAG-02 violations.mode defaults to fail`;
+      - `POL-08 a required key with only a default is MISSING_REQUIRED`;
+      - `POL-08 a required key is MISSING_REQUIRED even when application code set its wire header`: the request is not sent;
+      - `POL-08 a required key that does not propagate to the call's boundary is not checked`: an external call;
+      - `POL-08 a required key that propagates to EXTERNAL_CALL is checked on an external or unknown call`;
+      - `DIAG-02 several unbound required keys are each reported in ascending key-name order, and the exception carries the first`: a policy
+        registering required `tenant`, then required `region`, both unbound on an internal call. In `fail` mode the reporter records
+        `MISSING_REQUIRED` for `region`, then for `tenant`, before the exception, whose `violation()` has key `region`, and `RecordingServer`
+        received nothing. In `report` mode the same two violations are recorded in the same order and the request is sent.
+  - Green: the check in `ContextClientInterceptor` before any header is written and before `execute`: the unbound required keys sorted by
+    name, each reported, then one exception carrying the first in `fail` mode; `violations.mode` in `BoundrailContextProperties`.
+  - Completes: POL-08; DIAG-02; IT-2.9.
+  - Verify: Unit `ContextClientInterceptorTest`; IT.
+
+**Checkpoint**: IT-2.2, IT-2.3, IT-2.4 and IT-2.9 green on JDK 21 and JDK 25.
+
+---
+
+## Phase 5: User Story 2 - Forged context is rejected at the edge (Priority: P1)
+
+**Goal**: Context headers are bound only from trusted callers, and checked for repetition, length and decoding. At the edge, context comes from
+authentication through contributors.
+
+**Independent Test**: IT-2.5 – IT-2.8 in the IT command. IT-2.1 (US1) is enabled here, in T028, because it needs this story's inbound path.
+
+- [ ] T016 [US2] Inbound filter, trusted binding and the default verifier.
+  - Red:
+    - in `springtest/ContextInboundFilterTest.java` (`MockHttpServletRequest`, and a `MockFilterChain` whose servlet records `find()` of each
+      key):
+      - `IN-01 ContextInboundFilter is registered before Spring Security's filter chain`: its `FilterRegistrationBean` order is lower than
+        Boot's `SecurityFilterProperties.DEFAULT_FILTER_ORDER`;
+      - `IN-01 the rest of the chain runs inside the scope and the previous snapshot is restored afterwards`, also when the chain throws
+        `ServletException`, which is rethrown unchanged;
+      - `IN-02 a trusted request binds every key that propagates to INTERNAL_CALL and whose header is present`: `tenant` and `priority`
+        decoded with their codecs;
+      - `IN-02 keys not propagating to INTERNAL_CALL are not bound from headers`, with `tenant` bound in the same request;
+      - `WIRE-01 inbound values are read from the header named by the wire name`;
+      - `WIRE-06 inbound header names match ignoring case` (`tenant-id`);
+      - `IN-03 an InboundTrustVerifier bean replaces the built-in verifier`: a bean returning `TRUSTED_INTERNAL`;
+    - in `springtest/InboundTrustVerifierTest.java`:
+      - `IN-03 the default verifier returns UNTRUSTED for every request`: with no property, and with `inbound.trust=none`; with the default
+        verifier, a request carrying `Tenant-Id` binds nothing, while the same request through a trusting bean binds it;
+      - `CORE-13 the default verifier rejects a null request`.
+  - Green:
+    - `spring/InboundTrustVerifier.java` and `spring/ContextInboundFilter.java`;
+    - the filter's registration (order `-101`) and the default verifier bean (`@ConditionalOnMissingBean`) in a nested
+      `@ConditionalOnWebApplication(type = SERVLET)` configuration;
+    - `inbound.trust` in `BoundrailContextProperties`;
+    - `compileOnly` and `testImplementation` for `jakarta.servlet-api`, and `testImplementation` for `spring-boot-security` (for the order
+      constant).
+  - Completes: IN-01; IN-02 (trusted binding); IN-03 (default verifier, bean replaces); WIRE-01 (inbound); WIRE-06 (inbound); CORE-13 (default
+    verifier).
+  - Verify: Unit `ContextInboundFilterTest` and `InboundTrustVerifierTest`.
+- [ ] T017 [US2] Built-in keys inbound.
+  - Red, in `ContextInboundFilterTest`:
+    - `WIRE-02 a trusted Boundrail-Initiator header binds the initiator with that value`;
+    - `IN-02 a trusted request binds no deadline and no authority from headers`: with `Boundrail-Initiator`, `Boundrail-Deadline-Ms` and
+      `Authorization` present, only the initiator is bound.
+  - Green: `INITIATOR` decoded with `Initiator.of`; `DEADLINE` and `AUTHORITY` skipped.
+  - Completes: WIRE-02 (inbound); IN-02 (built-in keys).
+  - Verify: Unit `ContextInboundFilterTest`.
+- [ ] T018 [US2] Repeated headers on a trusted request.
+  - Red, in `ContextInboundFilterTest`:
+    - `IN-02 a repeated policy header on a trusted request leaves the key unbound and reports one INVALID_VALUE`: `Tenant-Id: a` and
+      `Tenant-Id: b` leave `tenant` unbound, give one `INVALID_VALUE`, and `priority` from the same request is bound. A recording codec shows
+      `decode` was not called;
+    - `WIRE-06 repeated headers are counted ignoring case`: `Tenant-Id` and `tenant-id`;
+    - `DIAG-08 an inbound violation has boundary INTERNAL_CALL and no destination`;
+    - `DIAG-02 a repeated header does not fail the request in fail mode`.
+  - Green: the repetition check through `getHeaders` in `ContextInboundFilter`, and reporting through `ViolationReporter`.
+  - Completes: IN-02 (repeated trusted headers); DIAG-08; WIRE-06.
+  - Verify: Unit `ContextInboundFilterTest`.
+- [ ] T019 [US2] Untrusted headers are reported.
+  - Red, in `ContextInboundFilterTest` (default verifier):
+    - `IN-02 one UNTRUSTED_HEADER violation is reported per policy wire header present`: `Tenant-Id`, `Priority` and `Boundrail-Initiator` give
+      three violations; nothing is bound;
+    - `IN-02 a repeated untrusted header is reported once`: two `Tenant-Id` values, or `Tenant-Id` and `tenant-id`, give one
+      `UNTRUSTED_HEADER`;
+    - `DIAG-08 an untrusted header violation has boundary INTERNAL_CALL and no destination`;
+    - `IN-02 untrusted headers never fail the request`: the chain runs, in the default `fail` mode (DIAG-02);
+    - `IN-02 every wire name of the effective policy's keys is reported, not only those the trusted path binds`: `Boundrail-Deadline-Ms`
+      gives one `UNTRUSTED_HEADER` for the deadline key, and the header of a key that propagates only to `MESSAGE` gives one for that key;
+    - `IN-02 Authorization is not a policy wire header`: `Authorization: Bearer x` with `Tenant-Id` gives exactly one `UNTRUSTED_HEADER`,
+      for `tenant`.
+  - Green: reporting in the `UNTRUSTED` branch of `ContextInboundFilter`, over the wire names of every key in `policy.keys()`.
+  - Completes: IN-02 (untrusted); DIAG-08.
+  - Verify: Unit `ContextInboundFilterTest`.
+- [ ] T020 [US2] Test trust verifier; enable IT-2.7.
+  - Red:
+    - enable IT-2.7: edge binds `tenant=acme` and calls orders through `internal("orders")` with `peer()` applied. Orders records
+      `ctx.tenant=acme`;
+    - in `testmodtest/TestInboundTrustVerifierTest.java`:
+      - `TEST-01 TRUSTED_INTERNAL exactly when Boundrail-Test-Peer carries the secret once`: absent, wrong value, correct value, and the
+        correct value twice (`UNTRUSTED`);
+      - `TEST-01 every instance shares one secret`: a request made through `peer()` is trusted by two separately constructed verifiers;
+      - `TEST-01 peer() adds the header to every request of the client it configures`: two real calls to a JDK `HttpServer`; a client without
+        `peer()` sends no such header;
+      - `TEST-01 the verifier is not auto-configured`: neither the verifier nor `peer()` is reachable from any auto-configuration imports file
+        or `spring.factories` on the test module's classpath;
+      - `CORE-13 the test verifier rejects a null request`.
+  - Green:
+    - `testmod/TestInboundTrustVerifier.java` ([plan.md](plan.md#inbound));
+    - `boundrail-context-test/build.gradle.kts`: `compileOnly` and `testImplementation` for `-spring`, `spring-web` and `jakarta.servlet-api`,
+      `testImplementation` for `spring-boot-restclient`;
+    - topology test code: the verifier bean on every service, `peer()` on edge's internal clients only, and `ctx.tenant` and `ctx.priority`
+      recorded by every `/ping`.
+  - Completes: TEST-01; CORE-13 (test verifier); IT-2.7 (IN-02, IN-03 end to end).
+  - Verify: Unit `TestInboundTrustVerifierTest` in `:boundrail-context-test`; IT.
+- [ ] T021 [US2] CIDR verifier.
+  - Red, in `springtest/CidrInboundTrustVerifierTest.java`:
+    - `IN-03 with inbound.trust=cidr a remote address inside a trusted CIDR is TRUSTED_INTERNAL`: IPv4 `10.0.0.0/8` with `10.1.2.3`; IPv6
+      `fd00::/8` with `fd00::1`;
+    - `IN-03 a remote address outside every trusted CIDR is UNTRUSTED`;
+    - `IN-03 the checked address is getRemoteAddr()`: remote address `203.0.113.5` with `X-Forwarded-For: 10.0.0.1` is `UNTRUSTED`;
+    - `IN-03 trusted-cidrs defaults to empty, so cidr trusts nobody`;
+    - `IN-03 a verifier bean wins over inbound.trust=cidr`;
+    - `IN-08 an IPv4 remote address matches only IPv4 entries and an IPv6 address only IPv6 entries`: `10.1.2.3` against `::/0` is
+      `UNTRUSTED`; `fd00::1` against `0.0.0.0/0` is `UNTRUSTED`;
+    - `IN-08 an IPv4-mapped remote address is matched as IPv4`: `::ffff:10.1.2.3` against `10.0.0.0/8` is `TRUSTED_INTERNAL`;
+    - `CORE-13 the CIDR verifier rejects a null request`;
+    - `IN-08 a remote address that is not an IP literal is UNTRUSTED`, parametrized over `unknown`, `orders.svc.test` and the empty string,
+      with `0.0.0.0/0` and `::/0` both trusted;
+    - `IN-08 the remote address is parsed without DNS lookups`: `localhost`, which would resolve to `127.0.0.1`, against `127.0.0.0/8` is
+      `UNTRUSTED`;
+    - `IN-08 an IPv6 remote address with a zone ID is UNTRUSTED`: against `fe80::/10`, `fe80::1%eth0` is `UNTRUSTED` and `fe80::1` is
+      `TRUSTED_INTERNAL`.
+  - Green: package-private `spring/CidrInboundTrustVerifier.java` for `address/prefix` entries, `inbound.trusted-cidrs`, and selection by
+    `inbound.trust`. The remote address goes through the same literal check as entries ([plan.md](plan.md#inbound)); one that fails it matches
+    nothing.
+  - Completes: IN-03 (CIDR, non-literal remote address); IN-08 (matching, remote address parsing); CORE-13 (CIDR verifier).
+  - Verify: Unit `CidrInboundTrustVerifierTest`.
+- [ ] T022 [US2] Strict CIDR entries.
+  - Red, in `CidrInboundTrustVerifierTest`:
+    - `IN-08 a bare address is a single host`: `10.1.2.3` trusts `10.1.2.3` and not `10.1.2.4`; `fd00::1` trusts only itself;
+    - `IN-08 prefix lengths are 0 to 32 for IPv4 and 0 to 128 for IPv6`: `0.0.0.0/0` and `::/0` are accepted;
+    - `IN-08 an invalid entry fails startup`, parametrized: `10.0.0.1/8` (host bits), `10.0.0.0/33`, `fd00::/129`, `10.0.0.0/-1`, `10.0.0.0/`,
+      `::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`, `fe80::1%eth0`, `localhost`, `orders.svc.test` and `10.0.0`. Each fails startup with
+      `inbound.trust=cidr`;
+    - `IN-08 entries are parsed without DNS lookups`: `localhost`, which would resolve, fails startup;
+    - `IN-08 invalid entries are ignored when inbound.trust is not cidr`: startup succeeds with `trust=none`.
+  - Green: strict parsing in `CidrInboundTrustVerifier` ([plan.md](plan.md#inbound)).
+  - Completes: IN-08 (entries, startup failure).
+  - Verify: Unit `CidrInboundTrustVerifierTest`.
+- [ ] T023 [US2] Inbound length limit.
+  - Red, in `ContextInboundFilterTest`:
+    - `WIRE-04 a trusted value longer than max-value-length is not bound and is reported as OVERSIZED_VALUE`: a 300-character value leaves
+      `tenant` unbound and gives one `OVERSIZED_VALUE`, with boundary `INTERNAL_CALL` and no destination (DIAG-08). The chain runs in `fail`
+      mode (DIAG-02). Neither the violation nor the log entry contains the value (DIAG-09);
+    - `WIRE-04 a trusted value of exactly max-value-length is bound`.
+  - Green: the length check in `ContextInboundFilter` before the value reaches the codec.
+  - Completes: WIRE-04 (inbound); DIAG-08; DIAG-09 (oversized inbound).
+  - Verify: Unit `ContextInboundFilterTest`.
+- [ ] T024 [US2] Decode failures; enable IT-2.8.
+  - Red:
+    - enable IT-2.8, with `@ExtendWith(OutputCaptureExtension.class)`. A trusted caller (the test's own `RestClient`, with `peer()`) sends
+      requests to orders:
+      - `Priority: abc`: `ctx.priority` is absent, orders' `INVALID_VALUE` count rises by 1, and the status is 200;
+      - a 300-character `Tenant-Id`: `ctx.tenant` is absent, `OVERSIZED_VALUE` rises by 1, and the status is 200;
+      - the captured violation log entries for `priority` and `tenant` are present and contain neither `abc` nor the 300-character value. Nor
+        do the counter's tags. The `Violation` records are asserted by the unit tests of WIRE-04 (T011, T023) and WIRE-05 (this task), as
+        DIAG-09 says;
+    - in `ContextInboundFilterTest`:
+      - `WIRE-05 a trusted value that fails to decode is not bound and is reported as INVALID_VALUE`: also an empty `Boundrail-Initiator`;
+      - `WIRE-05 the request continues after a decode failure`, in `fail` mode (DIAG-02);
+      - `DIAG-09 a decode failure is reported without the value or the codec's message`: `Codecs.longValue()` with `abc`, whose exception
+        message echoes the input. The violation and the log entry contain neither `abc` nor the message, and the log entry names `priority`,
+        `Priority` and `INTERNAL_CALL`;
+      - `DIAG-08 a decode failure has boundary INTERNAL_CALL and no destination`;
+      - `WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec`. This is a
+        guard: show it red with `decode` temporarily called before the length check, then revert ([plan.md](plan.md#guard-tests));
+      - `WIRE-05 a subclass of IllegalArgumentException from decode is a decode failure`: an application codec throwing
+        `NumberFormatException` leaves the key unbound, gives one `INVALID_VALUE`, and the chain runs;
+      - `WIRE-05 any other exception from decode propagates unchanged and no violation is reported`: an application codec throwing
+        `IllegalStateException`; `doFilter` throws the same instance, the chain does not run, and the reporter recorded nothing. This is a
+        guard: show it red with the catch temporarily widened to `RuntimeException`, then revert ([plan.md](plan.md#guard-tests)).
+  - Green: catch `IllegalArgumentException` (and only it) from `decode` in `ContextInboundFilter` and report without the value or the
+    message; `spring-boot-test` (`testImplementation`, catalog entry) in `integration-tests/build.gradle.kts`.
+  - Completes: WIRE-05; WIRE-04 (before decode); DIAG-08; DIAG-09 (decode failures); IT-2.8.
+  - Verify: Unit `ContextInboundFilterTest`; IT.
+- [ ] T025 [US2] Authentication filter and contributors.
+  - Red, in `springtest/ContextAuthenticationFilterTest.java`:
+    - `IN-04 ContextAuthenticationFilter is registered after Spring Security's filter chain when Spring Security is present`: its order is
+      higher than `DEFAULT_FILTER_ORDER`;
+    - `IN-04 it is not registered without Spring Security` (`FilteredClassLoader`);
+    - `IN-04 for an authenticated request every ContextContributor bean is invoked and the rest of the chain runs with the contributed values`;
+    - `IN-04 the contributed values are bound only for the rest of the chain`;
+    - `IN-04 contributors are not invoked without an authentication, or when isAuthenticated() is false`, with an authenticated request in the
+      same test as a positive control;
+    - `IN-04 an anonymous authentication is not authenticated`: an `AnonymousAuthenticationToken` invokes no contributor;
+    - `IN-05 a contributed value does not replace a key already bound`: the key is bound by a trusted header through `ContextInboundFilter`;
+    - `IN-05 the first contribution for a key wins`, from two contributors ordered with `@Order`, and from one contributor calling `put` twice;
+    - `IN-05 contributors are invoked in bean order`;
+    - `CORE-13 ContextContributions.put rejects null and values of the wrong type`: a `null` key or value throws `NullPointerException`; a value
+      that is not an instance of the key's type (through a raw cast) throws `ClassCastException` at `put`.
+  - Green:
+    - `spring/ContextContributor.java`, `spring/ContextContributions.java` (`put` only), `spring/ContextAuthenticationFilter.java`;
+    - its registration (order `-99`) in a nested `@ConditionalOnClass(SecurityContextHolder.class)` configuration;
+    - `testImplementation` for `spring-security-web`.
+
+    The `AUTHORITY` clause of IN-05 is delivered with ID-02 in M5.
+  - Completes: IN-04; IN-05; CORE-13 (`put`).
+  - Verify: Unit `ContextAuthenticationFilterTest`.
+- [ ] T026 [US2] Contributions can report invalid values.
+  - Red, in `ContextAuthenticationFilterTest`:
+    - `IN-07 invalid(key) reports one INVALID_VALUE`, with boundary `INTERNAL_CALL` and no destination (DIAG-08); the chain runs in `fail` mode
+      (DIAG-02);
+    - `IN-07 invalid(key) binds nothing`;
+    - `IN-07 invalid(key) does not affect contributions for the same key`: `put` then `invalid` binds the value; `invalid` then `put` binds the
+      value; in both cases one `INVALID_VALUE` is reported;
+    - `CORE-13 ContextContributions.invalid(null) throws NullPointerException`.
+  - Green: `invalid` in `ContextContributions` and its implementation in `ContextAuthenticationFilter`.
+  - Completes: IN-07; DIAG-08 (authentication values); CORE-13 (`invalid`).
+  - Verify: Unit `ContextAuthenticationFilterTest`.
+- [ ] T027 [US2] JWT claim contributor; enable IT-2.5, IT-2.1 and IT-2.6 (guard).
+  - Red:
+    - enable IT-2.5: a public caller with alice's JWT sends `Tenant-Id: evil` to edge. Edge records `ctx.tenant=acme`, edge's
+      `UNTRUSTED_HEADER` count rises by 1, and the status is 200;
+    - enable IT-2.1: a public request with alice's JWT; edge, binding nothing itself, calls orders through `internal("orders")`. Orders records
+      `ctx.tenant=acme`.
+
+      Both are red until edge contributes the claim;
+    - enable IT-2.6: with a JWT from `TestJwts.withoutTenant()` and `Tenant-Id: evil`, edge records no `ctx.tenant`. This is a guard: show it
+      red with edge's verifier temporarily replaced by one trusting every request, then revert ([plan.md](plan.md#guard-tests));
+    - in `springtest/JwtClaimContributorTest.java`:
+      - `IN-06 the named claim of a JWT authentication is decoded with the codec and contributed`;
+      - `IN-06 a missing claim leaves the key unbound and reports nothing`;
+      - `IN-06 a non-JWT authentication contributes nothing`;
+      - `CORE-13 JwtClaimContributor rejects null`: `of` with a `null` argument, and `contribute` with a `null` argument, throw
+        `NullPointerException`.
+  - Green:
+    - `spring/JwtClaimContributor.java`, for valid and missing claims;
+    - `compileOnly` and `testImplementation` for `spring-security-oauth2-resource-server` and `spring-security-oauth2-jose`;
+    - topology test code: edge's `JwtClaimContributor.of("tenant", TENANT, Codecs.string())` bean, and `TestJwts.withoutTenant()`.
+  - Completes: IN-06 (valid and missing claims); CORE-13 (`JwtClaimContributor`); IT-2.1; IT-2.5; IT-2.6 (IN-02, IN-04, IN-05 end to end).
+  - Verify: Unit `JwtClaimContributorTest`; IT.
+- [ ] T028 [US2] Invalid claims.
+  - Red, in `JwtClaimContributorTest`:
+    - `IN-06 a claim whose value is not a String is reported as INVALID_VALUE`, parametrized over a number, a boolean and a list: the key stays
+      unbound and `invalid(key)` is called once;
+    - `IN-06 a claim that fails to decode is reported as INVALID_VALUE`: a `longValue()` contributor with claim `abc`, through
+      `ContextAuthenticationFilter`, leaves the key unbound and reports one `INVALID_VALUE` with boundary `INTERNAL_CALL` and no destination
+      (DIAG-08). The request continues;
+    - `DIAG-09 an invalid claim is reported without the value or the codec's message`;
+    - `IN-06 a claim value longer than max-value-length is bound`, a 300-character string claim. This is a guard: show it red with
+      `ContextAuthenticationFilter` temporarily dropping contributed values longer than `wire.max-value-length`, then revert
+      ([plan.md](plan.md#guard-tests));
+    - `IN-06 any other exception from the claim's codec propagates unchanged`: a codec whose `decode` throws `IllegalStateException`;
+      `contribute` throws the same instance and `invalid(key)` is not called. This is a guard: show it red with the catch temporarily widened
+      to `RuntimeException`, then revert ([plan.md](plan.md#guard-tests)).
+  - Green: the `String` check and the `IllegalArgumentException` catch (and only it) in `JwtClaimContributor`, both calling `invalid(key)`.
+  - Completes: IN-06 (invalid claims, no length check, other codec exceptions); DIAG-08; DIAG-09 (claims).
+  - Verify: Unit `JwtClaimContributorTest`.
+
+**Checkpoint**: IT-2.1 and IT-2.5 – IT-2.8 green on JDK 21 and JDK 25; with Phase 4, IT-2.1 – IT-2.9.
+
+---
+
+## Phase 6: Close
+
+- [ ] T029 Verify each requirement one by one against the code and its tests, using the coverage table in
+  [plan.md](plan.md#requirement-coverage):
+  - Requirements: CORE-13, POL-07, POL-08, POL-10, DEST-01 – DEST-04, WIRE-01, WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04,
+    DIAG-01 – DIAG-03, DIAG-08, DIAG-09 and TEST-01.
+  - SC-001: TrustBoundaryIT has no `@Disabled` left, and IT-2.1 – IT-2.9 pass in `integrationTestJdk21` and `integrationTestJdk25`.
+  - SC-002: no scenario's partner observation holds a context header.
+  - SC-003: no untrusted, repeated, invalid or oversized header fails a request (T018, T019, T023, T024, IT-2.5, IT-2.8).
+  - Every requirement has a test whose display name starts with its ID.
+  - `boundrail-context-core` still has no runtime dependencies
+    (`./gradlew :boundrail-context-core:dependencies --configuration runtimeClasspath`).
+  - `-spring` declares Security, Micrometer, servlet, web and restclient only as `compileOnly`
+    (`./gradlew :boundrail-context-spring:dependencies --configuration runtimeClasspath`).
+  - By inspection: no required-key check runs at an in-process boundary (POL-08); no log statement in `-spring` passes a value or an exception
+    message (DIAG-09); `Metrics.globalRegistry` is not referenced (DIAG-03); no adapter catches anything wider than `IllegalArgumentException`
+    around a codec call (WIRE-05).
+
+  Run `./gradlew check` fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run. With the CI run green, this closes the feature.
+
+## Dependencies & Execution Order
+
+- Phase 2: T001 → T002 → T003. T004 and T005 are independent of T001 and of each other.
+- Phase 3: T006 needs nothing from Phase 2. T007 needs T004, T005 and T006.
+- US1:
+  - T008 needs T006. T009 needs T003 and T008. T010 needs T009. T011 needs T007 and T010. T012 needs T011.
+  - T013 needs T010.
+  - T014 needs T005, T007 and T013. T015 needs T004, T005, T007 and T013.
+- US2:
+  - T016 needs T005 and T006. T017 needs T016. T018 and T019 need T007 and T016.
+  - T020 needs T013 and T019.
+  - T021 needs T016. T022 needs T021.
+  - T023 needs T007 and T016. T024 needs T020 and T023.
+  - T025 needs T016. T026 needs T007 and T025.
+  - T027 needs T020 and T026; IT-2.1 also needs US1's outbound path (T010).
+  - T028 needs T026 and T027.
+- T029 comes last.
+- US1 (T008 – T015) and the first US2 tasks (T016 – T019, T021 – T023, T025, T026) can be interleaved after Phase 3. Tasks touching the same file
+  run in sequence.
+- Every task is committed and reviewed on its own, on branch `003-http-trust`.
 
 ## Exit Checklist
 
-- [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1 – IT-2.9
-- [ ] Requirements implemented with tests named after their IDs: POL-07, POL-08, DEST-01 – DEST-03, WIRE-01, WIRE-02, WIRE-04 – WIRE-07,
-      IN-01 – IN-06, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08, TEST-01
+- [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
+- [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
+  DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T012 unit guard and the two unit guards each in T024 and T028) shown red against their temporary
+  change, and the change reverted
+- [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

@@ -359,7 +359,9 @@ A *violation* is a context rule broken at runtime. The kinds are:
 
 Only a missing required key can fail the operation, and only in `fail` mode, where the adapter throws `ContextViolationException` before crossing the
 boundary. In `report` mode it logs, counts and continues without the key. All other kinds are always report-only, because external clients may send
-anything. Reports are rate-limited log entries, plus a Micrometer counter when Micrometer is present.
+anything. The one exception lies outside the violation model: when an application codec's `decode` throws something other than
+`IllegalArgumentException`, or its `encode` throws anything, that is an application bug, and the exception propagates and fails the operation
+with no violation reported (WIRE-05). Reports are rate-limited log entries, plus a Micrometer counter when Micrometer is present.
 
 Reports state evidence only:
 
@@ -520,6 +522,7 @@ Reactions like these identify the real product:
 | D32 | Specs follow the GitHub Spec Kit layout: one feature folder per milestone under `specs/` (`###-feature-name`, numbered in development order) with `spec.md`, `plan.md` and `tasks.md`; SPEC.md keeps the shared parts; requirement IDs are unchanged. | Smaller files per feature, Spec Kit tooling, and stable IDs for tests and traceability. |
 | D33 | `docs/SPEC.md` is removed. Its conventions move to the constitution, the glossary to design.md Appendix A, the test topology to `specs/001-foundation`, configuration properties to each feature's spec, and traceability to roadmap.md. | One home for each piece of content, with no overview file to keep in sync. |
 | D34 | Doc file names under `docs/` are lowercase: `design.md` and `roadmap.md`. | Consistent, conventional file names. |
+| D35 | No violation report of any kind, nor its log entry, contains the value it concerns or the message of a codec exception; adapters identify the value by key name, wire name and boundary. Adapters enforce one maximum value length (`wire.max-value-length`, in UTF-16 code units as `String.length()` counts them) on wire values for all codecs, checked before `decode`; codecs stay limit-free. Only an `IllegalArgumentException` from `decode` is a decode failure; any other exception from a codec's `decode`, and any exception from its `encode`, including an `IllegalArgumentException`, propagates unchanged. Values from verified authentication, such as JWT claims, are not wire values and are not length-checked; WIRE-04 applies if such a value is later sent on the wire. (was Q6) | Codec messages echo the raw input, which is untrusted, unbounded, may contain CR or LF, and may belong to a key that is not loggable. One check in the adapter protects every codec, including application codecs, without wrapping the JDK's exceptions. `IllegalArgumentException` is the rejection the codec contract defines (WIRE-03); anything else is a bug in the codec, which reporting it as an invalid value would hide. `String.length()` is what Java code measures and costs nothing to compute. A claim is bounded by the verified token it came from, not by an untrusted header. |
 
 ### Open proposals
 
@@ -538,7 +541,7 @@ Reactions like these identify the real product:
 | Q3 | Should the Kafka consumer optionally start a fresh per-message processing deadline? | Useful, but not needed for v0.1. | After v0.1 |
 | Q4 | How should Kafka listeners be scoped: container advice chain, or AOP around listener methods? | Must be around-style. Decide in a spike. | M6 spike |
 | Q5 | Which tooling should publish to Maven Central? | Choose at release time. | M7 |
-| Q6 | What may an inbound adapter log or report when a value fails to decode (WIRE-03, WIRE-05, IN-06), and what maximum length should it enforce on an inbound header value before decoding it? Codec `decode` messages echo the raw input (`Invalid long: "…"`, the JDK's `For input string: "…"`), which is untrusted (principle III), unbounded, may contain CR/LF, and may belong to a key that is not loggable. Header values are untrusted and can be large (Kafka headers have no size limit); a 4.5 KB language tag once overflowed the stack in the locale regex, fixed since with possessive quantifiers. | Adapters never copy a decode exception's message into a log entry or violation report; they report the key name, wire name and boundary instead. The alternative is that `decode` messages must not echo the value, which also means wrapping the JDK's exception. The adapter enforces one maximum length for all codecs, checked before `decode`; the codecs stay limit-free. | M2 ([003-http-trust](../specs/003-http-trust/spec.md)) |
+| Q6 | What may an inbound adapter log or report when a value fails to decode (WIRE-03, WIRE-05, IN-06), and what maximum length should it enforce on an inbound header value before decoding it? Codec `decode` messages echo the raw input (`Invalid long: "…"`, the JDK's `For input string: "…"`), which is untrusted (principle III), unbounded, may contain CR/LF, and may belong to a key that is not loggable. Header values are untrusted and can be large (Kafka headers have no size limit); a 4.5 KB language tag once overflowed the stack in the locale regex, fixed since with possessive quantifiers. | Resolved: D35 ([003-http-trust](../specs/003-http-trust/spec.md) WIRE-04, WIRE-05, IN-06, DIAG-09). | Resolved in M2 |
 
 ---
 

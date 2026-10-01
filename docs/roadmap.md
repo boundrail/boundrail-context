@@ -56,7 +56,7 @@ M4 and M5, because its scenarios assert that the deadline is absent and the init
 |---|---|---|---|
 | M0 | 001-foundation | BLD-01 – BLD-12 | build smoke test (BLD-11); all suites written and disabled |
 | M1 | 002-core-runtime | CORE-01 – CORE-12, RT-01 – RT-06, POL-01 – POL-06, POL-09, WIRE-03, DL-01 – DL-02, DL-10 – DL-11, ID-01, ID-07 | RC-1 – RC-8 |
-| M2 | 003-http-trust | POL-07 – POL-08, DEST-01 – DEST-03, WIRE-01 – WIRE-02, WIRE-04 – WIRE-07, IN-01 – IN-06, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08, TEST-01 | IT-2.1 – IT-2.9 |
+| M2 | 003-http-trust | CORE-13, POL-07 – POL-08, POL-10, DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01 | IT-2.1 – IT-2.9 |
 | M3 | 004-async-diagnostics | RT-07 – RT-09, EXE-01 – EXE-07, DIAG-04 – DIAG-07, LOG-01 – LOG-02, TEST-02 – TEST-03 | RC-9, IT-1.1 – IT-1.8 |
 | M4 | 005-deadlines | DL-03 – DL-09, EXE-08 | IT-3.1 – IT-3.7 |
 | M5 | 006-identity | ID-02 – ID-06, ID-08 – ID-09 | IT-4.1 – IT-4.8 |
@@ -129,12 +129,12 @@ M4 and M5, because its scenarios assert that the deadline is absent and the init
 
 **Scope**
 
-- Spring Boot auto-configuration skeleton and policy bean merging.
+- Spring Boot auto-configuration skeleton and policy bean merging; `ContextPolicy.keys()` in core.
 - The inbound filter, the `InboundTrustVerifier` (defaulting to trust nobody, with CIDR support), and `ContextAuthenticationFilter` with contributors,
   including `JwtClaimContributor`.
 - The outbound interceptor for `RestClient` and `RestTemplate`.
 - The transport-neutral `DestinationClassifier` in core (DEST), with per-client declarations and host patterns wired up by the Spring module.
-- Header stripping on external calls, wire value limits, and decode errors.
+- Header stripping on external calls, wire value limits, and decode errors, reported without the values (DESIGN D35).
 - Basic violation reporting (log and metric), including `fail` and `report` modes for missing required keys.
 - `TestInboundTrustVerifier` in the test module.
 

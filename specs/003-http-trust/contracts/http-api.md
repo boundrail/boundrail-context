@@ -1,6 +1,20 @@
 # Contract: HTTP Boundaries and Trust
 
-Signatures only, not implementations.
+Signatures only, not implementations. CORE-03 and CORE-04 apply here as in [core-api.md](../../002-core-runtime/contracts/core-api.md)
+(CORE-13). Except `equals(Object)`, which returns `false` for `null`, no parameter, list element, varargs element or record component declared
+here accepts `null`: the call throws `NullPointerException`, and an absent `Optional` is `Optional.empty()`. `ContextContributions.put` throws
+`ClassCastException` for a value that is not an instance of the key's type. Methods inherited from JDK types and application-written
+implementations of these interfaces are not covered.
+
+## Policy (POL-10) — `boundrail-context-core`
+
+Added to `ContextPolicy` from [002-core-runtime](../../002-core-runtime/contracts/core-api.md):
+
+```java
+public final class ContextPolicy {
+    public Set<ContextKey<?>> keys();  // unmodifiable; registered, merged and built-in keys
+}
+```
 
 ## Destinations (DEST) — `boundrail-context-core`
 
@@ -17,7 +31,7 @@ public interface DestinationClassifier {
 }
 
 public final class HostPatternClassifier implements DestinationClassifier {
-    public static HostPatternClassifier of(List<String> internalHosts, List<String> externalHosts);
+    public static HostPatternClassifier of(List<String> internalHosts, List<String> externalHosts);  // IllegalArgumentException: DEST-04
 }
 ```
 
@@ -34,7 +48,8 @@ public interface ContextContributor {
 }
 
 public interface ContextContributions {
-    <T> void put(ContextKey<T> key, T value);
+    <T> void put(ContextKey<T> key, T value);  // the first contribution for a key wins (IN-05)
+    void invalid(ContextKey<?> key);            // reports INVALID_VALUE (IN-07); binds nothing
 }
 
 public final class JwtClaimContributor implements ContextContributor {
@@ -62,9 +77,21 @@ public record Violation(
 }
 
 public final class ContextViolationException extends RuntimeException {
+    public ContextViolationException(Violation violation);
     public Violation violation();
 }
 ```
 
+When several required keys are unbound on one crossing, each is reported and the exception carries the first by key name (DIAG-02).
+
 `captureSite` and `executorEvidence` are populated from 004-async-diagnostics (DIAG-04, DIAG-05); `MISSING_AUDIENCE` is raised from 006-identity
 (ID-05).
+
+## Test support (TEST) — `boundrail-context-test`
+
+```java
+public final class TestInboundTrustVerifier implements InboundTrustVerifier {
+    public TestInboundTrustVerifier();
+    public static Consumer<RestClient.Builder> peer();  // adds Boundrail-Test-Peer with the per-JVM secret
+}
+```
