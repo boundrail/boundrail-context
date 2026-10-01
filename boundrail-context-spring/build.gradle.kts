@@ -9,4 +9,6 @@ dependencies {
     implementation(libs.spring.boot.autoconfigure)
     compileOnly(libs.spring.security.web)
     compileOnly(libs.micrometer.core)
+
+    testImplementation(libs.spring.boot.starter.test)
 }

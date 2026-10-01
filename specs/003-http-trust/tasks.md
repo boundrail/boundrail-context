@@ -147,7 +147,7 @@ this feature needs is added in the green step of the first task whose test needs
 
 ## Phase 3: Foundational — Spring auto-configuration (blocks every story)
 
-- [ ] T006 Auto-configuration skeleton and effective policy.
+- [x] T006 Auto-configuration skeleton and effective policy.
   - Red:
     - `springtest/AutoConfigurationImportsTest.java`: `POL-07 the auto-configuration is registered for Spring Boot`
       (`ImportCandidates.load(AutoConfiguration.class, classLoader)` contains `BoundrailContextAutoConfiguration`);
