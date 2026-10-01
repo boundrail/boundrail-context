@@ -192,7 +192,7 @@ context-propagating decorator present.
 - IT-3 is green, except IT-3.8 (messaging).
 
 **Risk.** Per-request timeout support varies by HTTP request factory (Q1 in design.md). Run a spike at the start of the milestone. Supporting the JDK
-`HttpClient` factory is sufficient for v0.1.
+`HttpClient` factory is sufficient for v0.1. Decide in the same spike how the adapter handles redirects the request factory follows (Q7).
 
 ---
 
