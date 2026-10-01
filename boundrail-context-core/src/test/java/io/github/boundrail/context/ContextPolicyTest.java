@@ -113,6 +113,35 @@ class ContextPolicyTest {
                 .isEmpty();
     }
 
+    @Test
+    @DisplayName("POL-04 filter keeps exactly the bindings whose keys propagate to the boundary")
+    void filterKeepsExactlyTheBindingsWhoseKeysPropagateToTheBoundary() {
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").propagateTo(ATTACHED, INTERNAL_CALL))
+                .build();
+        ContextSnapshot snapshot = Context.with(TENANT, "t1").with(UNREGISTERED, "u1").call(Context::capture);
+
+        ContextSnapshot internalCall = policy.filter(snapshot, INTERNAL_CALL);
+        ContextSnapshot detached = policy.filter(snapshot, DETACHED);
+
+        assertThat(internalCall.keys()).containsExactly(TENANT);
+        assertThat(internalCall.find(TENANT)).contains("t1");
+        assertThat(detached.keys()).containsExactly(UNREGISTERED);
+        assertThat(detached.find(UNREGISTERED)).contains("u1");
+    }
+
+    @Test
+    @DisplayName("CORE-03 filter rejects a null snapshot or boundary with NullPointerException")
+    void filterRejectsANullSnapshotOrBoundary() {
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").propagateTo(ATTACHED, INTERNAL_CALL))
+                .build();
+
+        assertThatNullPointerException().isThrownBy(() -> policy.filter(null, ATTACHED));
+        // EMPTY, not a non-empty snapshot: propagates would throw for a bound key and hide a missing check in filter
+        assertThatNullPointerException().isThrownBy(() -> policy.filter(ContextSnapshot.EMPTY, null));
+    }
+
     /** A check that asserts {@code NullPointerException} at a call. */
     interface NullCheck {
         void verify();

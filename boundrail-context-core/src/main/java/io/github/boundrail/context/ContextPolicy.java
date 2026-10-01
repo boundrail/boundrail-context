@@ -105,6 +105,26 @@ public final class ContextPolicy {
         return registered != null ? Optional.ofNullable((ContextCodec<T>) registered.codec()) : Optional.empty();
     }
 
+    /**
+     * Returns a snapshot with exactly the bindings whose keys propagate to the boundary (POL-04).
+     *
+     * @param snapshot the snapshot
+     * @param boundary the boundary
+     * @return the filtered snapshot
+     * @throws NullPointerException if an argument is {@code null}
+     */
+    public ContextSnapshot filter(ContextSnapshot snapshot, Boundary boundary) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(boundary, "boundary");
+        Map<ContextKey<?>, Object> kept = new HashMap<>();
+        for (ContextKey<?> key : snapshot.keys()) {
+            if (propagates(key, boundary)) {
+                kept.put(key, snapshot.find(key).orElseThrow());
+            }
+        }
+        return new ImmutableContextSnapshot(kept);
+    }
+
     /** Registers the rules of each key and builds a policy. */
     public interface Builder {
 

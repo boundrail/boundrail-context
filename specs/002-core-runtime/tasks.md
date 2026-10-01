@@ -244,7 +244,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       flag, loggable flag or boundary set), `POL-09 build fails on the wire name Authorization in any case`, `POL-09 build fails on a wire name
       starting with Boundrail- in any case`, each failure with `IllegalStateException`. Green: validation in `ContextPolicy.Builder.build()`
       (POL-03, POL-05, POL-09). Verify: Unit `ContextPolicyValidationTest`
-- [ ] T015 [US2] Filtering. Red: in `ContextPolicyTest`, `POL-04 filter keeps exactly the bindings whose keys propagate to the boundary` (a
+- [x] T015 [US2] Filtering. Red: in `ContextPolicyTest`, `POL-04 filter keeps exactly the bindings whose keys propagate to the boundary` (a
       registered key at a listed and an unlisted boundary; an unregistered key at `DETACHED` and at `INTERNAL_CALL`) and `CORE-03 filter
       rejects a null snapshot or boundary with NullPointerException` (`filter(null, boundary)`, and `filter(ContextSnapshot.EMPTY, null)`,
       which without the check would return `EMPTY`; a non-empty snapshot is not used for the `null` boundary, since T013's `propagates`
