@@ -28,8 +28,8 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and ten unit
-tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and thirteen
+unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
 
@@ -72,7 +72,7 @@ tests already pass before their task; each red is shown against a temporary code
 - No DNS lookup when parsing CIDR entries (IN-08).
 - No work from M3 – M6: no deadline header in or out, no authority, no initiator derivation, no executors, no MDC.
 
-**Scale/Scope**: 12 contract types plus `ContextPolicy.keys()`, 33 requirements, 9 scenarios; 28 tasks and a close task
+**Scale/Scope**: 12 contract types plus `ContextPolicy.keys()`, 33 requirements, 9 scenarios; 29 tasks (T001 – T028 and T006a) and a close task
 
 ## Constitution Check
 
@@ -86,7 +86,7 @@ tests already pass before their task; each red is shown against a temporary code
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirteen guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; sixteen guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -112,7 +112,7 @@ tests already pass before their task; each red is shown against a temporary code
 
 - **Policy keys (POL-10).** `keys()` returns `Set.copyOf(rules.keySet())`. Every built policy already holds the built-in rules (POL-06), and
   `merge` already unions the rules maps, so no other change is needed.
-- **Destination classification (DEST-02).** `HostPatternClassifier.of` validates (DEST-04), then copies both lists. `classify` returns:
+- **Destination classification (DEST-02).** `HostPatternClassifier.of` copies both lists (rejecting `null`), then validates (DEST-04). `classify` returns:
   1. the declared destination, if present;
   2. else `Destination(INTERNAL, empty)` on an internal match;
   3. else `Destination(EXTERNAL, empty)` on an external match;
@@ -134,6 +134,13 @@ tests already pass before their task; each red is shown against a temporary code
   by a package-private `EffectivePolicy` bean: `BuiltInKeys.defaultPolicy()` merged, in bean order, with every `ContextPolicy` bean
   (`ObjectProvider.orderedStream()`). `merge` fails on conflicts (POL-05), so a conflicting pair fails startup with `IllegalStateException` as the
   root cause.
+  - Only the running context's beans count: `orderedStream()` does not look in a parent bean factory, so a parent's `ContextPolicy` is not
+    merged (T006a).
+  - The bean is `@Lazy(false)`, so it is built at startup even with `spring.main.lazy-initialization=true`.
+    `LazyInitializationBeanFactoryPostProcessor` leaves a bean whose lazy flag is set explicitly unchanged (T006a).
+  - `ApplicationContextRunner` does not run `SpringApplication`, so the property alone changes nothing in a runner test. T006a's test adds
+    `LazyInitializationBeanFactoryPostProcessor` through `withInitializer`, as `SpringApplication` does for that property, and sets the property
+    too.
 - **Configuration.** One `@ConfigurationProperties("boundrail.context")` record, `BoundrailContextProperties`, with nested records:
   - `Violations`: `mode`, an enum `FAIL`/`REPORT`, and `logInterval`, a `Duration`;
   - `Inbound`: `trust`, an enum `NONE`/`CIDR`, and `trustedCidrs`;
@@ -281,8 +288,8 @@ P7 (group and package, M7) does not block: the work uses `io.github.boundrail.co
 
 ## Guard Tests
 
-These tests already pass before the task that introduces them, because they assert that something does *not* happen and nothing would make it
-happen yet. As in 002 (review point I-1), each red is shown against a temporary code change, which is reverted before the commit. They are not
+These tests already pass before the task that introduces them, usually because they assert that something does not happen and nothing would make
+it happen yet. As in 002 (review point I-1), each red is shown against a temporary code change, which is reverted before the commit. They are not
 TDD exceptions, but the user is asked to accept them with the plan.
 
 A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code, which
@@ -298,6 +305,9 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T002 | `DEST-02 a wildcard does not match the bare suffix` | T001's exact matching already rejects `svc.test` and `xsvc.test` for the pattern `*.svc.test` | In `HostPatternClassifier.classify`, a naive wildcard that matches with `host.endsWith(pattern.substring(2))`, with no leading dot |
 | T003 | `DEST-04 valid host patterns are accepted` | Before T003, `of` accepts every pattern | In `HostPatternClassifier.of`, the 253-character limit counted over the whole pattern including `*.`, so `*.` followed by a 253-character name is rejected |
 | T003 | `CORE-13 a null pattern list is rejected before pattern validation` | `List.copyOf` already throws `NullPointerException` for a `null` list | In `HostPatternClassifier.of`, the internal list validated before the external list is copied, so an `IllegalArgumentException` is thrown instead |
+| T005 | `POL-10 keys() is unmodifiable` | A `Set.of()` stub, the minimum `keys()` before the other POL-10 tests, cannot be changed either | `keys()` returning `new HashSet<>(rules.keySet())` |
+| T006a | `DEST-02 a host with a trailing dot is UNKNOWN` | T002's matching compares the whole host, and no valid pattern ends with a dot (DEST-04), so `orders.svc.test.` matches neither `orders.svc.test` nor `*.svc.test` | In `HostPatternClassifier.classify`, one trailing dot stripped from the host before matching |
+| T006a | `POL-07 ContextPolicy beans in a parent context are not merged` | T006's `ObjectProvider<ContextPolicy>.orderedStream()` sees only the beans of its own bean factory | In `boundrailEffectivePolicy`, the beans collected with `BeanFactoryUtils.beansOfTypeIncludingAncestors` instead |
 | T013 | IT-2.2 External call carries no context | After T010, the interceptor writes nothing to `EXTERNAL` | In `ContextClientInterceptor`, the classified destination replaced by `Destination(INTERNAL, empty)` |
 | T013 | IT-2.3 Unknown means external | After T010, the interceptor writes nothing to `UNKNOWN` | The same change |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
@@ -371,11 +381,11 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | Requirement or scenario | Tasks |
 |---|---|
 | CORE-13 | T001 (DEST types), T003 (`null` before invalid pattern), T004 (`Violation`, exception), T009 (`BoundrailClients`), T016 (default verifier), T020 (test verifier), T021 (CIDR verifier), T025 (`put`, wrong type), T026 (`invalid`), T027 (`JwtClaimContributor`) |
-| POL-07 | T006 |
+| POL-07 | T006, T006a (parent context not merged; eager under lazy initialization) |
 | POL-08 | T015 (one violation per unbound required key) |
 | POL-10 | T005 |
 | DEST-01 | T001, T029 (no HTTP dependency in core) |
-| DEST-02 | T001, T002, T009 |
+| DEST-02 | T001, T002, T006a (trailing dot), T009 |
 | DEST-03 | T010 (writing), T014 (stripping) |
 | DEST-04 | T003, T009 (startup failure) |
 | WIRE-01 | T010 (outbound), T016 (inbound) |

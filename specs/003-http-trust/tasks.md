@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Thirteen guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T012, and two unit tests each in
-  T001, T003, T024 and T028.
+- Sixteen guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T012, and two unit tests each
+  in T001, T003, T006a, T024 and T028.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -135,7 +135,8 @@ this feature needs is added in the green step of the first task whose test needs
       and `INITIATOR`;
     - `POL-10 the default policy reports the built-in keys`: `BuiltInKeys.defaultPolicy()` reports the three built-in keys;
     - `POL-10 a merged policy reports the union of its keys`;
-    - `POL-10 keys() is unmodifiable`.
+    - `POL-10 keys() is unmodifiable`. This is a guard: a `Set.of()` stub can't be changed either. Its red is shown with `keys()` temporarily
+      returning `new HashSet<>(rules.keySet())`, then reverted ([plan.md](plan.md#guard-tests)).
   - Green: `keys()` in `core/ContextPolicy.java` over the rules map.
   - Completes: POL-10.
   - Verify: Unit `ContextPolicyTest`.
@@ -165,6 +166,26 @@ this feature needs is added in the green step of the first task whose test needs
     `TopologySmokeIT` must stay green now that every topology service loads the auto-configuration.
   - Completes: POL-07.
   - Verify: Unit `AutoConfigurationImportsTest` and `EffectivePolicyTest` in `:boundrail-context-spring`; `./gradlew check`.
+- [ ] T006a Effective policy scope and eager startup.
+  - Red:
+    - in `springtest/EffectivePolicyTest.java`:
+      - `POL-07 conflicting ContextPolicy beans fail startup with lazy initialization`: the two conflicting beans of T006's test, with
+        `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as
+        `SpringApplication` does for that property (`ApplicationContextRunner` does not run `SpringApplication`). `IllegalStateException` is
+        the root cause of the startup failure. Red against T006's code, whose bean is then lazy and never created;
+      - `POL-07 ContextPolicy beans in a parent context are not merged`: a parent context with a `ContextPolicy` bean registering a key, set
+        with `withParent`; that key is not in the child's effective policy's `keys()`, and the built-in keys are. This is a guard: T006's
+        `ObjectProvider` code already passes it. Show it red with `boundrailEffectivePolicy` temporarily collecting the beans with
+        `BeanFactoryUtils.beansOfTypeIncludingAncestors`, then revert ([plan.md](plan.md#guard-tests));
+    - in `coretest/HostPatternClassifierTest.java`:
+      - `DEST-02 a host with a trailing dot is UNKNOWN`: with `orders.svc.test` and `*.svc.test` in both lists, `http://orders.svc.test./` is
+        `UNKNOWN` with no service name. This is a guard: the current code already returns `UNKNOWN`. Show it red with `classify` temporarily
+        stripping one trailing dot from the host, then revert ([plan.md](plan.md#guard-tests)).
+  - Green: `@Lazy(false)` on the `boundrailEffectivePolicy` bean method in `spring/BoundrailContextAutoConfiguration.java`
+    ([plan.md](plan.md#spring-wiring)).
+  - Completes: POL-07 (parent context not merged; eager under lazy initialization); DEST-02 (trailing-dot edge case).
+  - Verify: Unit `EffectivePolicyTest` in `:boundrail-context-spring` and `HostPatternClassifierTest` in `:boundrail-context-core`;
+    `./gradlew check`.
 - [ ] T007 Violation reporting.
   - Red, in `springtest/ViolationReporterTest.java`, with `springtest/support/RecordingLog.java` recording entries:
     - `DIAG-03 a violation is logged at WARN`: one WARN entry naming the kind, key, boundary, destination and thread;
@@ -620,7 +641,7 @@ authentication through contributors.
 ## Dependencies & Execution Order
 
 - Phase 2: T001 → T002 → T003. T004 and T005 are independent of T001 and of each other.
-- Phase 3: T006 needs nothing from Phase 2. T007 needs T004, T005 and T006.
+- Phase 3: T006 needs nothing from Phase 2. T006a needs T003 and T006. T007 needs T004, T005 and T006a.
 - US1:
   - T008 needs T006. T009 needs T003 and T008. T010 needs T009. T011 needs T007 and T010. T012 needs T011.
   - T013 needs T010.
@@ -643,7 +664,8 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T012 unit guards and the two unit guards each in T001, T003, T024 and T028)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T012 unit guards and the two unit guards each in T001, T003, T006a, T024 and
+  T028)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green
