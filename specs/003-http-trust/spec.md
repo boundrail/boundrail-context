@@ -101,7 +101,7 @@ yield no service name.
 ### Wire format
 
 **WIRE-01** `[M2]` Keys SHALL be carried in HTTP headers and Kafka record headers named by their wire names. Values SHALL be the codec's string
-encoding, as UTF-8 bytes for Kafka.
+encoding, as UTF-8 bytes for Kafka. Built-in keys SHALL instead be carried as WIRE-02 defines.
 
 **WIRE-02** `[M2]` The built-in wire formats SHALL be:
 
@@ -219,3 +219,5 @@ Properties use the prefix `boundrail.context.`.
 
 - 002-core-runtime is complete.
 - Only servlet-based Spring MVC, `RestClient` and `RestTemplate` are covered; WebFlux and WebClient are out of scope for v0.1.
+- What an adapter may log or report when an inbound value fails to decode (WIRE-05, IN-06) is open: codec messages echo the raw input
+  (DESIGN Q6).

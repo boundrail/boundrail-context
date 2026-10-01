@@ -121,7 +121,8 @@ It SHALL define three test tasks:
   RuntimeConformanceIT.
 
 `check` SHALL depend on all three. (Rationale: multi-release classes only load from a JAR.) All three SHALL run with the system property
-`jdk.net.hosts.file` pointing to the test hosts file ([Test Topology](#test-topology)).
+`jdk.net.hosts.file` pointing to the test hosts file ([Test Topology](#test-topology)). Each of them SHALL pass the system property
+`boundrail.it.task=<task name>`, for example `boundrail.it.task=integrationTestJdk21`.
 
 **BLD-07** `[M0]` Integration tests SHALL use Testcontainers for Kafka, and SHALL NOT mock Kafka clients or HTTP clients.
 

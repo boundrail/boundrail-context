@@ -1,6 +1,8 @@
 # Contract: Core API
 
-Package `io.github.boundrail.context`, module `boundrail-context-core`. Signatures only, not implementations.
+Package `io.github.boundrail.context`, module `boundrail-context-core`. Signatures only, not implementations. Except `equals(Object)`, which
+returns `false` for `null`, no parameter declared here accepts `null`, and no varargs parameter accepts a `null` element: the call throws
+`NullPointerException` (CORE-03). Methods inherited from JDK types and application-written implementations of these interfaces are not covered.
 
 ## Keys, bindings and snapshots (CORE)
 
@@ -72,7 +74,7 @@ public interface ContextCodec<T> {
     T decode(String text);  // throws IllegalArgumentException on invalid input
 }
 
-public final class Codecs {
+public final class Codecs {                    // each method returns the same instance on every call
     public static ContextCodec<String> string();
     public static ContextCodec<Long> longValue();
     public static ContextCodec<UUID> uuid();
@@ -85,6 +87,7 @@ public final class ContextPolicy {
     public boolean isRequired(ContextKey<?> key);
     public boolean isLoggable(ContextKey<?> key);
     public Optional<String> wireName(ContextKey<?> key);
+    public <T> Optional<ContextCodec<T>> codec(ContextKey<T> key);
     public ContextSnapshot filter(ContextSnapshot snapshot, Boundary boundary);
     public ContextPolicy merge(ContextPolicy other);  // fails on conflicts
 
@@ -113,12 +116,12 @@ public final class BuiltInKeys {
 
 ```java
 public final class Deadline {
-    public static Deadline after(Duration budget);
-    public Duration remaining();               // never negative
+    public static Deadline after(Duration budget);  // budget capped at Duration.ofNanos(Long.MAX_VALUE / 2)
+    public Duration remaining();               // never negative, never above the cap
     public boolean isExpired();
     public void check();                        // throws DeadlineExceededException if expired
-    public Deadline earliest(Deadline other);
-    public Deadline within(Duration max);       // earlier of this and now + max
+    public Deadline earliest(Deadline other);   // the one that expires first
+    public Deadline within(Duration max);       // earliest(Deadline.after(max))
 }
 
 public final class Deadlines {
@@ -140,5 +143,8 @@ public final class Authority {
 public final class Initiator {
     public static Initiator of(String value);  // e.g. "user:alice", "service:billing", "system:scheduled:x"
     public String value();
+    @Override public boolean equals(Object other);  // by value
+    @Override public int hashCode();
+    @Override public String toString();  // the value itself
 }
 ```

@@ -110,6 +110,10 @@ operation's outcome SHALL NOT change.
 **RT-08** `[M3]` The capture-site mode (DIAG-05) SHALL be held by the runtime. It SHALL be initialised from the system properties
 `boundrail.context.diagnostics.capture-sites` and `boundrail.context.diagnostics.sample-rate`, and MAY be changed with `ContextRuntime.captureSites`.
 
+**RT-09** `[M3]` The only JVM-wide library state SHALL be the current-snapshot slot, the registered scope listeners and the capture-site mode. Every
+other piece of state, including the effective policy, violation reporting and its rate limiter, and metrics, SHALL belong to a single Spring
+application context.
+
 ### Executors and async work
 
 **EXE-01** `[M3]` Every executor managed by the library SHALL have a mode, `ATTACHED` or `DETACHED`. The default is `DETACHED`, overridable per bean

@@ -196,8 +196,9 @@ rely on it. Thread pools, `CompletableFuture` and `@Async` never inherit context
 
 ### 5.5 Policy
 
-For every key, the policy states which boundaries the key crosses, whether it is *required*, and whether it may be *logged*. Remote boundaries also
-need a *codec* and a *wire name*. Keys not registered in the policy stay in-process, crossing `ATTACHED` and `DETACHED` only.
+For every key, the policy states which boundaries the key crosses, whether it is *required*, and whether it may be *logged*. For application keys,
+remote boundaries also need a *codec* and a *wire name*; the built-in keys have fixed wire formats instead. Keys not registered in the policy stay
+in-process, crossing `ATTACHED` and `DETACHED` only.
 
 ```java
 @Bean
@@ -537,6 +538,7 @@ Reactions like these identify the real product:
 | Q3 | Should the Kafka consumer optionally start a fresh per-message processing deadline? | Useful, but not needed for v0.1. | After v0.1 |
 | Q4 | How should Kafka listeners be scoped: container advice chain, or AOP around listener methods? | Must be around-style. Decide in a spike. | M6 spike |
 | Q5 | Which tooling should publish to Maven Central? | Choose at release time. | M7 |
+| Q6 | What may an inbound adapter log or report when a value fails to decode (WIRE-03, WIRE-05, IN-06), and what maximum length should it enforce on an inbound header value before decoding it? Codec `decode` messages echo the raw input (`Invalid long: "…"`, the JDK's `For input string: "…"`), which is untrusted (principle III), unbounded, may contain CR/LF, and may belong to a key that is not loggable. Header values are untrusted and can be large (Kafka headers have no size limit); a 4.5 KB language tag once overflowed the stack in the locale regex, fixed since with possessive quantifiers. | Adapters never copy a decode exception's message into a log entry or violation report; they report the key name, wire name and boundary instead. The alternative is that `decode` messages must not echo the value, which also means wrapping the JDK's exception. The adapter enforces one maximum length for all codecs, checked before `decode`; the codecs stay limit-free. | M2 ([003-http-trust](../specs/003-http-trust/spec.md)) |
 
 ---
 

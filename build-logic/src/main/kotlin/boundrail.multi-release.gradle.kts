@@ -5,6 +5,7 @@ plugins {
 
 val java25 = sourceSets.create("java25") {
     java.setSrcDirs(listOf("src/main/java25"))
+    compileClasspath += sourceSets.main.get().output
 }
 
 tasks.named<JavaCompile>(java25.compileJavaTaskName) {
