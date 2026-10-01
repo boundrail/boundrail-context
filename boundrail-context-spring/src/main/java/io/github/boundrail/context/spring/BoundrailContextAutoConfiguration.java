@@ -38,6 +38,7 @@ public class BoundrailContextAutoConfiguration {
 
     /** Logs violations and, with Micrometer, counts them (DIAG-03). */
     @Bean
+    @Lazy(false)
     ViolationReporter boundrailViolationReporter(EffectivePolicy policy, BoundrailContextProperties properties,
             ObjectProvider<ViolationReporter.Counter> counter) {
         return new ViolationReporter(policy, properties.violations().logInterval(), counter.getIfAvailable(() -> violation -> { }),
@@ -80,19 +81,21 @@ public class BoundrailContextAutoConfiguration {
     static class ClientConfiguration {
 
         @Bean
-        RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier) {
+        @Lazy(false)
+        RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier, EffectivePolicy policy) {
             return builder -> builder.requestInterceptors(interceptors -> {
                 if (interceptors.stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
-                    interceptors.add(new ContextClientInterceptor(classifier));
+                    interceptors.add(new ContextClientInterceptor(classifier, policy));
                 }
             });
         }
 
         @Bean
-        RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier) {
+        @Lazy(false)
+        RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier, EffectivePolicy policy) {
             return restTemplate -> {
                 if (restTemplate.getInterceptors().stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
-                    restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier));
+                    restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy));
                 }
             };
         }

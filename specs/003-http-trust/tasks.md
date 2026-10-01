@@ -284,7 +284,7 @@ enforces required keys, the length limit and valid field values.
   - Completes: OUT-01 (at most once per client); OUT-02; OUT-03; DEST-02 (Spring wiring); DEST-04 (startup, also under lazy initialization);
     CORE-13 (`BoundrailClients`).
   - Verify: Unit `BoundrailClientsTest`, `ClientRegistrationTest`.
-- [ ] T010 [US1] Writing context headers.
+- [x] T010 [US1] Writing context headers.
   - Red, in `springtest/ContextClientInterceptorTest.java` (real calls to `RecordingServer`):
     - `OUT-04 an internal call carries the bound keys that propagate to INTERNAL_CALL` and `WIRE-01 a key is sent in the header named by its
       wire name, encoded by its codec`: `tenant=acme` as `Tenant-Id: acme`, `priority=5` as `Priority: 5`;

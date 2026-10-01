@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.restclient.RestTemplateBuilder;
@@ -154,6 +155,68 @@ class BoundrailClientsTest {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalArgumentException.class);
                 });
+    }
+
+    @Test
+    @DisplayName("OUT-03 with several DestinationClassifier beans the primary is used")
+    void withSeveralDestinationClassifierBeansThePrimaryIsUsed() {
+        try (RecordingServer server = RecordingServer.start("ok")) {
+            runner.withBean("otherClassifier", RecordingClassifier.class, RecordingClassifier::new)
+                    .withBean("primaryClassifier", RecordingClassifier.class, RecordingClassifier::new,
+                            definition -> definition.setPrimary(true))
+                    .run(context -> {
+                        context.getBean(RestClient.Builder.class).build().get().uri(server.uri()).retrieve().toBodilessEntity();
+
+                        assertThat(context.getBean("primaryClassifier", RecordingClassifier.class).requests).hasSize(1);
+                        assertThat(context.getBean("otherClassifier", RecordingClassifier.class).requests).isEmpty();
+                    });
+        }
+    }
+
+    @Test
+    @DisplayName("OUT-03 with several DestinationClassifier beans and no primary startup fails")
+    void withSeveralDestinationClassifierBeansAndNoPrimaryStartupFails() {
+        runner.withBean("firstClassifier", RecordingClassifier.class, RecordingClassifier::new)
+                .withBean("secondClassifier", RecordingClassifier.class, RecordingClassifier::new)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).rootCause().isInstanceOf(NoUniqueBeanDefinitionException.class);
+                });
+    }
+
+    @Test
+    @DisplayName("OUT-03 with several DestinationClassifier beans and no primary startup fails with lazy initialization")
+    void withSeveralDestinationClassifierBeansAndNoPrimaryStartupFailsWithLazyInitialization() {
+        runner.withPropertyValues("spring.main.lazy-initialization=true")
+                .withInitializer(context -> context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()))
+                .withBean("firstClassifier", RecordingClassifier.class, RecordingClassifier::new)
+                .withBean("secondClassifier", RecordingClassifier.class, RecordingClassifier::new)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).rootCause().isInstanceOf(NoUniqueBeanDefinitionException.class);
+                });
+    }
+
+    @Test
+    @DisplayName("OUT-03 the last declaration applied to a builder wins")
+    void theLastDeclarationAppliedToABuilderWins() {
+        try (RecordingServer server = RecordingServer.start("ok")) {
+            recording.run(context -> {
+                RestClient internalThenExternal = context.getBean(RestClient.Builder.class).baseUrl(server.uri())
+                        .apply(BoundrailClients.internal("orders")).apply(BoundrailClients.external()).build();
+                RestClient externalThenInternal = context.getBean(RestClient.Builder.class).baseUrl(server.uri())
+                        .apply(BoundrailClients.external()).apply(BoundrailClients.internal("orders")).build();
+
+                internalThenExternal.get().uri("/first").retrieve().toBodilessEntity();
+                externalThenInternal.get().uri("/second").retrieve().toBodilessEntity();
+
+                assertThat(context.getBean(RecordingClassifier.class).requests)
+                        .extracting(OutboundRequest::declared)
+                        .containsExactly(
+                                Optional.of(new Destination(EXTERNAL, Optional.empty())),
+                                Optional.of(new Destination(INTERNAL, Optional.of("orders"))));
+            });
+        }
     }
 
     @Test

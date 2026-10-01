@@ -1,0 +1,255 @@
+package io.github.boundrail.context.spring;
+
+import static io.github.boundrail.context.Boundary.ATTACHED;
+import static io.github.boundrail.context.Boundary.DETACHED;
+import static io.github.boundrail.context.Boundary.EXTERNAL_CALL;
+import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
+import static io.github.boundrail.context.Boundary.MESSAGE;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+
+import io.github.boundrail.context.Authority;
+import io.github.boundrail.context.BuiltInKeys;
+import io.github.boundrail.context.Codecs;
+import io.github.boundrail.context.Context;
+import io.github.boundrail.context.ContextBinding;
+import io.github.boundrail.context.ContextCodec;
+import io.github.boundrail.context.ContextKey;
+import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.Initiator;
+import io.github.boundrail.context.spring.support.RecordingServer;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
+import java.util.List;
+import java.util.Locale;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration;
+import org.springframework.boot.restclient.autoconfigure.RestTemplateAutoConfiguration;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.client.RestClient;
+
+class ContextClientInterceptorTest {
+
+    private static final ContextKey<String> TENANT = ContextKey.of("tenant", String.class);
+    private static final ContextKey<Long> PRIORITY = ContextKey.of("priority", Long.class);
+    private static final ContextKey<Locale> LOCALE = ContextKey.of("locale", Locale.class);
+    private static final ContextKey<String> REGION = ContextKey.of("region", String.class);
+    private static final ContextKey<String> LANGUAGE = ContextKey.of("language", String.class, "en");
+    private static final ContextKey<String> AUDIT = ContextKey.of("audit", String.class);
+    private static final ContextKey<String> CHANNEL = ContextKey.of("channel", String.class);
+    private static final ContextKey<String> UNREGISTERED = ContextKey.of("unregistered", String.class);
+
+    /** Application keys: internal-only, attached-only and external keys, each with a wire name. */
+    private static final ContextPolicy POLICY = ContextPolicy.builder()
+            .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("Tenant-Id").propagateTo(ATTACHED, INTERNAL_CALL))
+            .key(PRIORITY, rules -> rules.codec(Codecs.longValue()).wireName("Priority").propagateTo(ATTACHED, INTERNAL_CALL))
+            .key(LOCALE, rules -> rules.codec(Codecs.locale()).wireName("Locale").propagateTo(ATTACHED, INTERNAL_CALL))
+            .key(REGION, rules -> rules.codec(Codecs.string()).wireName("Region").propagateTo(ATTACHED, INTERNAL_CALL))
+            .key(LANGUAGE, rules -> rules.codec(Codecs.string()).wireName("Language").propagateTo(ATTACHED, INTERNAL_CALL))
+            .key(AUDIT, rules -> rules.codec(Codecs.string()).wireName("Audit").propagateTo(ATTACHED))
+            .key(CHANNEL, rules -> rules.codec(Codecs.string()).wireName("Channel").propagateTo(ATTACHED, EXTERNAL_CALL))
+            .build();
+
+    /** The test topology's application policy (001-foundation). */
+    private static final ContextPolicy TOPOLOGY_POLICY = ContextPolicy.builder()
+            .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("Tenant-Id").required().loggable()
+                    .propagateTo(ATTACHED, DETACHED, INTERNAL_CALL, MESSAGE))
+            .key(PRIORITY, rules -> rules.codec(Codecs.longValue()).wireName("Priority").propagateTo(ATTACHED, DETACHED, INTERNAL_CALL))
+            .build();
+
+    private static final Consumer<RestClient.Builder> UNDECLARED = builder -> { };
+    private static final Consumer<HttpHeaders> NO_HEADERS = headers -> { };
+
+    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class,
+                    RestClientAutoConfiguration.class, RestTemplateAutoConfiguration.class));
+
+    @Test
+    @DisplayName("OUT-04 an internal call carries the bound keys that propagate to INTERNAL_CALL")
+    void anInternalCallCarriesTheBoundKeysThatPropagateToInternalCall() {
+        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "acme").with(PRIORITY, 5L), NO_HEADERS);
+
+        assertThat(header(request, "Tenant-Id")).containsExactly("acme");
+        assertThat(header(request, "Priority")).containsExactly("5");
+    }
+
+    @Test
+    @DisplayName("WIRE-01 a key is sent in the header named by its wire name, encoded by its codec")
+    void aKeyIsSentInTheHeaderNamedByItsWireNameEncodedByItsCodec() {
+        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "acme").with(PRIORITY, 5L).with(LOCALE, Locale.forLanguageTag("pt-BR")), NO_HEADERS);
+
+        assertThat(header(request, "Tenant-Id")).containsExactly("acme");
+        assertThat(header(request, "Priority")).containsExactly("5");
+        assertThat(header(request, "Locale")).as("the codec's encoding, not toString()").containsExactly("pt-BR");
+        assertThat(header(request, "tenant")).as("the key name is not the header name").isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-02 an internal call carries the initiator's value in Boundrail-Initiator")
+    void anInternalCallCarriesTheInitiatorsValueInBoundrailInitiator() {
+        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
+                Context.with(BuiltInKeys.INITIATOR, Initiator.of("user:alice")), NO_HEADERS);
+
+        assertThat(header(request, "Boundrail-Initiator")).containsExactly("user:alice");
+    }
+
+    @Test
+    @DisplayName("OUT-04 an internal call writes no Authorization and no Boundrail-Deadline-Ms")
+    void anInternalCallWritesNoAuthorizationAndNoBoundrailDeadlineMs() {
+        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "acme")
+                        .with(BuiltInKeys.AUTHORITY, Authority.of("alice", "secret-token"))
+                        .with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofMinutes(1))),
+                NO_HEADERS);
+
+        assertThat(header(request, "Tenant-Id")).containsExactly("acme");
+        assertThat(header(request, "Authorization")).isEmpty();
+        assertThat(header(request, "Boundrail-Deadline-Ms")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("OUT-04 unbound keys, keys with only a default, unregistered keys and keys not propagating to INTERNAL_CALL are not sent")
+    void keysThatAreNotBoundOrDoNotPropagateToInternalCallAreNotSent() {
+        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "acme").with(UNREGISTERED, "x").with(AUDIT, "audit-1").with(CHANNEL, "web"), NO_HEADERS);
+
+        assertThat(header(request, "Tenant-Id")).containsExactly("acme");
+        assertThat(header(request, "Region")).as("unbound").isEmpty();
+        assertThat(header(request, "Language")).as("only a default").isEmpty();
+        assertThat(header(request, "Audit")).as("propagates to ATTACHED only").isEmpty();
+        assertThat(header(request, "Channel")).as("propagates to EXTERNAL_CALL only").isEmpty();
+        assertThat(header(request, "Boundrail-Initiator")).as("unbound built-in key").isEmpty();
+    }
+
+    @Test
+    @DisplayName("OUT-04 an external call carries only keys that propagate to EXTERNAL_CALL")
+    void anExternalCallCarriesOnlyKeysThatPropagateToExternalCall() {
+        RecordingServer.Request application = send(POLICY, BoundrailClients.external(),
+                Context.with(TENANT, "acme").with(PRIORITY, 5L).with(CHANNEL, "web")
+                        .with(BuiltInKeys.INITIATOR, Initiator.of("user:alice")),
+                NO_HEADERS);
+
+        assertThat(header(application, "Channel")).containsExactly("web");
+        assertThat(header(application, "Tenant-Id")).isEmpty();
+        assertThat(header(application, "Priority")).isEmpty();
+        assertThat(header(application, "Boundrail-Initiator")).isEmpty();
+
+        RecordingServer.Request topology = send(TOPOLOGY_POLICY, BoundrailClients.external(),
+                Context.with(TENANT, "acme").with(PRIORITY, 5L)
+                        .with(BuiltInKeys.INITIATOR, Initiator.of("user:alice"))
+                        .with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofMinutes(1))),
+                NO_HEADERS);
+
+        assertThat(header(topology, "Tenant-Id")).isEmpty();
+        assertThat(header(topology, "Priority")).isEmpty();
+        assertThat(header(topology, "Boundrail-Initiator")).isEmpty();
+        assertThat(header(topology, "Boundrail-Deadline-Ms")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DEST-03 an UNKNOWN destination is written like EXTERNAL")
+    void anUnknownDestinationIsWrittenLikeExternal() {
+        // No declaration and no host pattern: the default classifier answers UNKNOWN for the loopback server.
+        RecordingServer.Request request = send(POLICY, UNDECLARED,
+                Context.with(TENANT, "acme").with(PRIORITY, 5L).with(CHANNEL, "web")
+                        .with(BuiltInKeys.INITIATOR, Initiator.of("user:alice")),
+                NO_HEADERS);
+
+        assertThat(header(request, "Channel")).containsExactly("web");
+        assertThat(header(request, "Tenant-Id")).isEmpty();
+        assertThat(header(request, "Priority")).isEmpty();
+        assertThat(header(request, "Boundrail-Initiator")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("OUT-04 a wire header set by application code on an internal call is left unchanged")
+    void aWireHeaderSetByApplicationCodeOnAnInternalCallIsLeftUnchanged() {
+        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "acme").with(PRIORITY, 5L), headers -> headers.set("Tenant-Id", "mine"));
+
+        assertThat(header(request, "Tenant-Id")).containsExactly("mine");
+        assertThat(header(request, "Priority")).containsExactly("5");
+    }
+
+    @Test
+    @DisplayName("WIRE-06 the application-set check ignores the header name's case")
+    void theApplicationSetCheckIgnoresTheHeaderNamesCase() {
+        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "acme").with(PRIORITY, 5L), headers -> headers.set("tenant-id", "mine"));
+
+        assertThat(header(request, "Tenant-Id")).containsExactly("mine");
+        assertThat(header(request, "Priority")).containsExactly("5");
+    }
+
+    static Stream<RuntimeException> encodeExceptions() {
+        return Stream.of(new IllegalStateException("codec bug"), new IllegalArgumentException("codec rejects value"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("encodeExceptions")
+    @DisplayName("OUT-04 an exception thrown by a codec's encode propagates unchanged and no violation is reported")
+    void anExceptionThrownByACodecsEncodePropagatesUnchangedAndNoViolationIsReported(RuntimeException exception) {
+        ContextKey<String> broken = ContextKey.of("broken", String.class);
+        ContextCodec<String> throwing = new ContextCodec<>() {
+            @Override
+            public String encode(String value) {
+                throw exception;
+            }
+
+            @Override
+            public String decode(String text) {
+                return text;
+            }
+        };
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(broken, rules -> rules.codec(throwing).wireName("Broken").propagateTo(INTERNAL_CALL))
+                .build();
+
+        try (RecordingServer server = RecordingServer.start("ok")) {
+            runner.withBean(ContextPolicy.class, () -> policy).withBean(SimpleMeterRegistry.class).run(context -> {
+                RestClient client = context.getBean(RestClient.Builder.class).baseUrl(server.uri())
+                        .apply(BoundrailClients.internal("orders")).build();
+
+                Throwable thrown = catchThrowable(() -> Context.with(broken, "value")
+                        .run(() -> client.get().uri("/").retrieve().toBodilessEntity()));
+
+                assertThat(thrown).isSameAs(exception);
+                assertThat(server.requests()).isEmpty();
+                assertThat(context.getBean(MeterRegistry.class).find("boundrail.context.violations").meters()).isEmpty();
+            });
+        }
+    }
+
+    /** Sends one GET through the context's {@code RestClient.Builder}, inside the binding, and returns the request the server received. */
+    private RecordingServer.Request send(ContextPolicy policy, Consumer<RestClient.Builder> declaration, ContextBinding binding,
+            Consumer<HttpHeaders> applicationHeaders) {
+        try (RecordingServer server = RecordingServer.start("ok")) {
+            runner.withBean(ContextPolicy.class, () -> policy).run(context -> {
+                RestClient client = context.getBean(RestClient.Builder.class).baseUrl(server.uri()).apply(declaration).build();
+
+                binding.run(() -> client.get().uri("/").headers(applicationHeaders).retrieve().toBodilessEntity());
+            });
+            assertThat(server.requests()).hasSize(1);
+            return server.requests().getFirst();
+        }
+    }
+
+    /** {@return every value the server received under the header name, compared ignoring case} */
+    private static List<String> header(RecordingServer.Request request, String name) {
+        return request.headers().entrySet().stream()
+                .filter(entry -> entry.getKey().equalsIgnoreCase(name))
+                .flatMap(entry -> entry.getValue().stream())
+                .toList();
+    }
+}

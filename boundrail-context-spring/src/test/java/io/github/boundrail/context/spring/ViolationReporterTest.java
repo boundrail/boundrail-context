@@ -13,6 +13,7 @@ import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.Destination;
+import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.support.RecordingLog;
 import io.github.boundrail.context.spring.support.RecordingLog.Entry;
@@ -30,6 +31,9 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -140,6 +144,23 @@ class ViolationReporterTest {
     @DisplayName("DIAG-03 a negative log-interval fails startup")
     void aNegativeLogIntervalFailsStartup() {
         runner.withPropertyValues("boundrail.context.violations.log-interval=-1s").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(IllegalArgumentException.class);
+        });
+    }
+
+    @ParameterizedTest(name = "with an application DestinationClassifier bean: {0}")
+    @ValueSource(booleans = {false, true})
+    @DisplayName("DIAG-03 a negative log-interval fails startup with lazy initialization")
+    void aNegativeLogIntervalFailsStartupWithLazyInitialization(boolean withApplicationClassifier) {
+        ApplicationContextRunner lazy = runner
+                .withPropertyValues("spring.main.lazy-initialization=true", "boundrail.context.violations.log-interval=-1s")
+                .withInitializer(context -> context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()));
+        if (withApplicationClassifier) {
+            lazy = lazy.withBean(DestinationClassifier.class,
+                    () -> request -> new Destination(Destination.Kind.UNKNOWN, Optional.empty()));
+        }
+        lazy.run(context -> {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(IllegalArgumentException.class);
         });
