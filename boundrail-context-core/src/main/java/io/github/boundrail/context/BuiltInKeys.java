@@ -12,6 +12,11 @@ public final class BuiltInKeys {
     /** Who started the work. */
     public static final ContextKey<Initiator> INITIATOR = ContextKey.builtIn("boundrail.initiator", Initiator.class);
 
+    /** {@return the policy with only the built-in rules (POL-06)} */
+    public static ContextPolicy defaultPolicy() {
+        return ContextPolicy.builtIn();
+    }
+
     private BuiltInKeys() {
     }
 }

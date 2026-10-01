@@ -318,7 +318,7 @@ None. 001-foundation built the core project, its test dependencies, the three in
       `CORE-03 Initiator.equals(null) is false`, and `CORE-12 a snapshot's toString shows an initiator's value`. Green: `Initiator.of`, `value()`,
       `equals`, `hashCode` and `toString` (ID-07, CORE-03, CORE-12). The `equals(null)` test is green before the change, because T018's
       bare class already inherits `Object.equals` ([plan.md](plan.md#research-notes)). Verify: Unit `InitiatorTest`
-- [ ] T022 [US3] Built-in default policy. Red: in `BuiltInKeysTest`, `DL-02 DEADLINE uses the built-in default policy`, `POL-06 AUTHORITY uses
+- [x] T022 [US3] Built-in default policy. Red: in `BuiltInKeysTest`, `DL-02 DEADLINE uses the built-in default policy`, `POL-06 AUTHORITY uses
       the built-in default policy`, `POL-06 INITIATOR uses the built-in default policy` (each row of the spec's table: boundaries, required,
       loggable; wire name `Boundrail-Deadline-Ms` for `DEADLINE`, `Boundrail-Initiator` for `INITIATOR`, empty for `AUTHORITY`),
       `POL-06 defaultPolicy holds only the built-in rules` (an application key is unregistered in it), and `POL-03 the built-in rules have no

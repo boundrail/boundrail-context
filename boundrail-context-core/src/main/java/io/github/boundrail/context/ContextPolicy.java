@@ -24,6 +24,18 @@ public final class ContextPolicy {
     private static final String RESERVED_WIRE_NAME = "Authorization";
     private static final String RESERVED_WIRE_PREFIX = "Boundrail-";
 
+    /**
+     * The built-in rules (POL-03, POL-06): no codec, and the WIRE-02 header names for {@code DEADLINE} and {@code INITIATOR}. Every policy
+     * that holds them holds these instances.
+     */
+    private static final Map<ContextKey<?>, Rules> BUILT_IN_RULES = Map.of(
+            BuiltInKeys.DEADLINE, new Rules(null, "Boundrail-Deadline-Ms", false, false, Set.of(Boundary.ATTACHED, Boundary.INTERNAL_CALL)),
+            BuiltInKeys.AUTHORITY, new Rules(null, null, false, false, Set.of(Boundary.ATTACHED, Boundary.INTERNAL_CALL)),
+            BuiltInKeys.INITIATOR, new Rules(null, "Boundrail-Initiator", false, true,
+                    Set.of(Boundary.ATTACHED, Boundary.DETACHED, Boundary.INTERNAL_CALL, Boundary.MESSAGE)));
+
+    private static final ContextPolicy BUILT_IN = new ContextPolicy(BUILT_IN_RULES);
+
     private final Map<ContextKey<?>, Rules> rules;
 
     private ContextPolicy(Map<ContextKey<?>, Rules> rules) {
@@ -33,6 +45,16 @@ public final class ContextPolicy {
     /** {@return a new builder without registered keys} */
     public static Builder builder() {
         return new PolicyBuilder();
+    }
+
+    /**
+     * Returns the policy with only the built-in rules (POL-06). It is not built by a builder, so POL-03's codec and wire-name check, POL-06's
+     * rejection of built-in keys and POL-09's reserved wire names do not apply to it.
+     *
+     * @return the built-in policy
+     */
+    static ContextPolicy builtIn() {
+        return BUILT_IN;
     }
 
     /**
