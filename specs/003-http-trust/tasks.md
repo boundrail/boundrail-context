@@ -13,7 +13,7 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Thirty-one guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T015, two unit tests
+- Thirty-two guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005, T015 and T017, two unit tests
   each in T001, T003, T006a, T007, T024 and T028, three unit tests each in T010, T011 and T015a, and four unit tests in T012.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
@@ -548,13 +548,33 @@ authentication through contributors.
   - Completes: IN-01; IN-02 (trusted binding); IN-03 (default verifier, bean replaces); WIRE-01 (inbound); WIRE-06 (inbound); CORE-13 (default
     verifier).
   - Verify: Unit `ContextInboundFilterTest` and `InboundTrustVerifierTest`.
-- [ ] T017 [US2] Built-in keys inbound.
+- [ ] T017 [US2] Built-in keys inbound, the filter order and the T016 review follow-ups.
   - Red, in `ContextInboundFilterTest`:
     - `WIRE-02 a trusted Boundrail-Initiator header binds the initiator with that value`;
     - `IN-02 a trusted request binds no deadline and no authority from headers`: with `Boundrail-Initiator`, `Boundrail-Deadline-Ms` and
-      `Authorization` present, only the initiator is bound.
-  - Green: `INITIATOR` decoded with `Initiator.of`; `DEADLINE` and `AUTHORITY` skipped.
-  - Completes: WIRE-02 (inbound); IN-02 (built-in keys).
+      `Authorization` present, only the initiator is bound;
+    - `IN-01 the inbound filter runs before Spring Security at a configured spring.security.filter.order`: with
+      `spring.security.filter.order=-200`, the registration order is `-201`. Red against T016's fixed `-101`. With no property it is `-101`,
+      which T016's IN-01 test already covers;
+    - `IN-01 an undeclared checked exception from the chain is rethrown unchanged`: the chain sneaky-throws a checked exception that is
+      neither `IOException` nor `ServletException`, on a trusted request that binds `tenant` and on a request with nothing bound; the same
+      instance comes out of the filter in both. Red on the trusted path, where T016 wraps it in `UndeclaredThrowableException`;
+    - `IN-01 no inbound filter or verifier is registered outside a servlet web application`: a plain `ApplicationContextRunner` with the
+      auto-configuration has no `FilterRegistrationBean` and no `InboundTrustVerifier` bean. This is a guard: T016's nested configuration is
+      already `@ConditionalOnWebApplication(type = SERVLET)`. Show it red with that annotation temporarily removed, then revert
+      ([plan.md](plan.md#guard-tests)).
+  - Green:
+    - `INITIATOR` decoded with `Initiator.of`; `DEADLINE` and `AUTHORITY` skipped;
+    - in `BoundrailContextAutoConfiguration.InboundConfiguration`, the `FilterRegistrationBean` order is `securityOrder - 1`, where
+      `securityOrder` is `spring.security.filter.order` read from the `Environment` as an `int` with a default of `-100`.
+      `ContextInboundFilter.ORDER` (`-101`) is replaced by `SECURITY_FILTER_ORDER_DEFAULT = -100`, Boot's
+      `SecurityFilterProperties.DEFAULT_FILTER_ORDER` copied because Spring Security is optional, with its Javadoc saying so;
+    - in `ContextInboundFilter`, the `catch (Exception e)` around `binding.call` rethrows unchanged through a generic sneaky-rethrow helper
+      (`<E extends Throwable> void sneakyThrow(Throwable t) throws E`), replacing the `UndeclaredThrowableException` wrap and its
+      "unreachable" comment;
+    - `doFilterInternal`'s Javadoc, which says "Keys without a codec, the built-in keys, are not bound", now says the initiator is bound and
+      the deadline and authority are not.
+  - Completes: WIRE-02 (inbound); IN-02 (built-in keys); IN-01 (configured security order, undeclared checked exceptions, servlet only).
   - Verify: Unit `ContextInboundFilterTest`.
 - [ ] T018 [US2] Repeated headers on a trusted request.
   - Red, in `ContextInboundFilterTest`:
@@ -802,7 +822,7 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T015 unit guards, the two unit guards each in T001, T003, T006a, T007,
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005, T015 and T017 unit guards, the two unit guards each in T001, T003, T006a, T007,
   T024 and T028, the three unit guards each in T010, T011 and T015a, and the four unit guards in T012)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`

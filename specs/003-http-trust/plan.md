@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-one guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-two guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -239,9 +239,11 @@ unit tests already pass before their task; each red is shown against a temporary
 ### Inbound
 
 - **Inbound filter (IN-01, IN-02, WIRE-04 – WIRE-06).** `ContextInboundFilter extends OncePerRequestFilter`, registered through a
-  `FilterRegistrationBean` with order `-101`. That is one before Boot's `SecurityFilterProperties.DEFAULT_FILTER_ORDER` (`-100`). The constant is
-  copied, because Spring Security is optional, and a test compares it with Boot's constant; T016 checks the class's Boot 4 location. The filter
-  asks the verifier, then:
+  `FilterRegistrationBean` in a nested `@ConditionalOnWebApplication(type = SERVLET)` configuration (T017 tests that nothing is registered
+  outside a servlet application). Its order is one below `spring.security.filter.order`, read from the `Environment` with a default of `-100`
+  (Boot's `SecurityFilterProperties.DEFAULT_FILTER_ORDER`), so `-101` by default (T016) and `-201` at `-200` (T017, user decision). The default
+  is copied, because Spring Security is optional, and a test compares the order with Boot's constant; T016 checks the class's Boot 4 location.
+  The filter asks the verifier, then:
   - For `TRUSTED_INTERNAL`, for each key of `policy.keys()` that propagates to `INTERNAL_CALL` and has a wire name, except `AUTHORITY` and
     `DEADLINE`:
     1. read `Collections.list(request.getHeaders(wireName))`; servlet header names are case-insensitive (WIRE-06);
@@ -254,7 +256,9 @@ unit tests already pass before their task; each red is shown against a temporary
     and bind nothing (IN-02). This covers every key, including `DEADLINE` and keys that do not propagate to `INTERNAL_CALL`; `AUTHORITY` has
     no wire name, so `Authorization` is never reported.
 
-  It then runs `filterChain.doFilter` inside `binding.call(...)`, rethrowing `IOException` and `ServletException` unchanged (CORE-08).
+  It then runs `filterChain.doFilter` inside `binding.call(...)`, rethrowing `IOException` and `ServletException` unchanged (CORE-08). Any
+  other checked exception, which the chain can only sneaky-throw, is rethrown unchanged through a generic sneaky-rethrow helper, as on the
+  path with nothing bound, and not wrapped in `UndeclaredThrowableException` (T017, T016 review).
 - **Trust verifiers (IN-03, IN-08).** Both built-in verifiers are `@ConditionalOnMissingBean(InboundTrustVerifier.class)`, so an application bean
   replaces them.
   - The default bean returns `UNTRUSTED`.
@@ -333,6 +337,9 @@ The two user decisions from the T015 review are being written into spec.md (DIAG
 fails startup, also under lazy initialization, values match ignoring case and an empty value means `fail`; and in `report` mode an
 application-set header of an unbound required key is sent. T015a is blocked until spec.md states both.
 
+The user's decision from the T016 review, that the inbound filter's order is one below `spring.security.filter.order` (`-101` by default), is
+being written into spec.md (IN-01) by the spec-creator. T017's configured-order test is blocked until that IN-01 text is committed.
+
 P7 (group and package, M7) does not block: the work uses `io.github.boundrail.context`, as 002 did. Q1 – Q5 do not apply to M2; Q6 is resolved
 (D35).
 
@@ -377,6 +384,7 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T015a | `DIAG-02 an invalid violations.mode fails startup` (without and with lazy initialization) | `Mode` is an enum, so binding `bogus` already fails, and the `@Lazy(false)` reporter binds the properties at startup | In `Violations`, an unconvertible `mode` defaulted to `FAIL` instead of failing (e.g. `mode` bound as a `String` and mapped to `FAIL` unless it equals `report`) |
 | T015a | `DIAG-02 violations.mode is matched ignoring case and an empty value means fail` | Boot's lenient enum conversion ignores case, and converts `""` to `null`, which `@DefaultValue("fail")` replaces | Case: `mode` bound as a `String` and compared with `equals("report")`, so `REPORT` is `fail`. Empty value: `@DefaultValue("fail")` removed from `mode`, so `""` binds to `null` and the interceptor's `mode == FAIL` is false |
 | T015a | `DIAG-02 in report mode an application-set header of an unbound required key is sent` | T015's check reads the context, not the headers, and step 3 writes nothing for an unbound key, so the application's header is untouched | In `ContextClientInterceptor`, in `report` mode, the wire header of each missing required key removed from the request |
+| T017 | `IN-01 no inbound filter or verifier is registered outside a servlet web application` | T016's nested `InboundConfiguration` is already `@ConditionalOnWebApplication(type = SERVLET)`, so a plain `ApplicationContextRunner` creates neither bean | `@ConditionalOnWebApplication` removed from `InboundConfiguration` |
 | T024 | `WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec` | T023's length check already drops the value before decoding | In `ContextInboundFilter`, `decode` called before the length check |
 | T024 | `WIRE-05 any other exception from decode propagates unchanged and no violation is reported` | Before T024 nothing catches an exception from `decode`, so every exception propagates | In `ContextInboundFilter`, the catch widened from `IllegalArgumentException` to `RuntimeException` |
 | T028 | `IN-06 a claim value longer than max-value-length is bound` | No length check exists on the authentication path | In `ContextAuthenticationFilter`, contributed values longer than `wire.max-value-length` dropped |
@@ -460,7 +468,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | WIRE-06 | T010, T014 (outbound), T016, T018, T019 (inbound) |
 | WIRE-07 | T014 (one violation per removed name with values, none for a name with no values, headers of keys propagating to `EXTERNAL_CALL` kept) |
 | WIRE-08 | T012 (not on application-set headers) |
-| IN-01 | T016 |
+| IN-01 | T016, T017 (configured security order, undeclared checked exceptions, servlet only) |
 | IN-02 | T016, T017, T018, T019 |
 | IN-03 | T016 (default, bean replaces), T021 (CIDR, `getRemoteAddr()`, non-literal remote address) |
 | IN-04 | T025 |

@@ -71,6 +71,12 @@ values are ignored and reported, and never fail the request.
   (application wins; on an external or unknown call, WIRE-07 still removes it when its key does not propagate to `EXTERNAL_CALL`).
 - Application code sets a policy wire header name with no values: OUT-04 (unset, so the context value is written). Application code sets it
   to the empty string `""`: OUT-04 (set, so it is left unchanged).
+- `spring.security.filter.order` is set, for example to `5`: IN-01 (`ContextInboundFilter` is ordered at `4`, still before Spring
+  Security's filter chain).
+- A request from which `ContextInboundFilter` binds no keys, such as any request under the default verifier: IN-01 (the rest of the chain
+  runs in the caller's existing scope; no empty scope is entered).
+- A handler uses Spring MVC async processing (`DeferredResult`, `Callable`): known limitation in M2 (see Assumptions; DESIGN Q8). The async
+  dispatch runs without the inbound context.
 - The HTTP client follows a 3xx redirect to another host: known limitation in M2 (see Assumptions; DESIGN Q7). The redirected request may
   carry the context headers written for the original destination, without being classified again.
 - A destination matches both an internal and an external host pattern: DEST-02 (internal patterns are checked first).
@@ -236,8 +242,10 @@ code is not written by the adapter, and is not checked (OUT-04).
 
 ### Inbound HTTP
 
-**IN-01** `[M2]` The Spring module SHALL register `ContextInboundFilter`, ordered before Spring Security's filter chain. It SHALL run the rest of the
-chain inside a scope (around-style).
+**IN-01** `[M2]` The Spring module SHALL register `ContextInboundFilter` before Spring Security's filter chain, at whatever
+`spring.security.filter.order` is configured: the filter's order SHALL be that property's value minus one, so -101 with the property's
+default of -100. It SHALL be around-style: it SHALL run the rest of the chain inside a scope holding the keys it binds (none, if it binds
+none). WHEN it binds no keys, it SHALL run the rest of the chain in the caller's existing scope, and SHALL NOT enter an empty scope.
 
 **IN-02** `[M2]` WHEN a request arrives, `ContextInboundFilter` SHALL ask the `InboundTrustVerifier` for a verdict. WHEN the verdict is
 `TRUSTED_INTERNAL`, it SHALL decode and bind every key whose policy includes `INTERNAL_CALL` and whose wire header is present, except `AUTHORITY` and
@@ -414,3 +422,6 @@ and `spring-boot-restclient` are present), several `DestinationClassifier` beans
   does so below the interceptor, so a request redirected to another host may carry the context headers written for the original destination,
   without being classified again or stripped (WIRE-07). Turn off redirect following on clients declared internal (OUT-03), and on clients that
   reach hosts matched by an internal host pattern (DEST-02). DESIGN Q7 tracks the fix, resolved with the M4 request-factory work.
+- Spring MVC async processing is a known limitation in M2. `ContextInboundFilter` does not run again on async dispatches, so with
+  `DeferredResult` or `Callable` the async dispatch runs without the inbound context that IN-01 and IN-02 bind for the original request.
+  DESIGN Q8 tracks the fix, picked up in [004-async-diagnostics](../004-async-diagnostics/spec.md) `[M3]`.
