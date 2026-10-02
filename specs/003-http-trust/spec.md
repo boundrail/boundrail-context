@@ -338,8 +338,9 @@ violation (DIAG-03) and then throw a `ContextViolationException` carrying it, be
 report the violation and continue without the key. WHEN more than one required key is unbound on one crossing (POL-08), the adapter SHALL
 report one `MISSING_REQUIRED` violation per key, in ascending order of key name as compared by `String.compareTo` (key names are unique in a
 policy, POL-05), and in `fail` mode SHALL then throw one `ContextViolationException` carrying the first of them. All other violation kinds SHALL
-always be report-only. The mode SHALL be matched ignoring case, so `Report` means `report`, and an empty value SHALL mean `fail`. IF the mode is
-any other value, such as `bogus`, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`.
+always be report-only. The mode SHALL be matched with Spring Boot's relaxed enum binding (ignoring case, surrounding whitespace and
+non-alphanumeric characters), so `Report`, `re-port` and `RE_PORT` mean `report`, and an empty or blank value SHALL mean `fail`. IF the mode
+matches neither value, such as `bogus`, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`.
 
 **DIAG-03** `[M2]` Reporting a violation SHALL:
 
@@ -382,7 +383,7 @@ and `spring-boot-restclient` are present), several `DestinationClassifier` beans
 
 | Property | Default | Meaning |
 |---|---|---|
-| `violations.mode` | `fail` | `fail` or `report`, matched ignoring case; an empty value means `fail`, and any other value fails startup (DIAG-02) |
+| `violations.mode` | `fail` | `fail` or `report`, matched with Spring Boot's relaxed enum binding (ignoring case, surrounding whitespace and non-alphanumeric characters); an empty or blank value means `fail`, and any value that matches neither, such as `bogus`, fails startup, even under lazy initialization (DIAG-02) |
 | `violations.log-interval` | `1m` | Rate limit for violation logs; `0s` logs every occurrence, and a negative value fails startup (DIAG-03) |
 | `inbound.trust` | `none` | `none` or `cidr`; a verifier bean overrides it (IN-03) |
 | `inbound.trusted-cidrs` | `[]` | IPv4 or IPv6 CIDRs, or bare addresses, trusted when `inbound.trust=cidr` (IN-03, IN-08). Matched against `getRemoteAddr()`: with forwarded-header processing enabled, a proxy, or a client forging `Forwarded` or `X-Forwarded-For` headers that no proxy strips, decides that address |
