@@ -13,9 +13,10 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Thirty-eight guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+- Forty-four guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
   T002, T005, T015, T017, T019 and T020a, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
-  and T028, three unit tests each in T010, T011 and T015a, and four unit tests in T012.
+  and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and six unit tests in T022 (one of them the cases of a
+  parametrized test that T021's code already rejects).
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -713,6 +714,8 @@ authentication through contributors.
       with `0.0.0.0/0` and `::/0` both trusted;
     - `IN-08 the remote address is parsed without DNS lookups`: `localhost`, which would resolve to `127.0.0.1`, against `127.0.0.0/8` is
       `UNTRUSTED`;
+    - `IN-08 an over-long remote address is UNTRUSTED without costly parsing`: against `::/0`, a 39-character IPv6 literal is
+      `TRUSTED_INTERNAL`, and `":".repeat(8191) + "%"` is `UNTRUSTED` within 200 ms (`assertTimeoutPreemptively`);
     - `IN-08 an IPv6 remote address with a zone ID is UNTRUSTED`: against `fe80::/10`, `fe80::1%eth0` is `UNTRUSTED` and `fe80::1` is
       `TRUSTED_INTERNAL`.
   - Green: package-private `spring/CidrInboundTrustVerifier.java` for `address/prefix` entries, `inbound.trusted-cidrs`, and selection by
@@ -720,21 +723,60 @@ authentication through contributors.
     nothing.
   - Completes: IN-03 (CIDR, non-literal remote address); IN-08 (matching, remote address parsing); CORE-13 (CIDR verifier).
   - Verify: Unit `CidrInboundTrustVerifierTest`.
-- [ ] T022 [US2] Strict CIDR entries.
+- [ ] T022 [US2] Strict CIDR literals and `inbound.trust` values.
   - Red, in `CidrInboundTrustVerifierTest`:
     - `IN-08 a bare address is a single host`: `10.1.2.3` trusts `10.1.2.3` and not `10.1.2.4`; `fd00::1` trusts only itself;
-    - `IN-08 prefix lengths are 0 to 32 for IPv4 and 0 to 128 for IPv6`: `0.0.0.0/0` and `::/0` are accepted;
+    - `IN-08 prefix lengths are 0 to 32 for IPv4 and 0 to 128 for IPv6`: `0.0.0.0/0` and `::/0` are accepted. This is a guard: T021 accepts
+      every prefix. Show it red with the prefix range check temporarily starting at 1, then revert ([plan.md](plan.md#guard-tests));
     - `IN-08 an invalid entry fails startup`, parametrized: `10.0.0.1/8` (host bits), `10.0.0.0/33`, `fd00::/129`, `10.0.0.0/-1`, `10.0.0.0/`,
-      `::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`, `fe80::1%eth0`, `localhost`, `orders.svc.test` and `10.0.0`. Each fails startup with
-      `inbound.trust=cidr`;
-    - `IN-08 entries are parsed without DNS lookups`: `localhost`, which would resolve, fails startup;
-    - `IN-08 invalid entries are ignored when inbound.trust is not cidr`: startup succeeds with `trust=none`;
+      `::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`, `fe80::1%eth0`, `localhost`, `orders.svc.test` and `10.0.0`; in square brackets,
+      `[2001:db8::1]` and `[2001:db8::]/32`; and breaking the decimal form, `010.0.0.1`, `10.0.0.256`, `::ffff:10.0.0.01`, `::10.0.0.01/128`,
+      `10.0.0.0/08` and `10.0.0.0/+8`. Each fails startup with `inbound.trust=cidr`. Eleven cases already fail on T021's code: `10.0.0.0/`,
+      whose empty prefix `Integer.parseInt` rejects, and `::ffff:10.0.0.1`, `fe80::1%eth0`, `localhost`, `orders.svc.test`, `10.0.0`,
+      `[2001:db8::1]`, `[2001:db8::]/32`, `010.0.0.1`, `10.0.0.256` and `::ffff:10.0.0.01`, which have no `/` or fail T021's literal check.
+      The other eight are red. For those eleven cases this is a guard: show them red with the `CidrInboundTrustVerifier` constructor
+      temporarily skipping an entry whose parsing throws `IllegalArgumentException`, then revert ([plan.md](plan.md#guard-tests));
+    - `IN-08 entries are parsed without DNS lookups`: `localhost`, which would resolve, fails startup. This is a guard: T021 rejects an entry
+      without a `/`. Show it red with the textual literal check temporarily skipped for entries, so `localhost` reaches
+      `InetAddress.getByName`, resolves to `127.0.0.1` and is accepted as a bare address, then revert ([plan.md](plan.md#guard-tests));
+    - `IN-08 invalid entries are ignored when inbound.trust is not cidr`: startup succeeds with `trust=none`. This is a guard: T021 creates the
+      CIDR verifier only with `cidr`. Show it red with the verifier bean method temporarily building a `CidrInboundTrustVerifier` from
+      `trusted-cidrs` before it switches on `trust`, then revert ([plan.md](plan.md#guard-tests));
     - `IN-08 an invalid CIDR entry fails startup with lazy initialization`: `inbound.trust=cidr` and `trusted-cidrs=10.0.0.1/8` with
       `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as in T006a;
-      `IllegalArgumentException` is the root cause.
-  - Green: strict parsing in `CidrInboundTrustVerifier` ([plan.md](plan.md#inbound)); `@Lazy(false)` on the CIDR verifier bean method, so it
-    is built, and its entries parsed, at startup under lazy initialization.
-  - Completes: IN-08 (entries, startup failure, also under lazy initialization).
+      `IllegalArgumentException` is the root cause;
+    - `IN-08 one enclosing pair of square brackets is removed from the remote address`: against `2001:db8::/32`, `[2001:db8::1]` is
+      `TRUSTED_INTERNAL`, and `[[2001:db8::1]]` and `[2001:db8::1` are `UNTRUSTED`;
+    - `IN-08 a remote address whose IPv4 part breaks the decimal form is UNTRUSTED`: with `0.0.0.0/0` and `::/0` trusted, `10.0.0.1` is
+      `TRUSTED_INTERNAL`, and `010.0.0.1`, `10.0.0.256`, `::ffff:10.0.0.01` and `::10.0.0.01` are `UNTRUSTED`. It is red on T021's code,
+      because `InetAddress.getByName` accepts `::ffff:10.0.0.01` (as `10.0.0.1`) and `::10.0.0.01`; T021's dotted-quad pattern already
+      rejects `010.0.0.1` and `10.0.0.256`, which sit in the same test as these red assertions;
+    - `IN-03 inbound.trust is matched with relaxed binding`: with `trusted-cidrs=10.0.0.0/8`, both `CIDR` and ` Cidr ` select the CIDR
+      verifier, so `10.1.2.3` is `TRUSTED_INTERNAL`. ` Cidr ` is set through a `MapPropertySource` added with `withInitializer`, because
+      `withPropertyValues` trims values. It is red on T021's code: `@ConditionalOnProperty` compares with `equalsIgnoreCase`, so ` Cidr `
+      selects no verifier and startup fails;
+    - `IN-03 an empty or blank inbound.trust means none`: `""` and `" "` (the blank one through a `MapPropertySource`), with
+      `trusted-cidrs=0.0.0.0/0`, start up with the default verifier, so `10.1.2.3` is `UNTRUSTED`. It is red on T021's code: neither
+      `@ConditionalOnProperty` matches a present empty value, so startup fails;
+    - `IN-03 an invalid inbound.trust fails startup with a binding error naming the property`, parametrized: without lazy initialization,
+      with it (the T006a setup), and with an application `InboundTrustVerifier` bean. `bogus` fails startup, and a `BindException` in the
+      cause chain names `boundrail.context.inbound.trust`, as in T015a's DIAG-02 test. It is expected to pass on T021's code, because the
+      `@Lazy(false)` reporter and client customizers bind `BoundrailContextProperties` at startup, so it is a guard: show it red with
+      `Inbound.trust` temporarily bound as a `String` and mapped to `NONE` unless it equals `cidr` ignoring case, then revert
+      ([plan.md](plan.md#guard-tests)). If a case is red on T021's code, the test is not a guard: its green is the bean method below, the
+      leader reports it, and the planner removes its Guard Tests row;
+    - change T021's `IN-08 an over-long remote address is UNTRUSTED without costly parsing` to use `":".repeat(65535) + "%"`, so its red margin
+      holds on faster machines. It passes before this task's code, so it is a guard: show it red with the 45-character cap temporarily removed
+      and the IPv6 pattern temporarily the backtracking `[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*`, then revert ([plan.md](plan.md#guard-tests)).
+  - Green:
+    - strict parsing in `CidrInboundTrustVerifier` ([plan.md](plan.md#inbound)): bare addresses, prefix form and range, host bits, no
+      IPv4-mapped entries, the decimal form of the IPv4 part of an IPv6 literal, and one enclosing pair of square brackets removed from the
+      remote address only;
+    - in `BoundrailContextAutoConfiguration`, the two `@ConditionalOnProperty` verifier beans replaced by one `@ConditionalOnMissingBean`,
+      `@Lazy(false)` bean method, `boundrailInboundTrustVerifier`, that switches on the bound `Trust`, so the CIDR verifier is built, and its
+      entries parsed, at startup under lazy initialization.
+  - Completes: IN-03 (relaxed, blank and invalid `inbound.trust`, also under lazy initialization and with a verifier bean); IN-08 (entries,
+    square brackets, decimal form, startup failure, also under lazy initialization).
   - Verify: Unit `CidrInboundTrustVerifierTest`.
 - [ ] T023 [US2] Inbound length limit.
   - Red, in `ContextInboundFilterTest`:
@@ -902,7 +944,7 @@ authentication through contributors.
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
 - [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019 and T020a guards
   (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024 and T028, the three unit guards each in T010, T011
-  and T015a, and the four unit guards in T012)
+  and T015a, the four unit guards in T012, and the six unit guards in T022)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

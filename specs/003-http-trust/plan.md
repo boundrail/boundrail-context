@@ -29,7 +29,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
 whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6), T020a's added
-IT-2.2 and IT-2.3 assertions, thirty-two unit tests and one BuildSmokeIT test already pass before their task; each red is shown against a
+IT-2.2 and IT-2.3 assertions, thirty-eight unit tests and one BuildSmokeIT test already pass before their task; each red is shown against a
 temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -88,7 +88,7 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-eight guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; forty-four guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -161,7 +161,7 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
   - the `boundrailDestinationClassifier` bean (DEST-04, T009);
   - the `boundrailViolationReporter` bean (DIAG-03, T010);
   - the `RestClientCustomizer` and `RestTemplateCustomizer` beans in `ClientConfiguration` (OUT-03, T010);
-  - the CIDR verifier bean (IN-08, T022);
+  - the built-in verifier bean (IN-03, IN-08, T022);
   - the `boundrailInboundFilter` registration bean (IN-01, T018).
 
   An invalid `spring.security.filter.order` fails startup (IN-01, user decision from the T017 review). The registration bean reads it from the
@@ -183,6 +183,14 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
   `@Lazy(false)` reporter makes it fail startup under lazy initialization. Boot's lenient enum conversion already matches `fail` and `report`
   ignoring case, and converts an empty value to `null`, which the binder replaces with `@DefaultValue("fail")`. The current code is expected to
   pass all three T015a tests, so they are guards; if one is red, its green is the minimum change to `Violations` (T015a).
+
+  `inbound.trust` follows the same rules (IN-03, user decision from the T021 review). Boot's lenient enum conversion trims the value,
+  ignores case and non-alphanumeric characters, and converts an empty or blank value to `null`, which `@DefaultValue("none")` replaces. An
+  invalid value, such as `bogus`, fails the binding of `BoundrailContextProperties`, which the `@Lazy(false)` reporter and client customizers
+  bind at startup, with or without lazy initialization and whether or not a verifier bean exists. T021's two `@ConditionalOnProperty`
+  verifier beans compare the raw property with `equalsIgnoreCase`, so ` Cidr ` and a present empty value match neither and leave no verifier.
+  T022 replaces them with one bean method that switches on the bound `Trust` (see Inbound). `withPropertyValues` trims values, so T022's
+  tests set ` Cidr ` and `" "` through a `MapPropertySource`.
 - **Configuration.** One `@ConfigurationProperties("boundrail.context")` record, `BoundrailContextProperties`, with nested records:
   - `Violations`: `mode`, an enum `FAIL`/`REPORT`, and `logInterval`, a `Duration`;
   - `Inbound`: `trust`, an enum `NONE`/`CIDR`, and `trustedCidrs`;
@@ -281,15 +289,26 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
   It then runs `filterChain.doFilter` inside `binding.call(...)`, rethrowing `IOException` and `ServletException` unchanged (CORE-08). Any
   other checked exception, which the chain can only sneaky-throw, is rethrown unchanged through a generic sneaky-rethrow helper, as on the
   path with nothing bound, and not wrapped in `UndeclaredThrowableException` (T017, T016 review). The helper is `private` (T018, T017 review).
-- **Trust verifiers (IN-03, IN-08).** Both built-in verifiers are `@ConditionalOnMissingBean(InboundTrustVerifier.class)`, so an application bean
-  replaces them.
-  - The default bean returns `UNTRUSTED`.
-  - With `inbound.trust=cidr`, the package-private `CidrInboundTrustVerifier` parses `trusted-cidrs` once at bean creation, so an invalid entry
-    fails startup. The bean is `@Lazy(false)`, so this holds under lazy initialization too (T022).
+- **Trust verifiers (IN-03, IN-08).** From T022, one bean method, `boundrailInboundTrustVerifier`, switches on the bound `Trust`. It is
+  `@ConditionalOnMissingBean(InboundTrustVerifier.class)`, so an application bean replaces the built-in verifier, and `@Lazy(false)` (user
+  decision from the T021 review, replacing T021's two `@ConditionalOnProperty` beans).
+  - `NONE` returns the default verifier, which returns `UNTRUSTED`.
+  - `CIDR` returns the package-private `CidrInboundTrustVerifier`, which parses `trusted-cidrs` once at construction, so an invalid entry
+    fails startup. The bean is `@Lazy(false)`, so this holds under lazy initialization too. Entries are parsed only in the `CIDR` branch, so
+    with `none` they are ignored (T022).
   - JDK 21 has no `InetAddress.ofLiteral`, so each address, entry or remote address, is first checked to be textually an IPv4 dotted quad or
     an IPv6 literal (hex digits, `:` and `.`, no `%`). Only then is it passed to `InetAddress.getByName`, which does no lookup for a literal.
     Hostnames and zone IDs are rejected without DNS: an invalid entry fails startup, and a remote address that fails the check matches no entry,
     so the verdict is `UNTRUSTED` (IN-03, IN-08).
+  - A remote address longer than 45 characters, the longest textual literal, is rejected before any pattern runs (T021). T022 removes the
+    brackets before that check, with `charAt` at both ends and `indexOf`, no pattern: a remote address whose first character is `[`, whose
+    last is `]`, and which has no other bracket loses that pair; any other bracket stays in the text and fails the literal check. Entries
+    never have brackets removed, so a bracketed entry fails startup (IN-08).
+  - Decimal form (IN-08, T022). T021's octet pattern, `25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]`, already rejects leading zeros and values
+    above 255 in a plain dotted quad. `getByName` does not apply this to the IPv4 part of an IPv6 literal: on JDK 21.0.11 and 25.0.4.1 it
+    parses `::ffff:10.0.0.01` as `10.0.0.1`, accepts `::10.0.0.01`, and reads `010.0.0.1` as `10.0.0.1`; on JDK 21 it tries a DNS lookup for
+    `10.0.0.256` (checked in `jshell`). So when an IPv6 literal contains `.`, the text after its last `:` must match the dotted-quad pattern.
+    A prefix must match `0|[1-9][0-9]*` before `Integer.parseInt`, which would accept `08` and `+8`, and is then range-checked.
   - `getByName` turns `::ffff:a.b.c.d` into an `Inet4Address`. So an IPv6-text entry that yields an `Inet4Address` is an IPv4-mapped entry and is
     rejected, and an IPv4-mapped remote address naturally matches IPv4 entries.
   - Host bits are checked by masking. A bare address gets `/32` or `/128`.
@@ -376,6 +395,11 @@ invalid-order test is blocked until that text is committed.
 The IN-02 text that a single header line is one value, even with commas, decoded whole and never split (with its edge case), is in spec.md but
 not yet committed. T019's comma test and T024's comma-containing `INVALID_VALUE` test are blocked until it is committed.
 
+The user's decisions from the T021 review are committed in spec.md (IN-03, IN-08, the Configuration table and the edge cases, d62d28a):
+one enclosing pair of square brackets is removed from the remote address; IPv4 octets and prefix lengths are plain decimal with no leading
+zeros, also inside an IPv6 literal; and `inbound.trust` uses relaxed enum binding, blank means `none`, and any other value fails startup. Their
+tests are planned in T022.
+
 P7 (group and package, M7) does not block: the work uses `io.github.boundrail.context`, as 002 did. Q1 – Q5 do not apply to M2; Q6 is resolved
 (D35).
 
@@ -411,6 +435,12 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T020a | IT-2.2 External call carries no context (the added assertion that partner received no `boundrail-test-peer`) | T020 applies `peer()` to edge's internal clients only | In `EdgeApp`, `peer()` applied to the `externalPartner` client |
 | T020a | IT-2.3 Unknown means external (the added assertion that partner received no `boundrail-test-peer`) | The same | In `EdgeApp`, `peer()` applied to the `undeclaredPartner` client |
 | T020a | `TEST-01 the boundrail-context-test JAR ships no AutoConfiguration.imports and no spring.factories` (BuildSmokeIT) | T020 added no such file to the module | A temporary `boundrail-context-test/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` listing `io.github.boundrail.context.spring.BoundrailContextAutoConfiguration`, a class in another package, which T020's package-name scan does not catch |
+| T022 | `IN-08 prefix lengths are 0 to 32 for IPv4 and 0 to 128 for IPv6` | T021 accepts every prefix, `0` included | In `CidrInboundTrustVerifier`, the prefix range check starting at 1 |
+| T022 | `IN-08 an invalid entry fails startup`, the eleven cases T021 already rejects (`10.0.0.0/`, `::ffff:10.0.0.1`, `fe80::1%eth0`, `localhost`, `orders.svc.test`, `10.0.0`, `[2001:db8::1]`, `[2001:db8::]/32`, `010.0.0.1`, `10.0.0.256`, `::ffff:10.0.0.01`) | T021 requires a `/` in every entry, checks the address with its literal check, and `Integer.parseInt` rejects an empty prefix | The `CidrInboundTrustVerifier` constructor skipping an entry whose parsing throws `IllegalArgumentException` |
+| T022 | `IN-08 entries are parsed without DNS lookups` | T021 rejects `localhost` because it has no `/` | In `CidrInboundTrustVerifier`, the textual literal check skipped for entries, so `localhost` resolves to `127.0.0.1` and is accepted as a bare address |
+| T022 | `IN-08 invalid entries are ignored when inbound.trust is not cidr` | T021 creates the CIDR verifier only with `inbound.trust=cidr` | In `boundrailInboundTrustVerifier`, a `CidrInboundTrustVerifier` built from `trusted-cidrs` before the switch on `trust` |
+| T022 | `IN-03 an invalid inbound.trust fails startup with a binding error naming the property` (without and with lazy initialization, and with a verifier bean) | `Trust` is an enum, so binding `bogus` already fails, and the `@Lazy(false)` reporter and client customizers bind the properties at startup. If a case is red on T021's code, this row is removed | In `Inbound`, `trust` bound as a `String` and mapped to `NONE` unless it equals `cidr` ignoring case |
+| T022 | `IN-08 an over-long remote address is UNTRUSTED without costly parsing`, its input changed to `":".repeat(65535) + "%"` | T021's 45-character cap rejects it before any pattern runs | The cap removed and the IPv6 pattern replaced by the backtracking `[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*` (in `jshell` on JDK 21, about 0.4 s at 8,192 characters and 24 s at 65,536) |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
 | T011 | `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call` | T010's application-set check already runs on every boundary | In `ContextClientInterceptor`, the application-set check applied only on `INTERNAL_CALL`, so the context value overwrites the header |
 | T011 | `OUT-04 an application-set header's context value is not encoded or checked` (the throwing `encode` and oversized cases) | T010 skips an application-set header before calling `encode`, and has no length check | In `ContextClientInterceptor`, the value encoded and length-checked before the application-set check |
@@ -513,12 +543,12 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | WIRE-08 | T012 (not on application-set headers) |
 | IN-01 | T016, T017 (configured security order, undeclared checked exceptions, servlet only), T018 (invalid security order fails startup, also under lazy initialization) |
 | IN-02 | T016, T017, T018, T019 (untrusted, empty header, a single comma-containing line), T024 (comma-containing value the codec rejects) |
-| IN-03 | T016 (default, bean replaces), T021 (CIDR, `getRemoteAddr()`, non-literal remote address) |
+| IN-03 | T016 (default, bean replaces), T021 (CIDR, `getRemoteAddr()`, non-literal remote address), T022 (relaxed, blank and invalid `inbound.trust`, also under lazy initialization and with a verifier bean) |
 | IN-04 | T025 |
 | IN-05 | T025 |
 | IN-06 | T027 (valid, missing, non-JWT), T028 (non-string, undecodable, no length check, other codec exceptions) |
 | IN-07 | T026 |
-| IN-08 | T021 (address families, IPv4-mapped remote, non-literal and zone-ID remote addresses, no DNS), T022 (strict entries, startup failure also under lazy initialization, no DNS) |
+| IN-08 | T021 (address families, IPv4-mapped remote, non-literal, over-long and zone-ID remote addresses, no DNS), T022 (strict entries, square brackets, decimal form, startup failure also under lazy initialization, no DNS) |
 | OUT-01 | T008, T009 (at most once per client) |
 | OUT-02 | T009 |
 | OUT-03 | T009, T010 (several classifier beans, none primary also under lazy initialization, last declaration wins) |
