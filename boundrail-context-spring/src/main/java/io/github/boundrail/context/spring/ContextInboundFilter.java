@@ -19,7 +19,10 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Binds the context headers of a trusted request and runs the rest of the chain inside that scope (IN-01, IN-02). */
+/**
+ * Binds the context headers of a trusted request and runs the rest of the chain inside that scope; reports those of an untrusted request
+ * (IN-01, IN-02).
+ */
 final class ContextInboundFilter extends OncePerRequestFilter {
 
     /**
@@ -42,7 +45,8 @@ final class ContextInboundFilter extends OncePerRequestFilter {
      * For a {@code TRUSTED_INTERNAL} request, binds each key that propagates to {@code INTERNAL_CALL} and whose wire header is present, decoded
      * with the key's codec (IN-02, WIRE-01); servlet header names are matched ignoring case (WIRE-06). The initiator is bound from
      * {@code Boundrail-Initiator} with {@code Initiator.of} (WIRE-02); the deadline and authority are not bound (IN-02). A key whose wire
-     * header appears more than once is left unbound and reported as {@code INVALID_VALUE}, with none of its values decoded (IN-02). Then runs
+     * header appears more than once is left unbound and reported as {@code INVALID_VALUE}, with none of its values decoded (IN-02).
+     * For an {@code UNTRUSTED} request, binds nothing and reports each policy wire header present (IN-02). Then runs
      * the rest of the chain inside that scope and restores the previous snapshot, rethrowing the chain's exception unchanged (IN-01, CORE-08).
      */
     @Override
@@ -55,6 +59,8 @@ final class ContextInboundFilter extends OncePerRequestFilter {
                     binding = bind(binding, key, request);
                 }
             }
+        } else {
+            reportUntrusted(request);
         }
         if (binding == null) {
             chain.doFilter(request, response);
@@ -67,6 +73,19 @@ final class ContextInboundFilter extends OncePerRequestFilter {
             });
         } catch (Exception e) {
             ContextInboundFilter.<RuntimeException>sneakyThrow(e);
+        }
+    }
+
+    /**
+     * Reports one {@code UNTRUSTED_HEADER} for each key of the policy whose wire header is present, however many lines carry it, even if
+     * empty (IN-02, DIAG-08). The violation names the key, never the header value (DIAG-01, DIAG-09).
+     */
+    private void reportUntrusted(HttpServletRequest request) {
+        for (ContextKey<?> key : policy.keys()) {
+            if (policy.wireName(key).filter(name -> request.getHeaders(name).hasMoreElements()).isPresent()) {
+                reporter.report(new Violation(Violation.Kind.UNTRUSTED_HEADER, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
+                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            }
         }
     }
 

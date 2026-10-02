@@ -613,7 +613,7 @@ authentication through contributors.
     `spring.security.filter.order` fails startup, also under lazy initialization).
   - Blocked until spec.md's IN-01 text on an invalid `spring.security.filter.order` is committed ([plan.md](plan.md#spec-gaps)).
   - Verify: Unit `ContextInboundFilterTest`.
-- [ ] T019 [US2] Untrusted headers are reported.
+- [x] T019 [US2] Untrusted headers are reported.
   - Red, in `ContextInboundFilterTest` (default verifier, except the trusted comma test):
     - `IN-02 one UNTRUSTED_HEADER violation is reported per policy wire header present`: `Tenant-Id`, `Priority` and `Boundrail-Initiator` give
       three violations, with keys `tenant`, `priority` and `boundrail.initiator` (key names, not header names); nothing is bound;

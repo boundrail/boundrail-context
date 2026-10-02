@@ -2,6 +2,7 @@ package io.github.boundrail.context.spring;
 
 import static io.github.boundrail.context.Boundary.ATTACHED;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
+import static io.github.boundrail.context.Boundary.MESSAGE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.tuple;
@@ -61,7 +62,7 @@ class ContextInboundFilterTest {
             .withBean(ContextPolicy.class, () -> POLICY);
 
     /** What the servlet at the end of the chain observed. */
-    record Observed(Optional<String> tenant, Optional<Long> priority, Optional<String> audit) {
+    record Observed(Optional<String> tenant, Optional<Long> priority, Optional<String> audit, Optional<Initiator> initiator) {
     }
 
     /** What the servlet at the end of the chain observed, and the violations reported while the request was filtered. */
@@ -364,6 +365,114 @@ class ContextInboundFilterTest {
                 });
     }
 
+    @Test
+    @DisplayName("IN-02 one UNTRUSTED_HEADER violation is reported per policy wire header present")
+    void oneUntrustedHeaderViolationIsReportedPerPolicyWireHeaderPresent() {
+        Filtered filtered = filterUntrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", "acme");
+            request.addHeader("Priority", "5");
+            request.addHeader("Boundrail-Initiator", "user:alice");
+        });
+
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key).containsExactlyInAnyOrder(
+                tuple(Violation.Kind.UNTRUSTED_HEADER, "tenant"),
+                tuple(Violation.Kind.UNTRUSTED_HEADER, "priority"),
+                tuple(Violation.Kind.UNTRUSTED_HEADER, "boundrail.initiator"));
+        assertThat(filtered.observed().tenant()).as("nothing is bound").isEmpty();
+        assertThat(filtered.observed().priority()).as("nothing is bound").isEmpty();
+        assertThat(filtered.observed().initiator()).as("nothing is bound").isEmpty();
+    }
+
+    @Test
+    @DisplayName("IN-02 a repeated untrusted header is reported once")
+    void aRepeatedUntrustedHeaderIsReportedOnce() {
+        Filtered sameCase = filterUntrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", "a");
+            request.addHeader("Tenant-Id", "b");
+        });
+        Filtered mixedCase = filterUntrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", "a");
+            request.addHeader("tenant-id", "b");
+        });
+
+        assertThat(sameCase.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "tenant"));
+        assertThat(mixedCase.violations()).as("names compared ignoring case").extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "tenant"));
+    }
+
+    @Test
+    @DisplayName("DIAG-08 an untrusted header violation has boundary INTERNAL_CALL and no destination")
+    void anUntrustedHeaderViolationHasBoundaryInternalCallAndNoDestination() {
+        Filtered filtered = filterUntrusted(POLICY, request -> request.addHeader("Tenant-Id", "acme"));
+
+        assertThat(filtered.violations()).singleElement().satisfies(violation -> {
+            assertThat(violation.kind()).isEqualTo(Violation.Kind.UNTRUSTED_HEADER);
+            assertThat(violation.boundary()).isEqualTo(INTERNAL_CALL);
+            assertThat(violation.destination()).isEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("IN-02 untrusted headers never fail the request")
+    void untrustedHeadersNeverFailTheRequest() {
+        Filtered filtered = filterUntrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", "acme");
+            request.addHeader("Priority", "5");
+        }, "boundrail.context.violations.mode=fail");
+
+        assertThat(filtered.violations()).as("the violations are reported").hasSize(2);
+        assertThat(filtered.observed()).as("the chain ran").isNotNull();
+    }
+
+    @Test
+    @DisplayName("IN-02 every wire name of the effective policy's keys is reported, not only those the trusted path binds")
+    void everyWireNameOfTheEffectivePolicysKeysIsReportedNotOnlyThoseTheTrustedPathBinds() {
+        ContextKey<String> order = ContextKey.of("order", String.class);
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("Tenant-Id").propagateTo(ATTACHED, INTERNAL_CALL))
+                .key(order, rules -> rules.codec(Codecs.string()).wireName("Order-Ref").propagateTo(ATTACHED, MESSAGE))
+                .build();
+
+        Filtered deadline = filterUntrusted(policy, request -> request.addHeader("Boundrail-Deadline-Ms", "5000"));
+        Filtered messageOnly = filterUntrusted(policy, request -> request.addHeader("Order-Ref", "o-1"));
+
+        assertThat(deadline.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "boundrail.deadline"));
+        assertThat(messageOnly.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "order"));
+    }
+
+    @Test
+    @DisplayName("IN-02 Authorization is not a policy wire header")
+    void authorizationIsNotAPolicyWireHeader() {
+        Filtered filtered = filterUntrusted(POLICY, request -> {
+            request.addHeader("Authorization", "Bearer x");
+            request.addHeader("Tenant-Id", "acme");
+        });
+
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "tenant"));
+    }
+
+    @Test
+    @DisplayName("IN-02 an empty untrusted policy header is reported")
+    void anEmptyUntrustedPolicyHeaderIsReported() {
+        Filtered filtered = filterUntrusted(POLICY, request -> request.addHeader("Tenant-Id", ""));
+
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "tenant"));
+    }
+
+    @Test
+    @DisplayName("IN-02 a single header line with commas is one value and is not split")
+    void aSingleHeaderLineWithCommasIsOneValueAndIsNotSplit() {
+        Filtered filtered = filterTrusted(POLICY, request -> request.addHeader("Tenant-Id", "a, b"));
+
+        assertThat(filtered.observed().tenant()).as("decoded whole by the string codec").contains("a, b");
+        assertThat(filtered.violations()).isEmpty();
+    }
+
     @ParameterizedTest(name = "spring.security.filter.order={0}, lazy initialization: {1}")
     @CsvSource({"abc, false", "abc, true", "-2147483648, false", "-2147483648, true"})
     @DisplayName("IN-01 a spring.security.filter.order that is not an integer or is Integer.MIN_VALUE fails startup")
@@ -401,7 +510,7 @@ class ContextInboundFilterTest {
         HttpServlet recording = new HttpServlet() {
             @Override
             protected void service(HttpServletRequest req, HttpServletResponse resp) {
-                observed.set(new Observed(TENANT.find(), PRIORITY.find(), AUDIT.find()));
+                observed.set(new Observed(TENANT.find(), PRIORITY.find(), AUDIT.find(), BuiltInKeys.INITIATOR.find()));
             }
         };
         new MockFilterChain(recording, filter).doFilter(request, new MockHttpServletResponse());
@@ -415,15 +524,26 @@ class ContextInboundFilterTest {
      * {@code ViolationReporter.Counter} bean.
      */
     private Filtered filterTrusted(ContextPolicy policy, Consumer<MockHttpServletRequest> headers, String... properties) {
-        List<Violation> violations = new CopyOnWriteArrayList<>();
-        AtomicReference<Observed> observed = new AtomicReference<>();
-        new WebApplicationContextRunner()
+        return filterRecording(contextRunner(policy, properties).withBean(InboundTrustVerifier.class, () -> TRUSTING), headers);
+    }
+
+    /** As {@link #filterTrusted}, but with the default verifier, which trusts no caller. */
+    private Filtered filterUntrusted(ContextPolicy policy, Consumer<MockHttpServletRequest> headers, String... properties) {
+        return filterRecording(contextRunner(policy, properties), headers);
+    }
+
+    private static WebApplicationContextRunner contextRunner(ContextPolicy policy, String... properties) {
+        return new WebApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
                 .withClassLoader(new FilteredClassLoader(MeterRegistry.class))
                 .withPropertyValues(properties)
-                .withBean(ContextPolicy.class, () -> policy)
-                .withBean(InboundTrustVerifier.class, () -> TRUSTING)
-                .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                .withBean(ContextPolicy.class, () -> policy);
+    }
+
+    private static Filtered filterRecording(WebApplicationContextRunner runner, Consumer<MockHttpServletRequest> headers) {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        AtomicReference<Observed> observed = new AtomicReference<>();
+        runner.withBean(ViolationReporter.Counter.class, () -> violations::add)
                 .run(context -> observed.set(filter(inboundRegistration(context).getFilter(), headers)));
         return new Filtered(observed.get(), List.copyOf(violations));
     }
