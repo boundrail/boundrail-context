@@ -107,6 +107,14 @@ values are ignored and reported, and never fail the request.
 - Invalid host patterns or CIDR entries: DEST-04, IN-08 (startup fails).
 - A trusted proxy rewrites the remote address from forwarded headers: IN-03 (the rewritten address is the one checked).
 - The remote address is not an IP literal, such as `unknown`, or has an IPv6 zone ID: IN-08 (`UNTRUSTED`).
+- The remote address is a bracketed IPv6 literal, such as `[2001:db8::1]` after Spring's forwarded-header processing: IN-08 (the one pair of
+  brackets is removed and the address inside is checked). Any other use of brackets, such as `[[2001:db8::1]]` or `[2001:db8::1`, or a
+  bracketed entry in `trusted-cidrs`: IN-08 (the remote address is `UNTRUSTED`; the entry fails startup with `inbound.trust=cidr`).
+- An IPv4 octet or a prefix length with a leading zero, a sign or an out-of-range value, such as `010.0.0.1`, `10.0.0.256`,
+  `::ffff:10.0.0.01` or `10.0.0.0/08`: IN-08 (as a remote address it is not a literal, so `UNTRUSTED`; as an entry it fails startup with
+  `inbound.trust=cidr`).
+- `inbound.trust` is `CIDR`, blank or `bogus`: IN-03 (relaxed binding means `cidr`; blank means `none`; `bogus` fails startup, even under
+  lazy initialization).
 - An untrusted request carries `Boundrail-Deadline-Ms`, or the wire header of a key that does not propagate to `INTERNAL_CALL`: IN-02 (one
   `UNTRUSTED_HEADER` each).
 - Two required keys are unbound on one internal call: DIAG-02 (both reported, in key-name order; in `fail` mode the exception carries the first).
@@ -125,10 +133,11 @@ values are ignored and reported, and never fail the request.
 - An application codec's `decode` throws something other than `IllegalArgumentException`, or its `encode` throws anything: WIRE-05 (it
   propagates; no violation).
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
-- Invalid configuration with `spring.main.lazy-initialization=true`: conflicting `ContextPolicy` beans, invalid host patterns, invalid CIDR
-  entries, an invalid `violations.mode`, a negative `violations.log-interval`, a `wire.max-value-length` less than 1, a
-  `spring.security.filter.order` that is not an integer or is `Integer.MIN_VALUE`, or several `DestinationClassifier` beans with none primary
-  while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-08, DIAG-02, DIAG-03, WIRE-04, IN-01, OUT-03).
+- Invalid configuration with `spring.main.lazy-initialization=true`: conflicting `ContextPolicy` beans, invalid host patterns, an invalid
+  `inbound.trust`, invalid CIDR entries with `inbound.trust=cidr`, an invalid `violations.mode`, a negative `violations.log-interval`, a
+  `wire.max-value-length` less than 1, a `spring.security.filter.order` that is not an integer or is `Integer.MIN_VALUE`, or several
+  `DestinationClassifier` beans with none primary while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-03, IN-08,
+  DIAG-02, DIAG-03, WIRE-04, IN-01, OUT-03).
 - More than one `DestinationClassifier` bean: OUT-03 (the `@Primary` one is used; with none primary, startup fails whenever HTTP client support
   is active, that is `spring-web` and `spring-boot-restclient` are present, even with `spring.main.lazy-initialization=true`; without client
   support no classifier is used and startup does not fail).
@@ -273,11 +282,15 @@ violation (WIRE-05).
 
 **IN-03** `[M2]` The default verifier SHALL return `UNTRUSTED` for every request. WHERE `boundrail.context.inbound.trust=cidr`, the built-in CIDR
 verifier SHALL return `TRUSTED_INTERNAL` exactly when the request's remote address, `HttpServletRequest.getRemoteAddr()`, is inside one of
-`boundrail.context.inbound.trusted-cidrs` (IN-08). A bean of type `InboundTrustVerifier` SHALL replace the built-in verifier. The checked address
+`boundrail.context.inbound.trusted-cidrs` (IN-08). The value of `boundrail.context.inbound.trust` SHALL be matched with Spring Boot's relaxed
+enum binding (ignoring case, surrounding whitespace and non-alphanumeric characters), so `CIDR` and ` Cidr ` mean `cidr`, and an empty or blank
+value SHALL mean `none`. IF the value matches neither `none` nor `cidr`, such as `bogus`, THEN application startup SHALL fail, even when
+`spring.main.lazy-initialization` is `true`. A bean of type `InboundTrustVerifier` SHALL replace the built-in verifier. The checked address
 is the one the servlet container reports. Where forwarded-header processing is enabled (for example `server.forward-headers-strategy` or a
 `ForwardedHeaderFilter`), it is taken from the `Forwarded` or `X-Forwarded-For` header, so a proxy, or a client that forges those headers when
-no proxy strips them, decides which address is checked. IF the remote address is not an IP address literal (for example `unknown`, taken
-from a forwarded header), or is an IPv6 literal with a zone ID, THEN the CIDR verifier SHALL return `UNTRUSTED`, as IN-08 defines. The
+no proxy strips them, decides which address is checked. IF the remote address, once one enclosing pair of square brackets is removed, is not
+an IP address literal (for example `unknown`, taken from a forwarded header), or is an IPv6 literal with a zone ID, THEN the CIDR verifier
+SHALL return `UNTRUSTED`, as IN-08 defines. The
 description of `inbound.trusted-cidrs` in the Configuration table below SHALL state how forwarded headers decide the checked address. That
 table is all M2 owes; the user-facing configuration reference is built from it by REL-03 `[M7]`.
 
@@ -306,12 +319,18 @@ for the same key.
 **IN-08** `[M2]` Each entry of `boundrail.context.inbound.trusted-cidrs` SHALL be an IPv4 or IPv6 address literal followed by `/` and a prefix
 length (0 – 32 for IPv4, 0 – 128 for IPv6), or a bare address literal, which means `/32` or `/128`. An IPv4 remote address SHALL match only IPv4
 entries and an IPv6 remote address only IPv6 entries, except that an IPv4-mapped IPv6 remote address (`::ffff:a.b.c.d`) SHALL be matched as the
-IPv4 address `a.b.c.d`. Entries are strict: an entry with host bits set beyond its prefix length (`10.0.0.1/8`), an IPv4-mapped IPv6 entry
-(`::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`), an entry with an IPv6 zone ID (`fe80::1%eth0`) and a hostname are not valid. WHERE
-`inbound.trust=cidr`, IF an entry is not valid, THEN the application SHALL fail at startup, even when
+IPv4 address `a.b.c.d`. An IPv4 literal SHALL be four decimal octets separated by dots, each 0 – 255 with no leading zeros (`10.0.0.1`, not
+`010.0.0.1` or `10.0.0.256`); this SHALL also apply to the IPv4 part of an IPv6 literal, such as `::ffff:a.b.c.d` or `::a.b.c.d`. A prefix
+length SHALL be plain decimal digits with no sign and no leading zeros (`/8`, not `/08` or `/+8`). Entries are strict: an entry with host
+bits set beyond its prefix length (`10.0.0.1/8`), an IPv4-mapped IPv6 entry (`::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`), an entry with an
+IPv6 zone ID (`fe80::1%eth0`), an entry in square brackets (`[2001:db8::1]`), an entry that breaks the literal or prefix form above and a
+hostname are not valid. WHERE `inbound.trust=cidr`, IF an entry is not valid, THEN the application SHALL fail at startup, even when
 `spring.main.lazy-initialization` is `true`. Entries SHALL be parsed without DNS lookups.
-IF the remote address is not an IPv4 or IPv6 address literal, or is an IPv6 literal with a zone ID (`fe80::1%eth0`), THEN it SHALL match no
-entry, and the verdict SHALL be `UNTRUSTED`, failing closed. The remote address SHALL also be parsed without DNS lookups.
+IF the remote address is enclosed in exactly one pair of square brackets, with no other bracket inside, such as `[2001:db8::1]` (Spring's
+forwarded-header processing produces this form), THEN the verifier SHALL remove that pair and check the address inside. IF the remote
+address, after that, is not an IPv4 or IPv6 address literal in the form above, contains a square bracket, or is an IPv6 literal with a zone
+ID (`fe80::1%eth0`), THEN it SHALL match no entry, and the verdict SHALL be `UNTRUSTED`, failing closed. The remote address SHALL also be
+parsed without DNS lookups.
 
 ### Outbound HTTP
 
@@ -404,7 +423,8 @@ dependency, and `spring-web` and `jakarta.servlet-api` SHALL NOT appear.
 Properties use the prefix `boundrail.context.`.
 
 Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: conflicting `ContextPolicy`
-beans (POL-07), invalid host patterns (DEST-04), invalid CIDR entries (IN-08), an invalid `violations.mode` (DIAG-02), a negative
+beans (POL-07), invalid host patterns (DEST-04), an invalid `inbound.trust` (IN-03), invalid CIDR entries with `inbound.trust=cidr` (IN-08),
+an invalid `violations.mode` (DIAG-02), a negative
 `violations.log-interval` (DIAG-03), a `wire.max-value-length` less than 1 (WIRE-04), a `spring.security.filter.order` that is not an
 integer or is `Integer.MIN_VALUE` (IN-01), and, while HTTP client support is active (`spring-web` and `spring-boot-restclient` are
 present), several `DestinationClassifier` beans with none primary (OUT-03).
@@ -413,8 +433,8 @@ present), several `DestinationClassifier` beans with none primary (OUT-03).
 |---|---|---|
 | `violations.mode` | `fail` | `fail` or `report`, matched with Spring Boot's relaxed enum binding (ignoring case, surrounding whitespace and non-alphanumeric characters); an empty or blank value means `fail`, and any value that matches neither, such as `bogus`, fails startup, even under lazy initialization (DIAG-02) |
 | `violations.log-interval` | `1m` | Rate limit for violation logs; `0s` logs every occurrence, and a negative value fails startup (DIAG-03) |
-| `inbound.trust` | `none` | `none` or `cidr`; a verifier bean overrides it (IN-03) |
-| `inbound.trusted-cidrs` | `[]` | IPv4 or IPv6 CIDRs, or bare addresses, trusted when `inbound.trust=cidr` (IN-03, IN-08). Matched against `getRemoteAddr()`: with forwarded-header processing enabled, a proxy, or a client forging `Forwarded` or `X-Forwarded-For` headers that no proxy strips, decides that address |
+| `inbound.trust` | `none` | `none` or `cidr`, matched with Spring Boot's relaxed enum binding (ignoring case, surrounding whitespace and non-alphanumeric characters); an empty or blank value means `none`, and any value that matches neither, such as `bogus`, fails startup, even under lazy initialization; a verifier bean overrides it (IN-03) |
+| `inbound.trusted-cidrs` | `[]` | IPv4 or IPv6 CIDRs, or bare addresses, trusted when `inbound.trust=cidr` (IN-03, IN-08). IPv4 octets and prefix lengths are plain decimal with no leading zeros, and entries are never in square brackets; with `inbound.trust=cidr`, an invalid entry fails startup. Matched against `getRemoteAddr()`, after removing one enclosing pair of square brackets (`[2001:db8::1]`); a remote address that is not a literal in that form is untrusted. With forwarded-header processing enabled, a proxy, or a client forging `Forwarded` or `X-Forwarded-For` headers that no proxy strips, decides that address |
 | `destinations.internal-hosts` | `[]` | Host patterns classified as internal (DEST-02, OUT-03) |
 | `destinations.external-hosts` | `[]` | Host patterns classified as external (DEST-02, OUT-03) |
 | `wire.max-value-length` | `256` | Maximum encoded wire value length in UTF-16 code units (`String.length()`), checked before decoding or character checks; not applied to JWT claims; a value less than 1 fails startup (WIRE-04, IN-06) |
