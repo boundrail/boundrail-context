@@ -99,6 +99,9 @@ values are ignored and reported, and never fail the request.
 - A trusted request repeats a policy wire header: IN-02 (unbound, one `INVALID_VALUE`). An untrusted request repeats one: IN-02 (one
   `UNTRUSTED_HEADER` for the key whose wire name it is; its `key` is the policy key name, not the header name as received, DIAG-01). A request
   repeats `Boundrail-Test-Peer`: TEST-01 (`UNTRUSTED`).
+- A trusted request carries a policy wire header once, with commas in its value, such as `Tenant-Id: a, b` after a proxy merged repeated
+  lines: IN-02 (not a repeat; the value is decoded whole and never split, so a string codec binds `a, b`), WIRE-05 (a codec that rejects
+  it leaves the key unbound, with one `INVALID_VALUE`).
 - A JWT claim value longer than `wire.max-value-length`: IN-06 (no length check; WIRE-04 applies only when the value is sent on the wire).
 - Two contributions for the same key: IN-05 (the first wins).
 - Invalid host patterns or CIDR entries: DEST-04, IN-08 (startup fails).
@@ -262,7 +265,11 @@ the wire names of every key in the effective policy's `keys()` (POL-10): the bui
 the wire names of keys that do not propagate to `INTERNAL_CALL` are included, not only those of the keys the trusted path would bind.
 `Authorization` is not one, because `AUTHORITY` has no wire name (POL-03). Untrusted headers SHALL never fail the request. IF a trusted request
 carries more than once the wire header of a key the trusted path would bind (names compared as WIRE-06 defines), THEN the filter SHALL leave
-that key unbound, SHALL decode none of its values, and SHALL report one `INVALID_VALUE` violation.
+that key unbound, SHALL decode none of its values, and SHALL report one `INVALID_VALUE` violation. A header is carried more than once only
+when it arrives as more than one header line. A single header line is one value, even if it contains commas, such as `Tenant-Id: a, b` after
+a proxy has merged repeated lines (RFC 9110 §5.3). The filter SHALL decode that value as a whole and SHALL NOT split it on commas; the key's
+codec decides whether it is valid, so a string codec binds `a, b`, and a codec that rejects it leaves the key unbound with an `INVALID_VALUE`
+violation (WIRE-05).
 
 **IN-03** `[M2]` The default verifier SHALL return `UNTRUSTED` for every request. WHERE `boundrail.context.inbound.trust=cidr`, the built-in CIDR
 verifier SHALL return `TRUSTED_INTERNAL` exactly when the request's remote address, `HttpServletRequest.getRemoteAddr()`, is inside one of

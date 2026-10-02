@@ -13,7 +13,7 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Thirty-four guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005, T015 and T017, two unit tests
+- Thirty-five guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005, T015, T017 and T019, two unit tests
   each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024 and T028, three unit tests each in T010, T011 and
   T015a, and four unit tests in T012.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
@@ -614,7 +614,7 @@ authentication through contributors.
   - Blocked until spec.md's IN-01 text on an invalid `spring.security.filter.order` is committed ([plan.md](plan.md#spec-gaps)).
   - Verify: Unit `ContextInboundFilterTest`.
 - [ ] T019 [US2] Untrusted headers are reported.
-  - Red, in `ContextInboundFilterTest` (default verifier):
+  - Red, in `ContextInboundFilterTest` (default verifier, except the trusted comma test):
     - `IN-02 one UNTRUSTED_HEADER violation is reported per policy wire header present`: `Tenant-Id`, `Priority` and `Boundrail-Initiator` give
       three violations, with keys `tenant`, `priority` and `boundrail.initiator` (key names, not header names); nothing is bound;
     - `IN-02 a repeated untrusted header is reported once`: two `Tenant-Id` values, or `Tenant-Id` and `tenant-id`, give one
@@ -624,9 +624,16 @@ authentication through contributors.
     - `IN-02 every wire name of the effective policy's keys is reported, not only those the trusted path binds`: `Boundrail-Deadline-Ms`
       gives one `UNTRUSTED_HEADER` with key `boundrail.deadline`, and the header of a key that propagates only to `MESSAGE` gives one for that key;
     - `IN-02 Authorization is not a policy wire header`: `Authorization: Bearer x` with `Tenant-Id` gives exactly one `UNTRUSTED_HEADER`,
-      for `tenant`.
+      for `tenant`;
+    - `IN-02 an empty untrusted policy header is reported`: `Tenant-Id: ""` gives one `UNTRUSTED_HEADER`, with key `tenant`, because an
+      empty header is present (IN-02, b864076);
+    - `IN-02 a single header line with commas is one value and is not split`: on a trusted request, `Tenant-Id: a, b` binds `tenant` to
+      `"a, b"` with the string codec, and no violation is reported. This is a guard: T018's repetition check counts header lines, not commas.
+      Show it red with `ContextInboundFilter.bind` temporarily splitting each header value on commas and treating more than one part as a
+      repeat (so `tenant` is unbound with one `INVALID_VALUE`), then revert ([plan.md](plan.md#guard-tests)).
   - Green: reporting in the `UNTRUSTED` branch of `ContextInboundFilter`, over the wire names of every key in `policy.keys()`.
-  - Completes: IN-02 (untrusted); DIAG-08.
+  - Completes: IN-02 (untrusted, including an empty header; a single comma-containing line is one value); DIAG-08.
+  - Blocked until spec.md's IN-02 text on a single comma-containing header line is committed ([plan.md](plan.md#spec-gaps)).
   - Verify: Unit `ContextInboundFilterTest`.
 - [ ] T020 [US2] Test trust verifier; enable IT-2.7.
   - Red:
@@ -719,10 +726,13 @@ authentication through contributors.
         `NumberFormatException` leaves the key unbound, gives one `INVALID_VALUE`, and the chain runs;
       - `WIRE-05 any other exception from decode propagates unchanged and no violation is reported`: an application codec throwing
         `IllegalStateException`; `doFilter` throws the same instance, the chain does not run, and the reporter recorded nothing. This is a
-        guard: show it red with the catch temporarily widened to `RuntimeException`, then revert ([plan.md](plan.md#guard-tests)).
+        guard: show it red with the catch temporarily widened to `RuntimeException`, then revert ([plan.md](plan.md#guard-tests));
+      - `WIRE-05 a single comma-containing value that the codec rejects is INVALID_VALUE`: on a trusted request, `Priority: 1, 2` (one header
+        line, `Codecs.longValue()`) leaves `priority` unbound, gives one `INVALID_VALUE`, and the chain runs (IN-02: decoded whole, not split).
   - Green: catch `IllegalArgumentException` (and only it) from `decode` in `ContextInboundFilter` and report without the value or the
     message; `spring-boot-test` (`testImplementation`, catalog entry) in `integration-tests/build.gradle.kts`.
-  - Completes: WIRE-05; WIRE-04 (before decode); DIAG-08; DIAG-09 (decode failures); IT-2.8.
+  - Blocked until spec.md's IN-02 text on a single comma-containing header line is committed ([plan.md](plan.md#spec-gaps)).
+  - Completes: WIRE-05 (including a single comma-containing value); WIRE-04 (before decode); DIAG-08; DIAG-09 (decode failures); IT-2.8.
   - Verify: Unit `ContextInboundFilterTest`; IT.
 - [ ] T025 [US2] Authentication filter and contributors.
   - Red, in `springtest/ContextAuthenticationFilterTest.java`:
@@ -831,10 +841,10 @@ authentication through contributors.
   - T013 needs T010.
   - T014 needs T005, T007 and T013. T015 needs T004, T005, T007 and T013. T015a needs T015 and the spec.md update.
 - US2:
-  - T016 needs T005 and T006. T017 needs T016. T018 needs T007, T017 and the spec.md update. T019 needs T007 and T016.
+  - T016 needs T005 and T006. T017 needs T016. T018 needs T007, T017 and the spec.md update. T019 needs T007, T016 and the spec.md IN-02 update.
   - T020 needs T013 and T019.
   - T021 needs T016. T022 needs T021.
-  - T023 needs T007 and T016. T024 needs T020 and T023.
+  - T023 needs T007 and T016. T024 needs T020, T023 and the spec.md IN-02 update.
   - T025 needs T016. T026 needs T007 and T025.
   - T027 needs T020 and T026; IT-2.1 also needs US1's outbound path (T010).
   - T028 needs T026 and T027.
@@ -848,7 +858,7 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005, T015 and T017 unit guards, the two unit guards each in T001, T003, T006a, T007,
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005, T015, T017 and T019 unit guards, the two unit guards each in T001, T003, T006a, T007,
   T018, T024 and T028, the three unit guards each in T010, T011 and T015a, and the four unit guards in T012)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`

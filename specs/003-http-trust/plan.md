@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and thirty-one
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and thirty-two
 unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-four guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-five guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -352,6 +352,9 @@ The user's decision from the T017 review, that a `spring.security.filter.order` 
 also under lazy initialization, is being written into spec.md (IN-01 and the lazy-initialization list) by the spec-creator. T018's IN-01
 invalid-order test is blocked until that text is committed.
 
+The IN-02 text that a single header line is one value, even with commas, decoded whole and never split (with its edge case), is in spec.md but
+not yet committed. T019's comma test and T024's comma-containing `INVALID_VALUE` test are blocked until it is committed.
+
 P7 (group and package, M7) does not block: the work uses `io.github.boundrail.context`, as 002 did. Q1 – Q5 do not apply to M2; Q6 is resolved
 (D35).
 
@@ -399,6 +402,7 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T017 | `IN-01 no inbound filter or verifier is registered outside a servlet web application` | T016's nested `InboundConfiguration` is already `@ConditionalOnWebApplication(type = SERVLET)`, so a plain `ApplicationContextRunner` creates neither bean | `@ConditionalOnWebApplication` removed from `InboundConfiguration` |
 | T018 | `IN-02 a repeated Boundrail-Deadline-Ms on a trusted request is skipped, not reported` | Before T018 nothing reports a repeated header, and T017 already skips `DEADLINE` and `AUTHORITY` | On T018's finished code, the `DEADLINE`/`AUTHORITY` skip removed from `ContextInboundFilter`, so the repeated deadline header reaches the repetition check and gives `INVALID_VALUE` |
 | T018 | `IN-01 a spring.security.filter.order that is not an integer or is Integer.MIN_VALUE fails startup`, the `abc` case without lazy initialization only | The registration bean reads the property from the `Environment` as an `Integer`, so `abc` already fails the conversion at startup. The other three cases are red before T018 | In `boundrailInboundFilter`, the property read as a `String` and the default `-100` used when it doesn't parse as an `int` |
+| T019 | `IN-02 a single header line with commas is one value and is not split` | T018's repetition check counts header lines from `getHeaders`, and a single `Tenant-Id: a, b` line is one value, decoded whole by the string codec | In `ContextInboundFilter.bind`, each header value split on commas and more than one part treated as a repeat, so `tenant` is unbound with one `INVALID_VALUE` |
 | T024 | `WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec` | T023's length check already drops the value before decoding | In `ContextInboundFilter`, `decode` called before the length check |
 | T024 | `WIRE-05 any other exception from decode propagates unchanged and no violation is reported` | Before T024 nothing catches an exception from `decode`, so every exception propagates | In `ContextInboundFilter`, the catch widened from `IllegalArgumentException` to `RuntimeException` |
 | T028 | `IN-06 a claim value longer than max-value-length is bound` | No length check exists on the authentication path | In `ContextAuthenticationFilter`, contributed values longer than `wire.max-value-length` dropped |
@@ -478,12 +482,12 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | WIRE-01 | T010 (outbound), T016 (inbound) |
 | WIRE-02 | T010 (initiator out), T017 (initiator in; deadline and authority not bound) |
 | WIRE-04 | T011 (outbound, UTF-16 code units, not on application-set headers), T012 (before WIRE-08), T023 (inbound), T024 (before decode), T028 (not on claims) |
-| WIRE-05 | T010 (`encode` exceptions propagate), T024 (decode failures, other `decode` exceptions propagate), T028 (claims) |
+| WIRE-05 | T010 (`encode` exceptions propagate), T024 (decode failures, including a single comma-containing value, other `decode` exceptions propagate), T028 (claims) |
 | WIRE-06 | T010, T014 (outbound), T016, T018, T019 (inbound) |
 | WIRE-07 | T014 (one violation per removed name with values, none for a name with no values, headers of keys propagating to `EXTERNAL_CALL` kept) |
 | WIRE-08 | T012 (not on application-set headers) |
 | IN-01 | T016, T017 (configured security order, undeclared checked exceptions, servlet only), T018 (invalid security order fails startup, also under lazy initialization) |
-| IN-02 | T016, T017, T018, T019 |
+| IN-02 | T016, T017, T018, T019 (untrusted, empty header, a single comma-containing line), T024 (comma-containing value the codec rejects) |
 | IN-03 | T016 (default, bean replaces), T021 (CIDR, `getRemoteAddr()`, non-literal remote address) |
 | IN-04 | T025 |
 | IN-05 | T025 |
