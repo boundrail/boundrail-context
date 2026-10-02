@@ -520,7 +520,7 @@ authentication through contributors.
 
 **Independent Test**: IT-2.5 – IT-2.8 in the IT command. IT-2.1 (US1) is enabled here, in T028, because it needs this story's inbound path.
 
-- [ ] T016 [US2] Inbound filter, trusted binding and the default verifier.
+- [x] T016 [US2] Inbound filter, trusted binding and the default verifier.
   - Red:
     - in `springtest/ContextInboundFilterTest.java` (`MockHttpServletRequest`, and a `MockFilterChain` whose servlet records `find()` of each
       key):

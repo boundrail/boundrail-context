@@ -9,12 +9,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * Configuration properties under {@code boundrail.context}.
  *
  * @param violations how violations are reported
+ * @param inbound which inbound callers are trusted
  * @param destinations how outbound destinations are classified
  * @param wire limits on wire values
  */
 @ConfigurationProperties("boundrail.context")
-public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Destinations destinations,
-        @DefaultValue Wire wire) {
+public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Inbound inbound,
+        @DefaultValue Destinations destinations, @DefaultValue Wire wire) {
 
     /**
      * Violation handling (DIAG-02) and reporting (DIAG-03).
@@ -38,6 +39,22 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
             if (logInterval.isNegative()) {
                 throw new IllegalArgumentException("boundrail.context.violations.log-interval must not be negative: " + logInterval);
             }
+        }
+    }
+
+    /**
+     * Inbound trust (IN-03).
+     *
+     * @param trust which built-in verifier decides trust; an {@code InboundTrustVerifier} bean overrides it
+     */
+    public record Inbound(@DefaultValue("none") Trust trust) {
+
+        /** The built-in verifier (IN-03). */
+        public enum Trust {
+            /** Trust no caller. */
+            NONE,
+            /** Trust callers whose remote address is inside a trusted CIDR. */
+            CIDR
         }
     }
 

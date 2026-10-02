@@ -7,14 +7,17 @@ import io.github.boundrail.context.HostPatternClassifier;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.Locale;
+import java.util.Objects;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.restclient.RestClientCustomizer;
 import org.springframework.boot.restclient.RestTemplateCustomizer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -102,6 +105,29 @@ public class BoundrailContextAutoConfiguration {
                             properties.violations().mode(), properties.wire().maxValueLength()));
                 }
             };
+        }
+    }
+
+    /** Registers the inbound filter before Spring Security's filter chain, with the built-in verifier unless a bean replaces it (IN-01, IN-03). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    static class InboundConfiguration {
+
+        /** Trusts no caller (IN-03). */
+        @Bean
+        @ConditionalOnMissingBean(InboundTrustVerifier.class)
+        InboundTrustVerifier boundrailInboundTrustVerifier() {
+            return request -> {
+                Objects.requireNonNull(request, "request");
+                return InboundTrustVerifier.Trust.UNTRUSTED;
+            };
+        }
+
+        @Bean
+        FilterRegistrationBean<ContextInboundFilter> boundrailInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy) {
+            FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(new ContextInboundFilter(verifier, policy));
+            registration.setOrder(ContextInboundFilter.ORDER);
+            return registration;
         }
     }
 }
