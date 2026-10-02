@@ -1,5 +1,10 @@
 package io.github.boundrail.context.it.topology;
 
+import io.github.boundrail.context.BuiltInKeys;
+import io.github.boundrail.context.Context;
+import io.github.boundrail.context.Initiator;
+import io.github.boundrail.context.it.topology.Topology.Service;
+import io.github.boundrail.context.spring.BoundrailClients;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -8,7 +13,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClient;
 
 /**
  * Test service {@code edge}: public entry point; an OAuth2 resource server that accepts JWTs signed with the run's
@@ -19,10 +26,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class EdgeApp {
 
-    private final ObservedContext observed;
+    /** Header edge copies from its {@code marker} parameter to its outbound calls, so tests find their own observations. */
+    public static final String MARKER = "X-Marker";
 
-    public EdgeApp(ObservedContext observed) {
+    private final ObservedContext observed;
+    private final Topology.Running topology;
+    private final RestClient internalOrders;
+    private final RestClient externalPartner;
+    private final RestClient undeclaredPartner;
+
+    /** Every client is built from edge's auto-configured {@code RestClient.Builder}, so it carries the library's interceptor. */
+    public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients) {
         this.observed = observed;
+        this.topology = topology;
+        this.internalOrders = clients.clone().apply(BoundrailClients.internal("orders")).build();
+        this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
+        this.undeclaredPartner = clients.clone().build();
     }
 
     /** Verifies tokens with the run's public key; no network JWKS. */
@@ -35,5 +54,32 @@ public class EdgeApp {
     String ping(@RequestHeader HttpHeaders headers) {
         observed.record("edge", ObservedContext.headers(headers));
         return "edge";
+    }
+
+    /** Calls orders through an internal client, then partner through an {@code external()} client. */
+    @GetMapping("/call-partner/external")
+    String callPartnerExternal(@RequestParam("marker") String marker) {
+        return callOrdersThenPartner(externalPartner, marker);
+    }
+
+    /** Calls orders through an internal client, then partner through a client with no declaration. */
+    @GetMapping("/call-partner/undeclared")
+    String callPartnerUndeclared(@RequestParam("marker") String marker) {
+        return callOrdersThenPartner(undeclaredPartner, marker);
+    }
+
+    private String callOrdersThenPartner(RestClient partner, String marker) {
+        return Context.with(AppKeys.TENANT, "acme")
+                .with(AppKeys.PRIORITY, 5L)
+                .with(BuiltInKeys.INITIATOR, Initiator.of("user:alice"))
+                .call(() -> {
+                    ping(internalOrders, Service.ORDERS, marker);
+                    ping(partner, Service.PARTNER, marker);
+                    return "edge";
+                });
+    }
+
+    private void ping(RestClient client, Service service, String marker) {
+        client.get().uri(topology.uri(service).resolve("/ping")).header(MARKER, marker).retrieve().toBodilessEntity();
     }
 }

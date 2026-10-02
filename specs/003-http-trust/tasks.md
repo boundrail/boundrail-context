@@ -405,7 +405,7 @@ enforces required keys, the length limit and valid field values.
     `max-value-length` less than 1 fails startup, also under lazy initialization); OUT-04 (an application-set header's context value is not
     field-value-checked); DIAG-09 (outbound).
   - Verify: Unit `ContextClientInterceptorTest`.
-- [ ] T013 [US1] Topology for TrustBoundaryIT; enable IT-2.2 and IT-2.3 (guard tests).
+- [x] T013 [US1] Topology for TrustBoundaryIT; enable IT-2.2 and IT-2.3 (guard tests).
   - Red (guard): enable IT-2.2 (edge calls partner through an `external()` client) and IT-2.3 (through an undeclared client to
     `partner.example.test`):
     - the edge endpoint binds `tenant`, `priority` and `INITIATOR` itself;

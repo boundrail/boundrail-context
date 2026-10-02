@@ -1,14 +1,34 @@
 package io.github.boundrail.context.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.github.boundrail.context.it.topology.EdgeApp;
+import io.github.boundrail.context.it.topology.Topology;
+import io.github.boundrail.context.it.topology.Topology.Service;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Trust boundary suite (IT-2): context crosses HTTP only to trusted internal destinations and is bound only from trusted callers.
  * Scenarios come from specs/003-http-trust (IT-2.1 – IT-2.9); each body is written test-first when that feature enables it (BLD-10).
  */
+@ExtendWith(Topology.class)
 class TrustBoundaryIT {
+
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+
+    /** Every context header M2 could send, as {@code ObservedContext} records names: lower case. */
+    private static final String[] CONTEXT_HEADERS = {"tenant-id", "priority", "boundrail-initiator", "boundrail-deadline-ms"};
 
     @Test
     @Disabled("Pending: M2")
@@ -19,19 +39,32 @@ class TrustBoundaryIT {
     }
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.2 External call carries no context")
-    void it22ExternalCallCarriesNoContext() {
+    void it22ExternalCallCarriesNoContext(Topology.Running topology) throws Exception {
         // IT-2.2: When edge calls partner through a client declared `external()`, then partner receives none of `Tenant-Id`, `Priority`,
         // `Boundrail-Initiator` or `Boundrail-Deadline-Ms`. *(OUT-04)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = callEdge(topology, "/call-partner/external", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "orders", marker)).containsEntry("tenant-id", "acme");
+        assertThat(observed(topology, "partner", marker)).doesNotContainKeys(CONTEXT_HEADERS);
     }
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.3 Unknown means external")
-    void it23UnknownMeansExternal() {
+    void it23UnknownMeansExternal(Topology.Running topology) throws Exception {
         // IT-2.3: When edge calls partner through a client with no declaration, whose host matches no pattern, then the result is the
         // same as IT-2.2. *(OUT-02, OUT-03, DEST-02, DEST-03)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = callEdge(topology, "/call-partner/undeclared", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(topology.uri(Service.PARTNER).getHost()).isEqualTo("partner.example.test");
+        assertThat(observed(topology, "orders", marker)).containsEntry("tenant-id", "acme");
+        assertThat(observed(topology, "partner", marker)).doesNotContainKeys(CONTEXT_HEADERS);
     }
 
     @Test
@@ -83,5 +116,21 @@ class TrustBoundaryIT {
     void it29RequiredKeyMissingOnAnInternalCall() {
         // IT-2.9: Given violation mode `fail`, when edge code runs `Context.without(tenant)` and calls orders, then
         // `ContextViolationException` is thrown and orders receives no request. *(POL-08, DIAG-02)*
+    }
+
+    /** Calls an edge endpoint as alice, the public caller. */
+    private static HttpResponse<String> callEdge(Topology.Running topology, String path, String marker) throws Exception {
+        URI uri = topology.uri(Service.EDGE).resolve(path + "?marker=" + marker);
+        return HTTP.send(HttpRequest.newBuilder(uri).header("Authorization", "Bearer " + topology.jwts().alice()).build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** The single request a service observed with this marker. */
+    private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
+        List<Map<String, String>> marked = topology.observed().of(service).stream()
+                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
+                .toList();
+        assertThat(marked).as("%s requests marked %s", service, marker).hasSize(1);
+        return marked.getFirst();
     }
 }

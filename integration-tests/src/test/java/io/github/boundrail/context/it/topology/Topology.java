@@ -102,6 +102,7 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     "spring.application.name=" + service.serviceName,
                     "server.address=127.0.0.1",
                     "server.port=0",
+                    "boundrail.context.destinations.internal-hosts=*.svc.test",
                     "spring.main.banner-mode=off",
                     // Logging is initialised once per JVM, so the first service's name would label every log line.
                     "logging.include-application-name=false"));
@@ -113,6 +114,11 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     .initializers(context -> {
                         context.getBeanFactory().registerSingleton("observedContext", observed);
                         context.getBeanFactory().registerSingleton("testJwts", jwts);
+                        context.getBeanFactory().registerSingleton("topologyPolicy", TopologyPolicy.policy());
+                        if (service == Service.EDGE) {
+                            // Edge resolves the other services' URIs per request: they start after it, on random ports.
+                            context.getBeanFactory().registerSingleton("topology", this);
+                        }
                     })
                     .run();
         }
