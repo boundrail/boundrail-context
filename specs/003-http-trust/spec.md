@@ -123,9 +123,9 @@ values are ignored and reported, and never fail the request.
   propagates; no violation).
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
 - Invalid configuration with `spring.main.lazy-initialization=true`: conflicting `ContextPolicy` beans, invalid host patterns, invalid CIDR
-  entries, an invalid `violations.mode`, a negative `violations.log-interval`, a `wire.max-value-length` less than 1, or several
-  `DestinationClassifier` beans with none primary while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-08, DIAG-02,
-  DIAG-03, WIRE-04, OUT-03).
+  entries, an invalid `violations.mode`, a negative `violations.log-interval`, a `wire.max-value-length` less than 1, a
+  `spring.security.filter.order` that is not an integer or is `Integer.MIN_VALUE`, or several `DestinationClassifier` beans with none primary
+  while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-08, DIAG-02, DIAG-03, WIRE-04, IN-01, OUT-03).
 - More than one `DestinationClassifier` bean: OUT-03 (the `@Primary` one is used; with none primary, startup fails whenever HTTP client support
   is active, that is `spring-web` and `spring-boot-restclient` are present, even with `spring.main.lazy-initialization=true`; without client
   support no classifier is used and startup does not fail).
@@ -205,6 +205,9 @@ encoding, as UTF-8 bytes for Kafka. Built-in keys SHALL instead be carried as WI
 - `Boundrail-Initiator`: the initiator's string value;
 - authority: the standard `Authorization: Bearer <credential>` header.
 
+The initiator has no codec: constructing it with `Initiator.of`, under ID-07's rules, is its decode step. An `IllegalArgumentException`
+thrown by `Initiator.of`, for example for an empty value, is therefore a decode failure (WIRE-05).
+
 **WIRE-04** `[M2]` IF an encoded wire value, outbound or inbound, is longer than `boundrail.context.wire.max-value-length` (default 256), counted
 in UTF-16 code units as Java's `String.length()` counts them, THEN it SHALL be neither sent nor bound, and an `OVERSIZED_VALUE` violation SHALL
 be reported. The operation SHALL continue. The adapter SHALL check the length first: before decoding an inbound value (WIRE-05) and before
@@ -217,6 +220,7 @@ startup SHALL fail, even when `spring.main.lazy-initialization` is `true`.
 **WIRE-05** `[M2]` IF a trusted inbound value fails to decode, THEN the key SHALL be left unbound and an `INVALID_VALUE` violation SHALL be reported.
 The request SHALL continue. The report and its log entry SHALL follow DIAG-09: they contain neither the value nor the codec's exception message.
 A value fails to decode only when the codec's `decode` throws `IllegalArgumentException` or a subclass of it, the rejection WIRE-03 defines.
+For `Boundrail-Initiator`, `decode` is `Initiator.of` (WIRE-02).
 Any other exception thrown by a codec's `decode` SHALL propagate unchanged, and no violation SHALL be reported for it: it is a bug in the codec,
 not an invalid value. Only `decode` has a defined rejection: any exception thrown by a codec's `encode`, including an
 `IllegalArgumentException`, SHALL propagate unchanged, and no violation SHALL be reported for it.
@@ -244,12 +248,15 @@ code is not written by the adapter, and is not checked (OUT-04).
 
 **IN-01** `[M2]` The Spring module SHALL register `ContextInboundFilter` before Spring Security's filter chain, at whatever
 `spring.security.filter.order` is configured: the filter's order SHALL be that property's value minus one, so -101 with the property's
-default of -100. It SHALL be around-style: it SHALL run the rest of the chain inside a scope holding the keys it binds (none, if it binds
-none). WHEN it binds no keys, it SHALL run the rest of the chain in the caller's existing scope, and SHALL NOT enter an empty scope.
+default of -100. IF `spring.security.filter.order` is not an integer, or is `Integer.MIN_VALUE`, at which no order is one below it,
+THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`. It SHALL be around-style: it SHALL run the
+rest of the chain inside a scope holding the keys it binds (none, if it binds none). WHEN it binds no keys, it SHALL run the rest of the
+chain in the caller's existing scope, and SHALL NOT enter an empty scope.
 
 **IN-02** `[M2]` WHEN a request arrives, `ContextInboundFilter` SHALL ask the `InboundTrustVerifier` for a verdict. WHEN the verdict is
 `TRUSTED_INTERNAL`, it SHALL decode and bind every key whose policy includes `INTERNAL_CALL` and whose wire header is present, except `AUTHORITY` and
-`DEADLINE` (which DL-03 handles). WHEN the verdict is `UNTRUSTED`, it SHALL bind none of them, and SHALL report one `UNTRUSTED_HEADER` violation per
+`DEADLINE` (which DL-03 handles). A wire header whose value is the empty string `""` is present, and that value SHALL be decoded, as OUT-04
+treats `""` as a value. WHEN the verdict is `UNTRUSTED`, it SHALL bind none of them, and SHALL report one `UNTRUSTED_HEADER` violation per
 policy wire header name present, however many times that header appears (names compared as WIRE-06 defines). The policy wire header names are
 the wire names of every key in the effective policy's `keys()` (POL-10): the built-in keys' wire names, such as `Boundrail-Deadline-Ms`, and
 the wire names of keys that do not propagate to `INTERNAL_CALL` are included, not only those of the keys the trusted path would bind.
@@ -386,8 +393,9 @@ Properties use the prefix `boundrail.context.`.
 
 Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: conflicting `ContextPolicy`
 beans (POL-07), invalid host patterns (DEST-04), invalid CIDR entries (IN-08), an invalid `violations.mode` (DIAG-02), a negative
-`violations.log-interval` (DIAG-03), a `wire.max-value-length` less than 1 (WIRE-04), and, while HTTP client support is active (`spring-web`
-and `spring-boot-restclient` are present), several `DestinationClassifier` beans with none primary (OUT-03).
+`violations.log-interval` (DIAG-03), a `wire.max-value-length` less than 1 (WIRE-04), a `spring.security.filter.order` that is not an
+integer or is `Integer.MIN_VALUE` (IN-01), and, while HTTP client support is active (`spring-web` and `spring-boot-restclient` are
+present), several `DestinationClassifier` beans with none primary (OUT-03).
 
 | Property | Default | Meaning |
 |---|---|---|

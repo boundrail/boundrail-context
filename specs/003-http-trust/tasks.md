@@ -13,8 +13,9 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Thirty-two guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005, T015 and T017, two unit tests
-  each in T001, T003, T006a, T007, T024 and T028, three unit tests each in T010, T011 and T015a, and four unit tests in T012.
+- Thirty-four guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005, T015 and T017, two unit tests
+  each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024 and T028, three unit tests each in T010, T011 and
+  T015a, and four unit tests in T012.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -576,16 +577,41 @@ authentication through contributors.
       the deadline and authority are not.
   - Completes: WIRE-02 (inbound); IN-02 (built-in keys); IN-01 (configured security order, undeclared checked exceptions, servlet only).
   - Verify: Unit `ContextInboundFilterTest`.
-- [ ] T018 [US2] Repeated headers on a trusted request.
+- [ ] T018 [US2] Repeated headers on a trusted request, an invalid security filter order and the T017 review follow-ups.
   - Red, in `ContextInboundFilterTest`:
     - `IN-02 a repeated policy header on a trusted request leaves the key unbound and reports one INVALID_VALUE`: `Tenant-Id: a` and
       `Tenant-Id: b` leave `tenant` unbound, give one `INVALID_VALUE`, and `priority` from the same request is bound. A recording codec shows
       `decode` was not called;
     - `WIRE-06 repeated headers are counted ignoring case`: `Tenant-Id` and `tenant-id`;
     - `DIAG-08 an inbound violation has boundary INTERNAL_CALL and no destination`;
-    - `DIAG-02 a repeated header does not fail the request in fail mode`.
-  - Green: the repetition check through `getHeaders` in `ContextInboundFilter`, and reporting through `ViolationReporter`.
-  - Completes: IN-02 (repeated trusted headers); DIAG-08; WIRE-06.
+    - `DIAG-02 a repeated header does not fail the request in fail mode`;
+    - `IN-02 a repeated Boundrail-Deadline-Ms on a trusted request is skipped, not reported`: two `Boundrail-Deadline-Ms` values give no
+      `INVALID_VALUE` and bind nothing, so the `DEADLINE`/`AUTHORITY` skip is checked before the repetition check (T017 review, Minor 1). This
+      is a guard: before this task nothing reports a repeated header. Show it red on this task's finished code with the `DEADLINE`/`AUTHORITY`
+      skip temporarily removed, so the deadline header reaches the repetition check and gives `INVALID_VALUE`, then revert
+      ([plan.md](plan.md#guard-tests));
+    - `IN-01 a spring.security.filter.order that is not an integer or is Integer.MIN_VALUE fails startup` (user decision, T017 review):
+      parametrized over `abc` and `-2147483648`, each without and with lazy initialization (the T006a setup:
+      `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` through `withInitializer`). Startup fails, with an
+      `IllegalArgumentException` as the root cause (for `abc`, the `NumberFormatException` of the `Integer` conversion).
+      - `-2147483648`, both cases: red against T017's code, where `securityOrder - 1` wraps to `Integer.MAX_VALUE` and startup succeeds;
+      - `abc` with lazy initialization: red against T017's code, whose registration bean is lazy, so the property is never read in a runner
+        with no embedded server;
+      - `abc` without lazy initialization: a guard, because the `Environment`'s `Integer` conversion already throws. Show it red with the
+        property temporarily read as a `String` and the default `-100` used when it doesn't parse as an `int`, then revert
+        ([plan.md](plan.md#guard-tests)).
+  - Green:
+    - the repetition check through `getHeaders` in `ContextInboundFilter`, after the `DEADLINE`/`AUTHORITY` skip and before the codec lookup,
+      and reporting through `ViolationReporter`;
+    - in `BoundrailContextAutoConfiguration.InboundConfiguration`, the `boundrailInboundFilter` registration bean throws
+      `IllegalArgumentException` when `securityOrder` is `Integer.MIN_VALUE`, and is `@Lazy(false)`, so both failures occur at startup under
+      lazy initialization ([plan.md](plan.md#spring-wiring)).
+  - Refactor (T017 review, Minor 2): `ContextInboundFilter.sneakyThrow` becomes `private`. `ContextInboundFilterTest` keeps its own
+    `sneakyThrow`, because its chain calls it to throw the undeclared checked exception and can't reach the filter's private one. The IN-01
+    undeclared-checked-exception test stays green.
+  - Completes: IN-02 (repeated trusted headers; built-in keys skipped before the repetition check); DIAG-08; WIRE-06; IN-01 (invalid
+    `spring.security.filter.order` fails startup, also under lazy initialization).
+  - Blocked until spec.md's IN-01 text on an invalid `spring.security.filter.order` is committed ([plan.md](plan.md#spec-gaps)).
   - Verify: Unit `ContextInboundFilterTest`.
 - [ ] T019 [US2] Untrusted headers are reported.
   - Red, in `ContextInboundFilterTest` (default verifier):
@@ -805,7 +831,7 @@ authentication through contributors.
   - T013 needs T010.
   - T014 needs T005, T007 and T013. T015 needs T004, T005, T007 and T013. T015a needs T015 and the spec.md update.
 - US2:
-  - T016 needs T005 and T006. T017 needs T016. T018 and T019 need T007 and T016.
+  - T016 needs T005 and T006. T017 needs T016. T018 needs T007, T017 and the spec.md update. T019 needs T007 and T016.
   - T020 needs T013 and T019.
   - T021 needs T016. T022 needs T021.
   - T023 needs T007 and T016. T024 needs T020 and T023.
@@ -823,7 +849,7 @@ authentication through contributors.
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
 - [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005, T015 and T017 unit guards, the two unit guards each in T001, T003, T006a, T007,
-  T024 and T028, the three unit guards each in T010, T011 and T015a, and the four unit guards in T012)
+  T018, T024 and T028, the three unit guards each in T010, T011 and T015a, and the four unit guards in T012)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

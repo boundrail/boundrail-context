@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and twenty-eight
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and thirty-one
 unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-two guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-four guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -141,13 +141,21 @@ unit tests already pass before their task; each red is shown against a temporary
   - `ApplicationContextRunner` does not run `SpringApplication`, so the property alone changes nothing in a runner test. T006a's test adds
     `LazyInitializationBeanFactoryPostProcessor` through `withInitializer`, as `SpringApplication` does for that property, and sets the property
     too.
-- **Invalid configuration under lazy initialization (POL-07, DEST-04, IN-08, DIAG-03).** Every invalid-configuration startup failure also
-  occurs with `spring.main.lazy-initialization=true`. Each bean whose creation validates configuration is `@Lazy(false)`:
+- **Invalid configuration under lazy initialization (POL-07, DEST-04, IN-08, DIAG-03, IN-01).** Every invalid-configuration startup failure
+  also occurs with `spring.main.lazy-initialization=true`. Each bean whose creation validates configuration is `@Lazy(false)`:
   - the effective policy (POL-07, T006a);
   - the `boundrailDestinationClassifier` bean (DEST-04, T009);
   - the `boundrailViolationReporter` bean (DIAG-03, T010);
   - the `RestClientCustomizer` and `RestTemplateCustomizer` beans in `ClientConfiguration` (OUT-03, T010);
-  - the CIDR verifier bean (IN-08, T022).
+  - the CIDR verifier bean (IN-08, T022);
+  - the `boundrailInboundFilter` registration bean (IN-01, T018).
+
+  An invalid `spring.security.filter.order` fails startup (IN-01, user decision from the T017 review). The registration bean reads it from the
+  `Environment` as an `Integer`, so `abc` already fails the conversion (`ConversionFailedException`, root cause `NumberFormatException`), and
+  rejects `Integer.MIN_VALUE`, at which `securityOrder - 1` would wrap to `Integer.MAX_VALUE`, with `IllegalArgumentException`. Up to T017 the
+  registration bean is not `@Lazy(false)`. In a real servlet application the embedded server fetches every `ServletContextInitializer` bean
+  during refresh, but a `WebApplicationContextRunner` starts no server, so under lazy initialization the bean, and the property, would never
+  be read. T018 makes it `@Lazy(false)`, like the other validating beans, so both failures occur at startup in either case.
 
   A negative `log-interval` is rejected by the `Violations` compact constructor when `BoundrailContextProperties` is bound (DIAG-03). The
   default classifier bean binds it, but an application `DestinationClassifier` bean replaces that bean (`@ConditionalOnMissingBean`), and then
@@ -241,11 +249,11 @@ unit tests already pass before their task; each red is shown against a temporary
 - **Inbound filter (IN-01, IN-02, WIRE-04 – WIRE-06).** `ContextInboundFilter extends OncePerRequestFilter`, registered through a
   `FilterRegistrationBean` in a nested `@ConditionalOnWebApplication(type = SERVLET)` configuration (T017 tests that nothing is registered
   outside a servlet application). Its order is one below `spring.security.filter.order`, read from the `Environment` with a default of `-100`
-  (Boot's `SecurityFilterProperties.DEFAULT_FILTER_ORDER`), so `-101` by default (T016) and `-201` at `-200` (T017, user decision). The default
-  is copied, because Spring Security is optional, and a test compares the order with Boot's constant; T016 checks the class's Boot 4 location.
+  (Boot's `SecurityFilterProperties.DEFAULT_FILTER_ORDER`), so `-101` by default (T016) and `-201` at `-200` (T017, user decision). A value that
+  is not an integer, or is `Integer.MIN_VALUE`, fails startup (T018, user decision; see Spring wiring). The default is copied, because Spring Security is optional, and a test compares the order with Boot's constant; T016 checks the class's Boot 4 location.
   The filter asks the verifier, then:
   - For `TRUSTED_INTERNAL`, for each key of `policy.keys()` that propagates to `INTERNAL_CALL` and has a wire name, except `AUTHORITY` and
-    `DEADLINE`:
+    `DEADLINE`, which are skipped before step 1, so a repeated `Boundrail-Deadline-Ms` is not reported (T018):
     1. read `Collections.list(request.getHeaders(wireName))`; servlet header names are case-insensitive (WIRE-06);
     2. none: skip the key; more than one: report `INVALID_VALUE` and decode none (IN-02);
     3. one: check the length first (WIRE-04), then decode with the key's codec, or `Initiator.of` for `INITIATOR` (WIRE-02);
@@ -258,7 +266,7 @@ unit tests already pass before their task; each red is shown against a temporary
 
   It then runs `filterChain.doFilter` inside `binding.call(...)`, rethrowing `IOException` and `ServletException` unchanged (CORE-08). Any
   other checked exception, which the chain can only sneaky-throw, is rethrown unchanged through a generic sneaky-rethrow helper, as on the
-  path with nothing bound, and not wrapped in `UndeclaredThrowableException` (T017, T016 review).
+  path with nothing bound, and not wrapped in `UndeclaredThrowableException` (T017, T016 review). The helper is `private` (T018, T017 review).
 - **Trust verifiers (IN-03, IN-08).** Both built-in verifiers are `@ConditionalOnMissingBean(InboundTrustVerifier.class)`, so an application bean
   replaces them.
   - The default bean returns `UNTRUSTED`.
@@ -340,6 +348,10 @@ application-set header of an unbound required key is sent. T015a is blocked unti
 The user's decision from the T016 review, that the inbound filter's order is one below `spring.security.filter.order` (`-101` by default), is
 being written into spec.md (IN-01) by the spec-creator. T017's configured-order test is blocked until that IN-01 text is committed.
 
+The user's decision from the T017 review, that a `spring.security.filter.order` that is not an integer or is `Integer.MIN_VALUE` fails startup,
+also under lazy initialization, is being written into spec.md (IN-01 and the lazy-initialization list) by the spec-creator. T018's IN-01
+invalid-order test is blocked until that text is committed.
+
 P7 (group and package, M7) does not block: the work uses `io.github.boundrail.context`, as 002 did. Q1 – Q5 do not apply to M2; Q6 is resolved
 (D35).
 
@@ -385,6 +397,8 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T015a | `DIAG-02 violations.mode is matched ignoring case and an empty value means fail` | Boot's lenient enum conversion ignores case, and converts `""` to `null`, which `@DefaultValue("fail")` replaces | Case: `mode` bound as a `String` and compared with `equals("report")`, so `REPORT` is `fail`. Empty value: `@DefaultValue("fail")` removed from `mode`, so `""` binds to `null` and the interceptor's `mode == FAIL` is false |
 | T015a | `DIAG-02 in report mode an application-set header of an unbound required key is sent` | T015's check reads the context, not the headers, and step 3 writes nothing for an unbound key, so the application's header is untouched | In `ContextClientInterceptor`, in `report` mode, the wire header of each missing required key removed from the request |
 | T017 | `IN-01 no inbound filter or verifier is registered outside a servlet web application` | T016's nested `InboundConfiguration` is already `@ConditionalOnWebApplication(type = SERVLET)`, so a plain `ApplicationContextRunner` creates neither bean | `@ConditionalOnWebApplication` removed from `InboundConfiguration` |
+| T018 | `IN-02 a repeated Boundrail-Deadline-Ms on a trusted request is skipped, not reported` | Before T018 nothing reports a repeated header, and T017 already skips `DEADLINE` and `AUTHORITY` | On T018's finished code, the `DEADLINE`/`AUTHORITY` skip removed from `ContextInboundFilter`, so the repeated deadline header reaches the repetition check and gives `INVALID_VALUE` |
+| T018 | `IN-01 a spring.security.filter.order that is not an integer or is Integer.MIN_VALUE fails startup`, the `abc` case without lazy initialization only | The registration bean reads the property from the `Environment` as an `Integer`, so `abc` already fails the conversion at startup. The other three cases are red before T018 | In `boundrailInboundFilter`, the property read as a `String` and the default `-100` used when it doesn't parse as an `int` |
 | T024 | `WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec` | T023's length check already drops the value before decoding | In `ContextInboundFilter`, `decode` called before the length check |
 | T024 | `WIRE-05 any other exception from decode propagates unchanged and no violation is reported` | Before T024 nothing catches an exception from `decode`, so every exception propagates | In `ContextInboundFilter`, the catch widened from `IllegalArgumentException` to `RuntimeException` |
 | T028 | `IN-06 a claim value longer than max-value-length is bound` | No length check exists on the authentication path | In `ContextAuthenticationFilter`, contributed values longer than `wire.max-value-length` dropped |
@@ -468,7 +482,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | WIRE-06 | T010, T014 (outbound), T016, T018, T019 (inbound) |
 | WIRE-07 | T014 (one violation per removed name with values, none for a name with no values, headers of keys propagating to `EXTERNAL_CALL` kept) |
 | WIRE-08 | T012 (not on application-set headers) |
-| IN-01 | T016, T017 (configured security order, undeclared checked exceptions, servlet only) |
+| IN-01 | T016, T017 (configured security order, undeclared checked exceptions, servlet only), T018 (invalid security order fails startup, also under lazy initialization) |
 | IN-02 | T016, T017, T018, T019 |
 | IN-03 | T016 (default, bean replaces), T021 (CIDR, `getRemoteAddr()`, non-literal remote address) |
 | IN-04 | T025 |
