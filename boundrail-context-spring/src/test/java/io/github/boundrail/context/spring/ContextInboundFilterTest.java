@@ -4,25 +4,35 @@ import static io.github.boundrail.context.Boundary.ATTACHED;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
+import io.github.boundrail.context.ContextCodec;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.Initiator;
+import io.github.boundrail.context.Violation;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.Filter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -52,6 +62,27 @@ class ContextInboundFilterTest {
 
     /** What the servlet at the end of the chain observed. */
     record Observed(Optional<String> tenant, Optional<Long> priority, Optional<String> audit) {
+    }
+
+    /** What the servlet at the end of the chain observed, and the violations reported while the request was filtered. */
+    record Filtered(Observed observed, List<Violation> violations) {
+    }
+
+    /** A string codec that records every text it decodes. */
+    static final class RecordingCodec implements ContextCodec<String> {
+
+        final List<String> decoded = new CopyOnWriteArrayList<>();
+
+        @Override
+        public String encode(String value) {
+            return value;
+        }
+
+        @Override
+        public String decode(String text) {
+            decoded.add(text);
+            return text;
+        }
     }
 
     @Test
@@ -253,6 +284,101 @@ class ContextInboundFilterTest {
         });
     }
 
+    @Test
+    @DisplayName("IN-02 a repeated policy header on a trusted request leaves the key unbound and reports one INVALID_VALUE")
+    void aRepeatedPolicyHeaderOnATrustedRequestLeavesTheKeyUnboundAndReportsOneInvalidValue() {
+        RecordingCodec codec = new RecordingCodec();
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(codec).wireName("Tenant-Id").propagateTo(ATTACHED, INTERNAL_CALL))
+                .key(PRIORITY, rules -> rules.codec(Codecs.longValue()).wireName("Priority").propagateTo(ATTACHED, INTERNAL_CALL))
+                .build();
+
+        Filtered filtered = filterTrusted(policy, request -> {
+            request.addHeader("Tenant-Id", "a");
+            request.addHeader("Tenant-Id", "b");
+            request.addHeader("Priority", "5");
+        });
+
+        assertThat(filtered.observed().tenant()).as("a repeated header leaves the key unbound").isEmpty();
+        assertThat(filtered.observed().priority()).as("other keys of the same request are bound").contains(5L);
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "tenant"));
+        assertThat(codec.decoded).as("no value of a repeated header is decoded").isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-06 repeated headers are counted ignoring case")
+    void repeatedHeadersAreCountedIgnoringCase() {
+        Filtered filtered = filterTrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", "a");
+            request.addHeader("tenant-id", "b");
+        });
+
+        assertThat(filtered.observed().tenant()).isEmpty();
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "tenant"));
+    }
+
+    @Test
+    @DisplayName("DIAG-08 an inbound violation has boundary INTERNAL_CALL and no destination")
+    void anInboundViolationHasBoundaryInternalCallAndNoDestination() {
+        Filtered filtered = filterTrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", "a");
+            request.addHeader("Tenant-Id", "b");
+        });
+
+        assertThat(filtered.violations()).singleElement().satisfies(violation -> {
+            assertThat(violation.boundary()).isEqualTo(INTERNAL_CALL);
+            assertThat(violation.destination()).isEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("DIAG-02 a repeated header does not fail the request in fail mode")
+    void aRepeatedHeaderDoesNotFailTheRequestInFailMode() {
+        Filtered filtered = filterTrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", "a");
+            request.addHeader("Tenant-Id", "b");
+            request.addHeader("Priority", "5");
+        }, "boundrail.context.violations.mode=fail");
+
+        assertThat(filtered.violations()).as("the violation is reported").hasSize(1);
+        assertThat(filtered.observed().priority()).as("the chain ran, with the rest of the context bound").contains(5L);
+    }
+
+    @Test
+    @DisplayName("IN-02 a repeated Boundrail-Deadline-Ms on a trusted request is skipped, not reported")
+    void aRepeatedBoundrailDeadlineMsOnATrustedRequestIsSkippedNotReported() {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        runner.withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                .withBean(InboundTrustVerifier.class, () -> TRUSTING)
+                .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                .run(context -> {
+                    Optional<?> deadline = observe(inboundRegistration(context).getFilter(), BuiltInKeys.DEADLINE, request -> {
+                        request.addHeader("Boundrail-Deadline-Ms", "5000");
+                        request.addHeader("Boundrail-Deadline-Ms", "6000");
+                    });
+
+                    assertThat(deadline).isEmpty();
+                    assertThat(violations).isEmpty();
+                });
+    }
+
+    @ParameterizedTest(name = "spring.security.filter.order={0}, lazy initialization: {1}")
+    @CsvSource({"abc, false", "abc, true", "-2147483648, false", "-2147483648, true"})
+    @DisplayName("IN-01 a spring.security.filter.order that is not an integer or is Integer.MIN_VALUE fails startup")
+    void aSpringSecurityFilterOrderThatIsNotAnIntegerOrIsIntegerMinValueFailsStartup(String order, boolean lazy) {
+        WebApplicationContextRunner configured = runner.withPropertyValues("spring.security.filter.order=" + order);
+        if (lazy) {
+            configured = configured.withPropertyValues("spring.main.lazy-initialization=true")
+                    .withInitializer(context -> context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()));
+        }
+        configured.run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalArgumentException.class);
+        });
+    }
+
     static FilterRegistrationBean<?> inboundRegistration(AssertableWebApplicationContext context) {
         assertThat(context).hasNotFailed();
         return context.getBeansOfType(FilterRegistrationBean.class).values().stream()
@@ -281,6 +407,25 @@ class ContextInboundFilterTest {
         new MockFilterChain(recording, filter).doFilter(request, new MockHttpServletResponse());
         assertThat(observed.get()).as("the chain ran").isNotNull();
         return observed.get();
+    }
+
+    /**
+     * Sends a request with the given headers through the filter of a context with the given policy, the given properties and a verifier that
+     * trusts every caller, and records every reported violation. Micrometer is hidden so that the recording counter is the only
+     * {@code ViolationReporter.Counter} bean.
+     */
+    private Filtered filterTrusted(ContextPolicy policy, Consumer<MockHttpServletRequest> headers, String... properties) {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        AtomicReference<Observed> observed = new AtomicReference<>();
+        new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
+                .withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                .withPropertyValues(properties)
+                .withBean(ContextPolicy.class, () -> policy)
+                .withBean(InboundTrustVerifier.class, () -> TRUSTING)
+                .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                .run(context -> observed.set(filter(inboundRegistration(context).getFilter(), headers)));
+        return new Filtered(observed.get(), List.copyOf(violations));
     }
 
     /** Sends a request with the given headers through the filter and returns what the servlet at the end of the chain finds for the key. */

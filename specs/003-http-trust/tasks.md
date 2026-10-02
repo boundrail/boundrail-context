@@ -577,7 +577,7 @@ authentication through contributors.
       the deadline and authority are not.
   - Completes: WIRE-02 (inbound); IN-02 (built-in keys); IN-01 (configured security order, undeclared checked exceptions, servlet only).
   - Verify: Unit `ContextInboundFilterTest`.
-- [ ] T018 [US2] Repeated headers on a trusted request, an invalid security filter order and the T017 review follow-ups.
+- [x] T018 [US2] Repeated headers on a trusted request, an invalid security filter order and the T017 review follow-ups.
   - Red, in `ContextInboundFilterTest`:
     - `IN-02 a repeated policy header on a trusted request leaves the key unbound and reports one INVALID_VALUE`: `Tenant-Id: a` and
       `Tenant-Id: b` leave `tenant` unbound, give one `INVALID_VALUE`, and `priority` from the same request is bound. A recording codec shows

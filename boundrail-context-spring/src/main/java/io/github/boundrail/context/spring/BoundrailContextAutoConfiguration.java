@@ -124,12 +124,21 @@ public class BoundrailContextAutoConfiguration {
             };
         }
 
+        /**
+         * Orders the filter one below {@code spring.security.filter.order}; a value that is not an integer, or is {@code Integer.MIN_VALUE},
+         * fails startup, also under lazy initialization (IN-01).
+         */
         @Bean
+        @Lazy(false)
         FilterRegistrationBean<ContextInboundFilter> boundrailInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy,
-                Environment environment) {
-            FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(new ContextInboundFilter(verifier, policy));
+                ViolationReporter reporter, Environment environment) {
+            FilterRegistrationBean<ContextInboundFilter> registration =
+                    new FilterRegistrationBean<>(new ContextInboundFilter(verifier, policy, reporter));
             int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
                     ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
+            if (securityOrder == Integer.MIN_VALUE) {
+                throw new IllegalArgumentException("spring.security.filter.order must be greater than Integer.MIN_VALUE");
+            }
             registration.setOrder(securityOrder - 1);
             return registration;
         }
