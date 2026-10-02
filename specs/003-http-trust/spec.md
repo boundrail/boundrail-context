@@ -81,6 +81,8 @@ values are ignored and reported, and never fail the request.
 - The violation mode is `report`: DIAG-02 (the call continues without the key).
 - A required key is unbound, but application code set its wire header on an internal call: POL-08 (still `MISSING_REQUIRED`; the check reads the
   context, not the headers, and runs before OUT-04).
+- The same, with the violation mode `report`: DIAG-02, OUT-04 (the violation is reported, the call continues, and the application's header
+  is sent unchanged).
 - A deadline or authority is bound during an internal call: OUT-04 (no `Boundrail-Deadline-Ms` or `Authorization` is written in M2; DL-05 and ID-03
   add them).
 - An encoded value contains CR, LF or another character not allowed in an HTTP header: WIRE-08 (not sent, reported, the call continues).
@@ -115,8 +117,9 @@ values are ignored and reported, and never fail the request.
   propagates; no violation).
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
 - Invalid configuration with `spring.main.lazy-initialization=true`: conflicting `ContextPolicy` beans, invalid host patterns, invalid CIDR
-  entries, a negative `violations.log-interval`, a `wire.max-value-length` less than 1, or several `DestinationClassifier` beans with none
-  primary while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-08, DIAG-03, WIRE-04, OUT-03).
+  entries, an invalid `violations.mode`, a negative `violations.log-interval`, a `wire.max-value-length` less than 1, or several
+  `DestinationClassifier` beans with none primary while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-08, DIAG-02,
+  DIAG-03, WIRE-04, OUT-03).
 - More than one `DestinationClassifier` bean: OUT-03 (the `@Primary` one is used; with none primary, startup fails whenever HTTP client support
   is active, that is `spring-web` and `spring-boot-restclient` are present, even with `spring.main.lazy-initialization=true`; without client
   support no classifier is used and startup does not fail).
@@ -335,7 +338,8 @@ violation (DIAG-03) and then throw a `ContextViolationException` carrying it, be
 report the violation and continue without the key. WHEN more than one required key is unbound on one crossing (POL-08), the adapter SHALL
 report one `MISSING_REQUIRED` violation per key, in ascending order of key name as compared by `String.compareTo` (key names are unique in a
 policy, POL-05), and in `fail` mode SHALL then throw one `ContextViolationException` carrying the first of them. All other violation kinds SHALL
-always be report-only.
+always be report-only. The mode SHALL be matched ignoring case, so `Report` means `report`, and an empty value SHALL mean `fail`. IF the mode is
+any other value, such as `bogus`, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`.
 
 **DIAG-03** `[M2]` Reporting a violation SHALL:
 
@@ -372,13 +376,13 @@ identity in tests. Neither the verifier nor `peer()` SHALL be auto-configured.
 Properties use the prefix `boundrail.context.`.
 
 Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: conflicting `ContextPolicy`
-beans (POL-07), invalid host patterns (DEST-04), invalid CIDR entries (IN-08), a negative `violations.log-interval` (DIAG-03), a
-`wire.max-value-length` less than 1 (WIRE-04), and, while HTTP client support is active (`spring-web` and `spring-boot-restclient` are
-present), several `DestinationClassifier` beans with none primary (OUT-03).
+beans (POL-07), invalid host patterns (DEST-04), invalid CIDR entries (IN-08), an invalid `violations.mode` (DIAG-02), a negative
+`violations.log-interval` (DIAG-03), a `wire.max-value-length` less than 1 (WIRE-04), and, while HTTP client support is active (`spring-web`
+and `spring-boot-restclient` are present), several `DestinationClassifier` beans with none primary (OUT-03).
 
 | Property | Default | Meaning |
 |---|---|---|
-| `violations.mode` | `fail` | `fail` or `report` (DIAG-02) |
+| `violations.mode` | `fail` | `fail` or `report`, matched ignoring case; an empty value means `fail`, and any other value fails startup (DIAG-02) |
 | `violations.log-interval` | `1m` | Rate limit for violation logs; `0s` logs every occurrence, and a negative value fails startup (DIAG-03) |
 | `inbound.trust` | `none` | `none` or `cidr`; a verifier bean overrides it (IN-03) |
 | `inbound.trusted-cidrs` | `[]` | IPv4 or IPv6 CIDRs, or bare addresses, trusted when `inbound.trust=cidr` (IN-03, IN-08). Matched against `getRemoteAddr()`: with forwarded-header processing enabled, a proxy, or a client forging `Forwarded` or `X-Forwarded-For` headers that no proxy strips, decides that address |

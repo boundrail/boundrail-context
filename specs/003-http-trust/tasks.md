@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Twenty-five guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T005, two unit tests each
-  in T001, T003, T006a, T007, T012, T024 and T028, and three unit tests each in T010 and T011.
+- Thirty-one guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T015, two unit tests
+  each in T001, T003, T006a, T007, T024 and T028, three unit tests each in T010, T011 and T015a, and four unit tests in T012.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -378,8 +378,10 @@ enforces required keys, the length limit and valid field values.
     - `WIRE-08 a value that is not a valid field value is not written and is reported as INVALID_VALUE`, parametrized over CR, LF, CRLF, NUL,
       DEL (U+007F), `é` (U+00E9), U+0080, an emoji, a leading space and a trailing tab. Each request is sent with the other keys, and one
       `INVALID_VALUE` is reported for key `tenant` with the classified destination;
-    - `WIRE-08 visible ASCII with inner spaces and tabs is written`: `a b\tc`;
-    - `WIRE-08 an empty value is written`: `Tenant-Id` with an empty value;
+    - `WIRE-08 visible ASCII with inner spaces and tabs is written`: `a b\tc`. This is a guard: T011 has no field value check. Show it red
+      with `isFieldValue` temporarily rejecting SP and HTAB, then revert ([plan.md](plan.md#guard-tests));
+    - `WIRE-08 an empty value is written`: `Tenant-Id` with an empty value. This is a guard for the same reason. Show it red with
+      `isFieldValue`'s `isEmpty` case temporarily returning `false`, then revert ([plan.md](plan.md#guard-tests));
     - `WIRE-08 applies to Boundrail-Initiator`: an initiator `a\nb` is not written and is reported;
     - `DIAG-09 an invalid outbound value is reported without the value`: neither the violation nor the log entry contains it;
     - `WIRE-04 an outbound value both oversized and not a valid field value is reported once, as OVERSIZED_VALUE`. This is a guard: show it red
@@ -469,7 +471,9 @@ enforces required keys, the length limit and valid field values.
       - `DIAG-02 violations.mode defaults to fail`;
       - `POL-08 a required key with only a default is MISSING_REQUIRED`;
       - `POL-08 a required key is MISSING_REQUIRED even when application code set its wire header`: the request is not sent;
-      - `POL-08 a required key that does not propagate to the call's boundary is not checked`: an external call;
+      - `POL-08 a required key that does not propagate to the call's boundary is not checked`: an external call. This is a guard: nothing
+        checks required keys before this task. Show it red with the propagation filter temporarily removed from the check, then revert
+        ([plan.md](plan.md#guard-tests));
       - `POL-08 a required key that propagates to EXTERNAL_CALL is checked on an external or unknown call`;
       - `DIAG-02 several unbound required keys are each reported in ascending key-name order, and the exception carries the first`: a policy
         registering required `tenant`, then required `region`, both unbound on an internal call. In `fail` mode the reporter records
@@ -479,6 +483,31 @@ enforces required keys, the length limit and valid field values.
     name, each reported, then one exception carrying the first in `fail` mode; `violations.mode` in `BoundrailContextProperties`.
   - Completes: POL-08; DIAG-02; IT-2.9.
   - Verify: Unit `ContextClientInterceptorTest`; IT.
+
+- [ ] T015a [US1] Violation mode values and report-mode application headers (T015 review follow-up).
+  - Blocked until spec.md states the two user decisions (DIAG-02, POL-08; [plan.md](plan.md#spec-gaps)).
+  - Red, in `ContextClientInterceptorTest`. All three are expected to pass on T015's code, so each is a guard, shown red against its named
+    temporary change, then reverted ([plan.md](plan.md#guard-tests)):
+    - `DIAG-02 an invalid violations.mode fails startup` (`ApplicationContextRunner`), parametrized without and with lazy initialization (the
+      T006a setup: `spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`).
+      With `boundrail.context.violations.mode=bogus`, startup fails, and the failure's causes include a `BindException` for
+      `boundrail.context.violations.mode`. Guard: show it red with an unconvertible `mode` temporarily defaulted to `FAIL` instead of failing
+      (for example `mode` bound as a `String` and mapped to `FAIL` unless it equals `report`);
+    - `DIAG-02 violations.mode is matched ignoring case and an empty value means fail`, parametrized: `REPORT` and `Report` give report
+      mode (the violation is reported and the request is sent), `FAIL` gives fail mode, and an empty value gives fail mode
+      (`ContextViolationException`, nothing sent). Guard: show the case rule red with `mode` temporarily bound as a `String` and compared with
+      `equals("report")`; show the empty-value rule red with `@DefaultValue("fail")` temporarily removed from `mode`, so `""` binds to
+      `null` and the interceptor does not fail;
+    - `DIAG-02 in report mode an application-set header of an unbound required key is sent`: with `violations.mode=report` and `tenant`
+      required and unbound, application code sets `Tenant-Id: mine` on an internal call. One `MISSING_REQUIRED` for `tenant` is reported,
+      the call continues, and the server receives `Tenant-Id: mine`. Guard: show it red with the interceptor temporarily removing, in
+      `report` mode, the wire header of each missing required key, then revert.
+  - Green: no production code. If a test is red, the minimum change that makes it pass, in `spring/BoundrailContextProperties.java`
+    (`Violations`) or `spring/ContextClientInterceptor.java`, and the test is then not a guard: the leader reports it and the planner removes its
+    Guard Tests row.
+  - Completes: DIAG-02 (invalid mode fails startup, also under lazy initialization; values match ignoring case; empty means `fail`; in
+    `report` mode an application-set header of an unbound required key is sent); POL-08 (same `report`-mode rule).
+  - Verify: Unit `ContextClientInterceptorTest`; `./gradlew check`.
 
 **Checkpoint**: IT-2.2, IT-2.3, IT-2.4 and IT-2.9 green on JDK 21 and JDK 25.
 
@@ -754,7 +783,7 @@ authentication through contributors.
 - US1:
   - T008 needs T006. T009 needs T003 and T008. T010 needs T007 and T009. T011 needs T007 and T010. T012 needs T011.
   - T013 needs T010.
-  - T014 needs T005, T007 and T013. T015 needs T004, T005, T007 and T013.
+  - T014 needs T005, T007 and T013. T015 needs T004, T005, T007 and T013. T015a needs T015 and the spec.md update.
 - US2:
   - T016 needs T005 and T006. T017 needs T016. T018 and T019 need T007 and T016.
   - T020 needs T013 and T019.
@@ -764,7 +793,7 @@ authentication through contributors.
   - T027 needs T020 and T026; IT-2.1 also needs US1's outbound path (T010).
   - T028 needs T026 and T027.
 - T029 comes last.
-- US1 (T008 – T015) and the first US2 tasks (T016 – T019, T021 – T023, T025, T026) can be interleaved after Phase 3. Tasks touching the same file
+- US1 (T008 – T015a) and the first US2 tasks (T016 – T019, T021 – T023, T025, T026) can be interleaved after Phase 3. Tasks touching the same file
   run in sequence.
 - Every task is committed and reviewed on its own, on branch `003-http-trust`.
 
@@ -773,8 +802,8 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T005 unit guards, the two unit guards each in T001, T003, T006a, T007, T012,
-  T024 and T028, and the three unit guards each in T010 and T011)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T015 unit guards, the two unit guards each in T001, T003, T006a, T007,
+  T024 and T028, the three unit guards each in T010, T011 and T015a, and the four unit guards in T012)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

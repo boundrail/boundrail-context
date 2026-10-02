@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and twenty-two
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and twenty-eight
 unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; twenty-five guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-one guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -156,6 +156,11 @@ unit tests already pass before their task; each red is shown against a temporary
   A `wire.max-value-length` less than 1 is rejected the same way, by the `Wire` compact constructor (`IllegalArgumentException`) when
   `BoundrailContextProperties` is bound (WIRE-04, user decision). The `@Lazy(false)` reporter already binds the properties at startup, so
   nothing else is needed under lazy initialization (T012).
+
+  An invalid `violations.mode`, such as `bogus`, fails the binding of `BoundrailContextProperties` (DIAG-02, user decision), so the same
+  `@Lazy(false)` reporter makes it fail startup under lazy initialization. Boot's lenient enum conversion already matches `fail` and `report`
+  ignoring case, and converts an empty value to `null`, which the binder replaces with `@DefaultValue("fail")`. The current code is expected to
+  pass all three T015a tests, so they are guards; if one is red, its green is the minimum change to `Violations` (T015a).
 - **Configuration.** One `@ConfigurationProperties("boundrail.context")` record, `BoundrailContextProperties`, with nested records:
   - `Violations`: `mode`, an enum `FAIL`/`REPORT`, and `logInterval`, a `Duration`;
   - `Inbound`: `trust`, an enum `NONE`/`CIDR`, and `trustedCidrs`;
@@ -209,7 +214,8 @@ unit tests already pass before their task; each red is shown against a temporary
   2. Required-key check (POL-08, DIAG-02): collect the keys of `policy.keys()` that are required, propagate to the boundary, and are not bound
      (`key.isBound()`; a default does not count, CORE-05), sorted by `name()` with `String.compareTo`. Report one `MISSING_REQUIRED` for each,
      in that order. In `fail` mode, then throw one `ContextViolationException` carrying the first, before any header is written or `execute`
-     is called. In `report` mode, continue.
+     is called. In `report` mode, continue. A header that application code set for an unbound required key is not touched by this step, and
+     step 3 writes nothing for an unbound key, so in `report` mode the application's header is sent (DIAG-02, user decision, T015a).
   3. Write headers. For each key of `policy.filter(Context.capture(), boundary)` that has a wire name, except `AUTHORITY` and `DEADLINE`:
      - skip it if application code already set that header, on every boundary (OUT-04). A header is set only when its name has at least one
        value: `!getOrEmpty(wireName).isEmpty()`, not `containsHeader`, so a name with no values is unset and gets the context value, and
@@ -323,6 +329,10 @@ None open. The ambiguities A1 – A8 of the earlier draft are decided in spec.md
 DIAG-09), the contract and design.md D35, and their tests are planned in T010, T011, T014, T015, T019, T021, T024 and T028. A8 needs no task:
 M2 owes only the spec's Configuration table (IN-03).
 
+The two user decisions from the T015 review are being written into spec.md (DIAG-02, POL-08) by the spec-creator: an invalid `violations.mode`
+fails startup, also under lazy initialization, values match ignoring case and an empty value means `fail`; and in `report` mode an
+application-set header of an unbound required key is sent. T015a is blocked until spec.md states both.
+
 P7 (group and package, M7) does not block: the work uses `io.github.boundrail.context`, as 002 did. Q1 – Q5 do not apply to M2; Q6 is resolved
 (D35).
 
@@ -361,6 +371,12 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T011 | `WIRE-04 a value of exactly max-value-length is sent` | No length check existed before T011, so every value is sent | In `ContextClientInterceptor`, the length check written as `>=` instead of `>` |
 | T012 | `WIRE-04 an outbound value both oversized and not a valid field value is reported once, as OVERSIZED_VALUE` | T011's length check already drops the value before any character check exists | In `ContextClientInterceptor`, the WIRE-08 check run before the WIRE-04 check |
 | T012 | `OUT-04 an application-set header's context value is not encoded or checked` (the invalid field value case) | The application-set check already skips the key before it is encoded | In `ContextClientInterceptor`, the value encoded and checked (WIRE-04, then WIRE-08) before the application-set check |
+| T012 | `WIRE-08 visible ASCII with inner spaces and tabs is written` | T011 has no field value check, so every value within the length limit is written | In `ContextClientInterceptor.isFieldValue`, SP (U+0020) and HTAB (U+0009) rejected |
+| T012 | `WIRE-08 an empty value is written` | T011 has no field value check, so `""` is written | In `ContextClientInterceptor.isFieldValue`, the `isEmpty` case returning `false` |
+| T015 | `POL-08 a required key that does not propagate to the call's boundary is not checked` | The test's key is unbound and asserted unchecked; before T015 nothing checks required keys | In `ContextClientInterceptor`, the propagation filter removed from the required-key check, so every unbound required key is checked |
+| T015a | `DIAG-02 an invalid violations.mode fails startup` (without and with lazy initialization) | `Mode` is an enum, so binding `bogus` already fails, and the `@Lazy(false)` reporter binds the properties at startup | In `Violations`, an unconvertible `mode` defaulted to `FAIL` instead of failing (e.g. `mode` bound as a `String` and mapped to `FAIL` unless it equals `report`) |
+| T015a | `DIAG-02 violations.mode is matched ignoring case and an empty value means fail` | Boot's lenient enum conversion ignores case, and converts `""` to `null`, which `@DefaultValue("fail")` replaces | Case: `mode` bound as a `String` and compared with `equals("report")`, so `REPORT` is `fail`. Empty value: `@DefaultValue("fail")` removed from `mode`, so `""` binds to `null` and the interceptor's `mode == FAIL` is false |
+| T015a | `DIAG-02 in report mode an application-set header of an unbound required key is sent` | T015's check reads the context, not the headers, and step 3 writes nothing for an unbound key, so the application's header is untouched | In `ContextClientInterceptor`, in `report` mode, the wire header of each missing required key removed from the request |
 | T024 | `WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec` | T023's length check already drops the value before decoding | In `ContextInboundFilter`, `decode` called before the length check |
 | T024 | `WIRE-05 any other exception from decode propagates unchanged and no violation is reported` | Before T024 nothing catches an exception from `decode`, so every exception propagates | In `ContextInboundFilter`, the catch widened from `IllegalArgumentException` to `RuntimeException` |
 | T028 | `IN-06 a claim value longer than max-value-length is bound` | No length check exists on the authentication path | In `ContextAuthenticationFilter`, contributed values longer than `wire.max-value-length` dropped |
@@ -431,7 +447,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 |---|---|
 | CORE-13 | T001 (DEST types), T003 (`null` before invalid pattern), T004 (`Violation`, exception), T009 (`BoundrailClients`), T016 (default verifier), T020 (test verifier), T021 (CIDR verifier), T025 (`put`, wrong type), T026 (`invalid`), T027 (`JwtClaimContributor`) |
 | POL-07 | T006, T006a (parent context merged; eager under lazy initialization) |
-| POL-08 | T015 (one violation per unbound required key) |
+| POL-08 | T015 (one violation per unbound required key), T015a (`report` mode sends an application-set header of an unbound required key) |
 | POL-10 | T005 |
 | DEST-01 | T001, T029 (no HTTP dependency in core) |
 | DEST-02 | T001, T002, T006a (trailing dot), T009 |
@@ -457,7 +473,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | OUT-03 | T009, T010 (several classifier beans, none primary also under lazy initialization, last declaration wins) |
 | OUT-04 | T010, T011 (application-set headers on every boundary, a name with no values is unset, `""` is set, no `encode` or length check), T012 (no field-value check), T014 |
 | DIAG-01 | T004 |
-| DIAG-02 | T004 (exception), T015 (report, then throw; several keys in name order, exception carries the first); report-only kinds under the default `fail` mode in T011, T012, T014, T018, T019, T023, T024, T026 |
+| DIAG-02 | T004 (exception), T015 (report, then throw; several keys in name order, exception carries the first), T015a (invalid mode fails startup, also under lazy initialization; case-insensitive values; empty means `fail`; `report` mode sends an application-set header); report-only kinds under the default `fail` mode in T011, T012, T014, T018, T019, T023, T024, T026 |
 | DIAG-03 | T007, T010 (startup failure under lazy initialization, also with an application classifier) |
 | DIAG-08 | T018, T019, T023, T024, T026, T028 |
 | DIAG-09 | T007 (log entry content), T011, T012, T023, T024, T028 (`Violation` records); IT-2.8 (log entries, counter tags) |
