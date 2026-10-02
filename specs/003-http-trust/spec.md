@@ -111,8 +111,8 @@ values are ignored and reported, and never fail the request.
   propagates; no violation).
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
 - Invalid configuration with `spring.main.lazy-initialization=true`: conflicting `ContextPolicy` beans, invalid host patterns, invalid CIDR
-  entries, a negative `violations.log-interval`, or several `DestinationClassifier` beans with none primary while HTTP client support is active,
-  still fail startup (POL-07, DEST-04, IN-08, DIAG-03, OUT-03).
+  entries, a negative `violations.log-interval`, a `wire.max-value-length` less than 1, or several `DestinationClassifier` beans with none
+  primary while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-08, DIAG-03, WIRE-04, OUT-03).
 - More than one `DestinationClassifier` bean: OUT-03 (the `@Primary` one is used; with none primary, startup fails whenever HTTP client support
   is active, that is `spring-web` and `spring-boot-restclient` are present, even with `spring.main.lazy-initialization=true`; without client
   support no classifier is used and startup does not fail).
@@ -198,7 +198,8 @@ be reported. The operation SHALL continue. The adapter SHALL check the length fi
 checking the characters of an outbound value (WIRE-08). A value that is oversized and also invalid SHALL therefore be reported once, as
 `OVERSIZED_VALUE`. This is the only length limit; codecs (WIRE-03) stay limit-free, and values from authentication, such as JWT claims
 (IN-06), are not wire values (DESIGN D35). An outbound value is checked only when the adapter is about to write it: a header value set by
-application code is not an encoded wire value, and is not checked (OUT-04).
+application code is not an encoded wire value, and is not checked (OUT-04). IF `wire.max-value-length` is less than 1, THEN application
+startup SHALL fail, even when `spring.main.lazy-initialization` is `true`.
 
 **WIRE-05** `[M2]` IF a trusted inbound value fails to decode, THEN the key SHALL be left unbound and an `INVALID_VALUE` violation SHALL be reported.
 The request SHALL continue. The report and its log entry SHALL follow DIAG-09: they contain neither the value nor the codec's exception message.
@@ -364,9 +365,9 @@ identity in tests. Neither the verifier nor `peer()` SHALL be auto-configured.
 Properties use the prefix `boundrail.context.`.
 
 Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: conflicting `ContextPolicy`
-beans (POL-07), invalid host patterns (DEST-04), invalid CIDR entries (IN-08), a negative `violations.log-interval` (DIAG-03), and, while
-HTTP client support is active (`spring-web` and `spring-boot-restclient` are present), several `DestinationClassifier` beans with none
-primary (OUT-03).
+beans (POL-07), invalid host patterns (DEST-04), invalid CIDR entries (IN-08), a negative `violations.log-interval` (DIAG-03), a
+`wire.max-value-length` less than 1 (WIRE-04), and, while HTTP client support is active (`spring-web` and `spring-boot-restclient` are
+present), several `DestinationClassifier` beans with none primary (OUT-03).
 
 | Property | Default | Meaning |
 |---|---|---|
@@ -376,7 +377,7 @@ primary (OUT-03).
 | `inbound.trusted-cidrs` | `[]` | IPv4 or IPv6 CIDRs, or bare addresses, trusted when `inbound.trust=cidr` (IN-03, IN-08). Matched against `getRemoteAddr()`: with forwarded-header processing enabled, a proxy, or a client forging `Forwarded` or `X-Forwarded-For` headers that no proxy strips, decides that address |
 | `destinations.internal-hosts` | `[]` | Host patterns classified as internal (DEST-02, OUT-03) |
 | `destinations.external-hosts` | `[]` | Host patterns classified as external (DEST-02, OUT-03) |
-| `wire.max-value-length` | `256` | Maximum encoded wire value length in UTF-16 code units (`String.length()`), checked before decoding or character checks; not applied to JWT claims (WIRE-04, IN-06) |
+| `wire.max-value-length` | `256` | Maximum encoded wire value length in UTF-16 code units (`String.length()`), checked before decoding or character checks; not applied to JWT claims; a value less than 1 fails startup (WIRE-04, IN-06) |
 
 ### Key Entities
 

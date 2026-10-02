@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Twenty-four guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T005, two unit tests each
-  in T001, T003, T006a, T007, T011, T012, T024 and T028, and three unit tests in T010.
+- Twenty-five guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T005, two unit tests each
+  in T001, T003, T006a, T007, T012, T024 and T028, and three unit tests each in T010 and T011.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -343,7 +343,9 @@ enforces required keys, the length limit and valid field values.
       `Tenant-Id` is sent and one `OVERSIZED_VALUE` is reported for key `tenant`, boundary `INTERNAL_CALL`, with the classified destination. The
       request is sent with the other keys, in the default `fail` mode (DIAG-02). The violation and its log entry do not contain the value
       (DIAG-09);
-    - `WIRE-04 a value of exactly max-value-length is sent` (256);
+    - `WIRE-04 a value of exactly max-value-length is sent` (256). This is a guard: no length check existed before this task, so every
+      value is sent. Show it red with the length check temporarily written as `>=` instead of `>` in `ContextClientInterceptor`, then revert
+      ([plan.md](plan.md#guard-tests));
     - `WIRE-04 max-value-length is configurable and defaults to 256`: a limit of 10;
     - `WIRE-04 the length is counted in UTF-16 code units`: with a limit of 10, a tenant of six U+1F600 characters (6 code points, 12 code
       units) is not sent and gives one `OVERSIZED_VALUE`;
@@ -385,9 +387,22 @@ enforces required keys, the length limit and valid field values.
     - add a third case to T011's `OUT-04 an application-set header's context value is not encoded or checked`: a tenant `a\nb` with
       application code setting `Tenant-Id: mine`; the server receives only `mine` and no `INVALID_VALUE` is reported. This is a guard: the
       application-set check already skips the key before encoding. Show it red with the value temporarily encoded and checked (WIRE-04,
-      then WIRE-08) before the application-set check, so `INVALID_VALUE` is reported, then revert ([plan.md](plan.md#guard-tests)).
-  - Green: the field value check after the length check in `ContextClientInterceptor` ([plan.md](plan.md#outbound)).
-  - Completes: WIRE-08 (only on values the interceptor writes); WIRE-04 (order); OUT-04 (an application-set header's context value is not
+      then WIRE-08) before the application-set check, so `INVALID_VALUE` is reported, then revert ([plan.md](plan.md#guard-tests));
+    - `WIRE-04 a non-ASCII value within max-value-length in UTF-16 code units but not in UTF-8 bytes is reported as INVALID_VALUE, not
+      OVERSIZED_VALUE`: with a limit of 10, a tenant of six `é` (U+00E9; 6 UTF-16 code units, 12 UTF-8 bytes) is not sent, and exactly one
+      violation is reported, `INVALID_VALUE` for key `tenant` (WIRE-08), with no `OVERSIZED_VALUE`. A length counted in UTF-8 bytes would
+      report `OVERSIZED_VALUE`. Red against T011's code, which has no field value check and sends the value;
+    - `WIRE-04 a max-value-length below 1 fails startup` (`ApplicationContextRunner`), parametrized over four cases:
+      `boundrail.context.wire.max-value-length` set to `0` and to `-1`, each without and with lazy initialization
+      (`spring.main.lazy-initialization=true` and `LazyInitializationBeanFactoryPostProcessor` added through `withInitializer`, as in T006a).
+      `IllegalArgumentException` is the root cause. Red against T011's code, which accepts any `int`, in all four cases.
+  - Green:
+    - the field value check after the length check in `ContextClientInterceptor` ([plan.md](plan.md#outbound));
+    - in `spring/BoundrailContextProperties.java`, the `Wire` compact constructor rejects a `maxValueLength` less than 1 with
+      `IllegalArgumentException`. The `@Lazy(false)` reporter already binds the properties at startup, so no bean changes
+      ([plan.md](plan.md#spring-wiring)).
+  - Completes: WIRE-08 (only on values the interceptor writes); WIRE-04 (order; length in UTF-16 code units, not UTF-8 bytes; a
+    `max-value-length` less than 1 fails startup, also under lazy initialization); OUT-04 (an application-set header's context value is not
     field-value-checked); DIAG-09 (outbound).
   - Verify: Unit `ContextClientInterceptorTest`.
 - [ ] T013 [US1] Topology for TrustBoundaryIT; enable IT-2.2 and IT-2.3 (guard tests).
@@ -758,8 +773,8 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T005 unit guards, the two unit guards each in T001, T003, T006a, T007, T011, T012,
-  T024 and T028, and the three unit guards in T010)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T005 unit guards, the two unit guards each in T001, T003, T006a, T007, T012,
+  T024 and T028, and the three unit guards each in T010 and T011)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

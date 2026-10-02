@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and twenty-one
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and twenty-two
 unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; twenty-four guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; twenty-five guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -152,11 +152,15 @@ unit tests already pass before their task; each red is shown against a temporary
   A negative `log-interval` is rejected by the `Violations` compact constructor when `BoundrailContextProperties` is bound (DIAG-03). The
   default classifier bean binds it, but an application `DestinationClassifier` bean replaces that bean (`@ConditionalOnMissingBean`), and then
   nothing eager binds the properties. So the reporter, which reads `log-interval`, is `@Lazy(false)` (T010). Each test uses the T006a setup.
+
+  A `wire.max-value-length` less than 1 is rejected the same way, by the `Wire` compact constructor (`IllegalArgumentException`) when
+  `BoundrailContextProperties` is bound (WIRE-04, user decision). The `@Lazy(false)` reporter already binds the properties at startup, so
+  nothing else is needed under lazy initialization (T012).
 - **Configuration.** One `@ConfigurationProperties("boundrail.context")` record, `BoundrailContextProperties`, with nested records:
   - `Violations`: `mode`, an enum `FAIL`/`REPORT`, and `logInterval`, a `Duration`;
   - `Inbound`: `trust`, an enum `NONE`/`CIDR`, and `trustedCidrs`;
   - `Destinations`: `internalHosts` and `externalHosts`;
-  - `Wire`: `maxValueLength`, default 256.
+  - `Wire`: `maxValueLength`, default 256, at least 1 (T012).
 
   Each nested record is added by the first task that reads it. Defaults are those of the spec's Configuration table, and that task asserts them.
 - **Violation reporting (DIAG-03, DIAG-09).** Package-private `ViolationReporter` in `-spring`:
@@ -354,6 +358,7 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
 | T011 | `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call` | T010's application-set check already runs on every boundary | In `ContextClientInterceptor`, the application-set check applied only on `INTERNAL_CALL`, so the context value overwrites the header |
 | T011 | `OUT-04 an application-set header's context value is not encoded or checked` (the throwing `encode` and oversized cases) | T010 skips an application-set header before calling `encode`, and has no length check | In `ContextClientInterceptor`, the value encoded and length-checked before the application-set check |
+| T011 | `WIRE-04 a value of exactly max-value-length is sent` | No length check existed before T011, so every value is sent | In `ContextClientInterceptor`, the length check written as `>=` instead of `>` |
 | T012 | `WIRE-04 an outbound value both oversized and not a valid field value is reported once, as OVERSIZED_VALUE` | T011's length check already drops the value before any character check exists | In `ContextClientInterceptor`, the WIRE-08 check run before the WIRE-04 check |
 | T012 | `OUT-04 an application-set header's context value is not encoded or checked` (the invalid field value case) | The application-set check already skips the key before it is encoded | In `ContextClientInterceptor`, the value encoded and checked (WIRE-04, then WIRE-08) before the application-set check |
 | T024 | `WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec` | T023's length check already drops the value before decoding | In `ContextInboundFilter`, `decode` called before the length check |
