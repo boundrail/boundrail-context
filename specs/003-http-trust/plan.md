@@ -25,11 +25,12 @@ Context crosses HTTP only where the policy and the trust rules allow.
   - registers `ContextInboundFilter` before Spring Security: trust verdict (default, CIDR or bean), decode, bind, repeated and untrusted headers
     (IN-01 – IN-03, IN-08);
   - registers `ContextAuthenticationFilter` after it: contributors, `ContextContributions.invalid`, `JwtClaimContributor` (IN-04 – IN-07).
-- `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
+- `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01), with `-spring` as an `api` dependency (D37).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and thirty-two
-unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6), T020a's added
+IT-2.2 and IT-2.3 assertions, thirty-two unit tests and one BuildSmokeIT test already pass before their task; each red is shown against a
+temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
 
@@ -42,8 +43,9 @@ unit tests already pass before their task; each red is shown against a temporary
   `jakarta.servlet-api`, `spring-boot-restclient` (Boot 4 home of `RestClientCustomizer`, `RestTemplateBuilder` and `RestTemplateCustomizer`),
   `spring-security-web` (present), `spring-security-oauth2-resource-server` and `spring-security-oauth2-jose` (`JwtAuthenticationToken`, `Jwt`),
   `micrometer-core` (present).
-- `-test`: `compileOnly` on `-spring`, `spring-web` and `jakarta.servlet-api`.
-- `integration-tests`: `spring-boot-starter-restclient`, `micrometer-core`, `spring-boot-test` (`OutputCaptureExtension`).
+- `-test`: `api` on `-spring` (T020a; `compileOnly` in T020); `compileOnly` on `spring-web` and `jakarta.servlet-api` (TEST-01, D37).
+- `integration-tests`: `spring-boot-starter-restclient`, `micrometer-core`, `spring-boot-test` (`OutputCaptureExtension`); the generated POM and
+  module metadata of `-test` (T020a).
 
 **Storage**: N/A
 
@@ -72,7 +74,7 @@ unit tests already pass before their task; each red is shown against a temporary
 - No DNS lookup when parsing CIDR entries (IN-08).
 - No work from M3 – M6: no deadline header in or out, no authority, no initiator derivation, no executors, no MDC.
 
-**Scale/Scope**: 12 contract types plus `ContextPolicy.keys()`, 33 requirements, 9 scenarios; 29 tasks (T001 – T028 and T006a) and a close task
+**Scale/Scope**: 12 contract types plus `ContextPolicy.keys()`, 33 requirements, 9 scenarios; 31 tasks (T001 – T028, T006a, T015a and T020a) and a close task
 
 ## Constitution Check
 
@@ -86,7 +88,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-five guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; thirty-eight guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -98,8 +100,9 @@ unit tests already pass before their task; each red is shown against a temporary
   dependency is added in the green step of the first task whose failing test cannot compile or run without it:
   - `-spring`: T006 (`spring-boot-starter-test`), T007 (`micrometer-core` for tests), T008 (`spring-web`, `spring-boot-restclient`), T016
     (`jakarta.servlet-api`, `spring-boot-security` for tests), T025 (`spring-security-web` for tests), T027 (OAuth2 resource server and JOSE);
-  - `-test`: T020;
-  - `integration-tests`: T013 (`spring-boot-starter-restclient`), T014 (`micrometer-core`), T024 (`spring-boot-test`).
+  - `-test`: T020, T020a (`-spring` as `api`; `maven-publish`);
+  - `integration-tests`: T013 (`spring-boot-starter-restclient`), T014 (`micrometer-core`), T020a (POM and module metadata of `-test`),
+    T024 (`spring-boot-test`).
 
   Version catalog entries are added in the same tasks, with versions managed by the Boot BOM. `spring-boot-restclient` is not in the local
   Gradle cache, so the first build of T008 needs network access; T008 checks the module name against the Boot 4.1.1 BOM.
@@ -107,6 +110,17 @@ unit tests already pass before their task; each red is shown against a temporary
   `ImportCandidates.load(AutoConfiguration.class, classLoader)` and expects `BoundrailContextAutoConfiguration`. It fails until
   `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` lists the class, so the resource file is not a TDD
   exception.
+- **The `-test` dependency scopes have a failing check (TEST-01, D37).** Nothing in the build generates a POM or module metadata today, and no
+  project applies a publishing plugin. T020a applies Gradle's built-in `maven-publish` to `boundrail-context-test` only, with one publication
+  `maven` from the `java` component, so that `generatePomFileForMavenPublication` and `generateMetadataFileForMavenPublication` write
+  `build/publications/maven/pom-default.xml` and `module.json`. Nothing is published, and this does not settle Q5 (Maven Central tooling, M7).
+  The integration test tasks depend on both generate tasks, declare the files as inputs, and pass their paths as the system properties
+  `boundrail.it.test-module.pom` and `boundrail.it.test-module.metadata`, as they already pass `boundrail.it.task`. BuildSmokeIT's TEST-01 test
+  is red until `-spring` is `api`, so this harness and the scope change are not TDD exceptions.
+  - No `group` or `version` is set (P7 is open until M7), so the POM's `groupId` is empty and its version `unspecified`; the test asserts
+    artifact IDs and scopes only. If a generate task refuses the empty group, T020a stops and reports it rather than choosing a group.
+  - In the POM, an `api` dependency has scope `compile`; in `module.json`, it is listed under the `apiElements` variant. `compileOnly`
+    dependencies appear in neither.
 
 ### Core
 
@@ -303,7 +317,9 @@ unit tests already pass before their task; each red is shown against a temporary
   - `verify` returns `TRUSTED_INTERNAL` exactly when `getHeaders("Boundrail-Test-Peer")` has one value and it equals the secret
     (`MessageDigest.isEqual`);
   - `peer()` returns `builder -> builder.defaultHeader("Boundrail-Test-Peer", SECRET)`;
-  - nothing in the module is in an imports file.
+  - nothing in the module is in an imports file, and its JAR ships no `AutoConfiguration.imports` and no `spring.factories` (T020a);
+  - `-spring` is an `api` dependency of the module, because `InboundTrustVerifier` is in its public API; `spring-web` and
+    `jakarta.servlet-api` stay `compileOnly` (D37, T020a).
 
 ### Integration tests
 
@@ -317,6 +333,11 @@ unit tests already pass before their task; each red is shown against a temporary
   - T020: the `TestInboundTrustVerifier` bean on every service, `peer()` on edge's internal clients only, and `ctx.tenant` and `ctx.priority`
     (the values of `find()`, absent if unbound) recorded by every `/ping`.
   - T027: edge's `JwtClaimContributor` bean and `TestJwts.withoutTenant()`.
+- **The `-test` JAR's contents are checked in BuildSmokeIT (T020a).** A check by code source sees the module's resources only in the packaged
+  JAR. In `:boundrail-context-test:test`, `TestInboundTrustVerifier`'s code source is `build/classes/java/main`, while resources are in
+  `build/resources/main`, so a stray imports file would never be seen there. BuildSmokeIT runs against packaged JARs (BLD-06), finds the JAR
+  through the code source, as `BLD-06 library classes load from packaged JARs` does for core, and opens it with `JarFile`. T020's unit test
+  stays as it is.
 
   Counters and observations are cumulative across the shared topology, so each scenario asserts a delta around its own request.
 - **IT-2.8 and DIAG-09.** The scenario uses Spring Boot's `OutputCaptureExtension`. It asserts that the violation log entries for `priority` and
@@ -387,6 +408,9 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T010 | `OUT-03 the last declaration applied to a builder wins` | `RestClient.Builder.defaultRequest` composes consumers with `andThen`, so the later `attribute` call overwrites the earlier | In `BoundrailClients.declare`, the attribute set with `attributes.putIfAbsent(DESTINATION_ATTRIBUTE, destination)`, so the first wins |
 | T013 | IT-2.2 External call carries no context | After T010, the interceptor writes nothing to `EXTERNAL` | In `ContextClientInterceptor`, the classified destination replaced by `Destination(INTERNAL, empty)` |
 | T013 | IT-2.3 Unknown means external | After T010, the interceptor writes nothing to `UNKNOWN` | The same change |
+| T020a | IT-2.2 External call carries no context (the added assertion that partner received no `boundrail-test-peer`) | T020 applies `peer()` to edge's internal clients only | In `EdgeApp`, `peer()` applied to the `externalPartner` client |
+| T020a | IT-2.3 Unknown means external (the added assertion that partner received no `boundrail-test-peer`) | The same | In `EdgeApp`, `peer()` applied to the `undeclaredPartner` client |
+| T020a | `TEST-01 the boundrail-context-test JAR ships no AutoConfiguration.imports and no spring.factories` (BuildSmokeIT) | T020 added no such file to the module | A temporary `boundrail-context-test/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` listing `io.github.boundrail.context.spring.BoundrailContextAutoConfiguration`, a class in another package, which T020's package-name scan does not catch |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
 | T011 | `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call` | T010's application-set check already runs on every boundary | In `ContextClientInterceptor`, the application-set check applied only on `INTERNAL_CALL`, so the context value overwrites the header |
 | T011 | `OUT-04 an application-set header's context value is not encoded or checked` (the throwing `encode` and oversized cases) | T010 skips an application-set header before calling `encode`, and has no length check | In `ContextClientInterceptor`, the value encoded and length-checked before the application-set check |
@@ -453,10 +477,11 @@ boundrail-context-spring/src/test/java/io/github/boundrail/context/spring/
 ├── ContextInboundFilterTest.java  InboundTrustVerifierTest.java  CidrInboundTrustVerifierTest.java
 ├── ContextAuthenticationFilterTest.java  JwtClaimContributorTest.java
 ├── support/RecordingServer.java (JDK HttpServer recording requests)  support/RecordingLog.java (Commons Logging Log recording entries)
-boundrail-context-test/build.gradle.kts                                                              # T020
+boundrail-context-test/build.gradle.kts                                                              # T020, T020a
 boundrail-context-test/src/main/java/io/github/boundrail/context/test/TestInboundTrustVerifier.java   # T020
 boundrail-context-test/src/test/java/io/github/boundrail/context/test/TestInboundTrustVerifierTest.java
-integration-tests/build.gradle.kts                                                                   # T013, T014, T024
+integration-tests/build.gradle.kts                                                                   # T013, T014, T020a, T024
+integration-tests/src/test/java/io/github/boundrail/context/it/BuildSmokeIT.java                     # T020a (TEST-01)
 integration-tests/src/test/java/io/github/boundrail/context/it/TrustBoundaryIT.java                  # IT-2.1 – IT-2.9 enabled
 integration-tests/src/test/java/io/github/boundrail/context/it/topology/
 ├── AppKeys.java  TopologyPolicy.java (new)
@@ -503,9 +528,9 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | DIAG-03 | T007, T010 (startup failure under lazy initialization, also with an application classifier) |
 | DIAG-08 | T018, T019, T023, T024, T026, T028 |
 | DIAG-09 | T007 (log entry content), T011, T012, T023, T024, T028 (`Violation` records); IT-2.8 (log entries, counter tags) |
-| TEST-01 | T020 |
+| TEST-01 | T020, T020a (dependency scopes in the POM and module metadata; no auto-configuration file in the JAR) |
 | IT-2.1 | T027 |
-| IT-2.2, IT-2.3 | T013 (guard) |
+| IT-2.2, IT-2.3 | T013 (guard), T020a (no test peer header reaches partner, guard) |
 | IT-2.4 | T014 |
 | IT-2.5 | T027 |
 | IT-2.6 | T027 (guard) |

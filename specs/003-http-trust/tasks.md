@@ -13,9 +13,9 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Thirty-five guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005, T015, T017 and T019, two unit tests
-  each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024 and T028, three unit tests each in T010, T011 and
-  T015a, and four unit tests in T012.
+- Thirty-eight guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+  T002, T005, T015, T017, T019 and T020a, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
+  and T028, three unit tests each in T010, T011 and T015a, and four unit tests in T012.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -656,6 +656,47 @@ authentication through contributors.
       recorded by every `/ping`.
   - Completes: TEST-01; CORE-13 (test verifier); IT-2.7 (IN-02, IN-03 end to end).
   - Verify: Unit `TestInboundTrustVerifierTest` in `:boundrail-context-test`; IT.
+- [ ] T020a [US2] Test module dependency scopes and the T020 review follow-ups.
+  - Red, in `integration-tests/src/test/java/io/github/boundrail/context/it/BuildSmokeIT.java`:
+    - `TEST-01 boundrail-context-test publishes boundrail-context-spring as an api dependency and no spring-web or servlet API`. Like the
+      existing BuildSmokeIT tests, it reads a build output of a library project, and like `BLD-06 runs on the JDK its task declares`, it gets
+      the files' locations from system properties set by the integration test task, asserting first that each is set:
+      - the generated POM (`boundrail.it.test-module.pom`), parsed with the JDK's `DocumentBuilderFactory`: a `<dependency>` with artifactId
+        `boundrail-context-spring` and scope `compile`; no dependency with artifactId `spring-web` or `jakarta.servlet-api`;
+      - the generated Gradle module metadata (`boundrail.it.test-module.metadata`, `module.json`), parsed with Jackson's `JsonMapper`, already on
+        the integration-tests classpath through `spring-boot-starter-webmvc`: the `apiElements` variant lists module
+        `boundrail-context-spring`; no variant lists `spring-web` or `jakarta.servlet-api`.
+
+      Red today, because `-spring` is `compileOnly`, so neither file names it. The absence of `spring-web` and the servlet API is asserted in
+      the same test as the red presence assertion, so it needs no guard of its own.
+    - `TEST-01 the boundrail-context-test JAR ships no AutoConfiguration.imports and no spring.factories`: the JAR is located by the code source
+      of `TestInboundTrustVerifier`, as `BLD-06 library classes load from packaged JARs` locates core's, and opened with `JarFile`; it has no
+      `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` and no `META-INF/spring.factories` entry. This
+      tightens T020's `TEST-01 the verifier is not auto-configured`, whose scan matches only files naming the verifier's package. It sits in
+      BuildSmokeIT because only there is the code source the module's JAR: in `:boundrail-context-test:test` it is `build/classes/java/main`,
+      while resources are in `build/resources/main`, so a code-source check there could never be red ([plan.md](plan.md#integration-tests)).
+      This is a guard: show it red with a temporary
+      `boundrail-context-test/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` listing
+      `io.github.boundrail.context.spring.BoundrailContextAutoConfiguration`, a class in another package, which T020's test does not catch,
+      then revert ([plan.md](plan.md#guard-tests)).
+  - Red, in `TrustBoundaryIT` (T020 review follow-up):
+    - IT-2.2 and IT-2.3 also assert that partner received no `boundrail-test-peer` header (`doesNotContainKey`, as observations use lower-case
+      names). These are guards: T020 applies `peer()` to edge's internal clients only. Show IT-2.2 red with `peer()` temporarily applied to
+      edge's `externalPartner` client, and IT-2.3 red with it temporarily applied to `undeclaredPartner`, in `topology/EdgeApp.java`, then
+      revert ([plan.md](plan.md#guard-tests)).
+  - Test harness (build code, part of this task, proved by the first red test):
+    - `boundrail-context-test/build.gradle.kts`: the `maven-publish` plugin and one publication, `maven`, `from(components["java"])`. Nothing
+      is published; the POM and `module.json` are generated only ([plan.md](plan.md#build));
+    - `integration-tests/build.gradle.kts`: every `Test` task depends on `:boundrail-context-test:generatePomFileForMavenPublication` and
+      `:boundrail-context-test:generateMetadataFileForMavenPublication`, declares their output files as inputs, and passes their paths
+      (`boundrail-context-test/build/publications/maven/pom-default.xml` and `module.json`) as the two system properties.
+  - Green: in `boundrail-context-test/build.gradle.kts`, `compileOnly(project(":boundrail-context-spring"))` becomes
+    `api(project(":boundrail-context-spring"))`, and the now redundant `testImplementation(project(":boundrail-context-spring"))` is removed.
+    `spring-web` and `jakarta.servlet-api` stay `compileOnly`.
+  - Completes: TEST-01 (dependency scopes; no auto-configuration file in the `-test` JAR); IT-2.2 and IT-2.3 (no test peer header reaches
+    partner).
+  - Verify: IT (`./gradlew --continue :integration-tests:integrationTestJdk21 --tests '*BuildSmokeIT' --tests '*TrustBoundaryIT'
+    :integration-tests:integrationTestJdk25 --tests '*BuildSmokeIT' --tests '*TrustBoundaryIT'`); `./gradlew check`.
 - [ ] T021 [US2] CIDR verifier.
   - Red, in `springtest/CidrInboundTrustVerifierTest.java`:
     - `IN-03 with inbound.trust=cidr a remote address inside a trusted CIDR is TRUSTED_INTERNAL`: IPv4 `10.0.0.0/8` with `10.1.2.3`; IPv6
@@ -826,6 +867,7 @@ authentication through contributors.
     (`./gradlew :boundrail-context-core:dependencies --configuration runtimeClasspath`).
   - `-spring` declares Security, Micrometer, servlet, web and restclient only as `compileOnly`
     (`./gradlew :boundrail-context-spring:dependencies --configuration runtimeClasspath`).
+  - `-test` declares `-spring` as `api`, and `spring-web` and `jakarta.servlet-api` only as `compileOnly` (TEST-01; BuildSmokeIT, T020a).
   - By inspection: no required-key check runs at an in-process boundary (POL-08); no log statement in `-spring` passes a value or an exception
     message (DIAG-09); `Metrics.globalRegistry` is not referenced (DIAG-03); no adapter catches anything wider than `IllegalArgumentException`
     around a codec call (WIRE-05).
@@ -842,7 +884,7 @@ authentication through contributors.
   - T014 needs T005, T007 and T013. T015 needs T004, T005, T007 and T013. T015a needs T015 and the spec.md update.
 - US2:
   - T016 needs T005 and T006. T017 needs T016. T018 needs T007, T017 and the spec.md update. T019 needs T007, T016 and the spec.md IN-02 update.
-  - T020 needs T013 and T019.
+  - T020 needs T013 and T019. T020a needs T020.
   - T021 needs T016. T022 needs T021.
   - T023 needs T007 and T016. T024 needs T020, T023 and the spec.md IN-02 update.
   - T025 needs T016. T026 needs T007 and T025.
@@ -858,8 +900,9 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005, T015, T017 and T019 unit guards, the two unit guards each in T001, T003, T006a, T007,
-  T018, T024 and T028, the three unit guards each in T010, T011 and T015a, and the four unit guards in T012)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019 and T020a guards
+  (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024 and T028, the three unit guards each in T010, T011
+  and T015a, and the four unit guards in T012)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

@@ -392,7 +392,12 @@ constructor. It SHALL return `TRUSTED_INTERNAL` exactly when the request carries
 generated randomly once per JVM and shared by every instance; a request that carries it more than once is `UNTRUSTED`. Its static method
 `peer()` SHALL return a `Consumer<RestClient.Builder>` that adds that header, with that secret, to every request of the client it configures.
 It is applied per client, so a test applies it to internal clients only and the secret never reaches an external stub. This simulates mesh
-identity in tests. Neither the verifier nor `peer()` SHALL be auto-configured.
+identity in tests. Neither the verifier nor `peer()` SHALL be auto-configured. Because `InboundTrustVerifier` is part of its public API,
+`boundrail-context-test` SHALL declare `boundrail-context-spring` as an `api` dependency, so that consumers receive it transitively. It SHALL
+declare `spring-web` and `jakarta.servlet-api` as `compileOnly`: only `peer()` uses `spring-web`, and an application that calls it already has
+it; only a servlet container calls `verify`, and any servlet application provides the servlet API (DESIGN D37). BuildSmokeIT checks the
+generated POM and Gradle module metadata of `boundrail-context-test`. In them, `boundrail-context-spring` SHALL appear as a compile/api
+dependency, and `spring-web` and `jakarta.servlet-api` SHALL NOT appear.
 
 ### Configuration
 
