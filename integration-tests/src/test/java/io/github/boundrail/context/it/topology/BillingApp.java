@@ -21,7 +21,7 @@ public class BillingApp {
 
     @GetMapping("/ping")
     String ping(@RequestHeader HttpHeaders headers) {
-        observed.record("billing", ObservedContext.headers(headers));
+        observed.record("billing", ObservedContext.ping(headers));
         return "billing";
     }
 }

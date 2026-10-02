@@ -1,6 +1,7 @@
 package io.github.boundrail.context.it.topology;
 
 import io.github.boundrail.context.Violation;
+import io.github.boundrail.context.test.TestInboundTrustVerifier;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -122,6 +123,8 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                         context.getBeanFactory().registerSingleton("topologyPolicy", TopologyPolicy.policy());
                         // Each service counts its own violations (DIAG-03).
                         context.getBeanFactory().registerSingleton("meterRegistry", new SimpleMeterRegistry());
+                        // Every service trusts callers whose client applies TestInboundTrustVerifier.peer() (TEST-01).
+                        context.getBeanFactory().registerSingleton("inboundTrustVerifier", new TestInboundTrustVerifier());
                         if (service == Service.EDGE) {
                             // Edge resolves the other services' URIs per request: they start after it, on random ports.
                             context.getBeanFactory().registerSingleton("topology", this);

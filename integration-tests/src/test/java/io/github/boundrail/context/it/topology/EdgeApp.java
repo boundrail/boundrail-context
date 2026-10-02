@@ -6,6 +6,7 @@ import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.it.topology.Topology.Service;
 import io.github.boundrail.context.spring.BoundrailClients;
+import io.github.boundrail.context.test.TestInboundTrustVerifier;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -36,11 +37,14 @@ public class EdgeApp {
     private final RestClient externalPartner;
     private final RestClient undeclaredPartner;
 
-    /** Every client is built from edge's auto-configured {@code RestClient.Builder}, so it carries the library's interceptor. */
+    /**
+     * Every client is built from edge's auto-configured {@code RestClient.Builder}, so it carries the library's interceptor. Only internal
+     * clients apply {@code TestInboundTrustVerifier.peer()}, so partner never receives the test peer header.
+     */
     public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients) {
         this.observed = observed;
         this.topology = topology;
-        this.internalOrders = clients.clone().apply(BoundrailClients.internal("orders")).build();
+        this.internalOrders = clients.clone().apply(BoundrailClients.internal("orders")).apply(TestInboundTrustVerifier.peer()).build();
         this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
         this.undeclaredPartner = clients.clone().build();
     }
@@ -53,7 +57,7 @@ public class EdgeApp {
 
     @GetMapping("/ping")
     String ping(@RequestHeader HttpHeaders headers) {
-        observed.record("edge", ObservedContext.headers(headers));
+        observed.record("edge", ObservedContext.ping(headers));
         return "edge";
     }
 
@@ -78,6 +82,15 @@ public class EdgeApp {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer partner-key")
                 .retrieve().toBodilessEntity();
         return "edge";
+    }
+
+    /** Binds {@code tenant=acme}, then calls orders through an internal client. */
+    @GetMapping("/call-orders")
+    String callOrders(@RequestParam("marker") String marker) {
+        return Context.with(AppKeys.TENANT, "acme").call(() -> {
+            ping(internalOrders, Service.ORDERS, marker);
+            return "edge";
+        });
     }
 
     /**

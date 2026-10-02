@@ -635,7 +635,7 @@ authentication through contributors.
   - Completes: IN-02 (untrusted, including an empty header; a single comma-containing line is one value); DIAG-08.
   - Blocked until spec.md's IN-02 text on a single comma-containing header line is committed ([plan.md](plan.md#spec-gaps)).
   - Verify: Unit `ContextInboundFilterTest`.
-- [ ] T020 [US2] Test trust verifier; enable IT-2.7.
+- [x] T020 [US2] Test trust verifier; enable IT-2.7.
   - Red:
     - enable IT-2.7: edge binds `tenant=acme` and calls orders through `internal("orders")` with `peer()` applied. Orders records
       `ctx.tenant=acme`;

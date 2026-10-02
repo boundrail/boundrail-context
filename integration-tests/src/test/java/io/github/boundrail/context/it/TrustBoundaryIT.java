@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.it.topology.EdgeApp;
+import io.github.boundrail.context.it.topology.ObservedContext;
 import io.github.boundrail.context.it.topology.Topology;
 import io.github.boundrail.context.it.topology.Topology.Service;
 import java.net.URI;
@@ -105,11 +106,18 @@ class TrustBoundaryIT {
     }
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.7 Trusted caller's header is accepted")
-    void it27TrustedCallersHeaderIsAccepted() {
+    void it27TrustedCallersHeaderIsAccepted(Topology.Running topology) throws Exception {
         // IT-2.7: When edge (a trusted caller) sends `Tenant-Id: acme` to orders, then orders binds `tenant=acme`.
         // *(IN-02, IN-03, TEST-01)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = callEdge(topology, "/call-orders", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "orders", marker))
+                .containsEntry("tenant-id", "acme")
+                .containsEntry(ObservedContext.TENANT, "acme");
     }
 
     @Test
