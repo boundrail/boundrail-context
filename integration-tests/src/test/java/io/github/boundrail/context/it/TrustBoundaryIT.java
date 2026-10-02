@@ -2,6 +2,7 @@ package io.github.boundrail.context.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.Topology;
 import io.github.boundrail.context.it.topology.Topology.Service;
@@ -68,12 +69,22 @@ class TrustBoundaryIT {
     }
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.4 Application-set forbidden headers are stripped")
-    void it24ApplicationSetForbiddenHeadersAreStripped() {
+    void it24ApplicationSetForbiddenHeadersAreStripped(Topology.Running topology) throws Exception {
         // IT-2.4: When edge application code sets `Tenant-Id: acme` and `Authorization: Bearer partner-key` on a call declared external,
         // then partner receives `Authorization: Bearer partner-key` and no `Tenant-Id`, and one `FORBIDDEN_HEADER` violation is
         // reported. *(WIRE-07)*
+        String marker = UUID.randomUUID().toString();
+        double before = topology.violations(Service.EDGE, Violation.Kind.FORBIDDEN_HEADER);
+
+        HttpResponse<String> response = callEdge(topology, "/call-partner/forbidden-headers", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "partner", marker))
+                .containsEntry("authorization", "Bearer partner-key")
+                .doesNotContainKey("tenant-id");
+        // The topology is shared, so the count is a delta around this request.
+        assertThat(topology.violations(Service.EDGE, Violation.Kind.FORBIDDEN_HEADER)).isEqualTo(before + 1);
     }
 
     @Test

@@ -5,6 +5,7 @@ import static io.github.boundrail.context.Boundary.DETACHED;
 import static io.github.boundrail.context.Boundary.EXTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.MESSAGE;
+import static io.github.boundrail.context.Violation.Kind.FORBIDDEN_HEADER;
 import static io.github.boundrail.context.Violation.Kind.INVALID_VALUE;
 import static io.github.boundrail.context.Violation.Kind.OVERSIZED_VALUE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -494,6 +495,111 @@ class ContextClientInterceptorTest {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(IllegalArgumentException.class);
         });
+    }
+
+    @Test
+    @DisplayName("WIRE-07 an application-set header named after a key that does not propagate to EXTERNAL_CALL is removed on an external call")
+    void anApplicationSetHeaderNamedAfterAKeyThatDoesNotPropagateToExternalCallIsRemovedOnAnExternalCall() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.external(), Context.with(CHANNEL, "web"), headers -> {
+            headers.set("Tenant-Id", "acme");
+            headers.set("Boundrail-Initiator", "user:alice");
+            headers.set("Boundrail-Deadline-Ms", "1700000000000");
+            headers.set("Channel", "mine");
+        });
+
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(header(exchange.request(), "Boundrail-Initiator")).isEmpty();
+        assertThat(header(exchange.request(), "Boundrail-Deadline-Ms")).isEmpty();
+        assertThat(header(exchange.request(), "Channel")).as("its key propagates to EXTERNAL_CALL").containsExactly("mine");
+    }
+
+    @Test
+    @DisplayName("WIRE-07 one FORBIDDEN_HEADER violation is reported per removed header")
+    void oneForbiddenHeaderViolationIsReportedPerRemovedHeader() {
+        // The violation mode is fail by default (DIAG-02): FORBIDDEN_HEADER is report-only, so the call still reaches the server.
+        Exchange exchange = exchange(POLICY, BoundrailClients.external(), Context.with(CHANNEL, "web"), headers -> {
+            headers.set("Tenant-Id", "acme");
+            headers.set("Boundrail-Initiator", "user:alice");
+        });
+
+        Optional<Destination> external = Optional.of(new Destination(Destination.Kind.EXTERNAL, Optional.empty()));
+        assertThat(exchange.violations()).containsExactlyInAnyOrder(
+                new Violation(FORBIDDEN_HEADER, "tenant", EXTERNAL_CALL, external, Thread.currentThread().getName(),
+                        Optional.empty(), Optional.empty()),
+                new Violation(FORBIDDEN_HEADER, "boundrail.initiator", EXTERNAL_CALL, external, Thread.currentThread().getName(),
+                        Optional.empty(), Optional.empty()));
+        assertThat(header(exchange.request(), "Channel")).as("the call continues").containsExactly("web");
+    }
+
+    @Test
+    @DisplayName("WIRE-07 Authorization is never removed")
+    void authorizationIsNeverRemoved() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.external(), Context.with(TENANT, "acme"), headers -> {
+            headers.set("Authorization", "Bearer partner-key");
+            headers.set("Tenant-Id", "acme");
+        });
+
+        assertThat(header(exchange.request(), "Authorization")).containsExactly("Bearer partner-key");
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DEST-03 an UNKNOWN destination is stripped like EXTERNAL")
+    void anUnknownDestinationIsStrippedLikeExternal() {
+        // No declaration and no host pattern: the default classifier answers UNKNOWN for the loopback server.
+        Exchange exchange = exchange(POLICY, UNDECLARED, Context.with(CHANNEL, "web"), headers -> {
+            headers.set("Tenant-Id", "acme");
+            headers.set("Boundrail-Initiator", "user:alice");
+        });
+
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(header(exchange.request(), "Boundrail-Initiator")).isEmpty();
+        assertThat(header(exchange.request(), "Channel")).containsExactly("web");
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key, violation -> violation.destination().orElseThrow().kind())
+                .containsExactlyInAnyOrder(
+                        tuple(FORBIDDEN_HEADER, "tenant", Destination.Kind.UNKNOWN),
+                        tuple(FORBIDDEN_HEADER, "boundrail.initiator", Destination.Kind.UNKNOWN));
+    }
+
+    @Test
+    @DisplayName("WIRE-06 forbidden headers are matched ignoring case")
+    void forbiddenHeadersAreMatchedIgnoringCase() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.external(), Context.with(CHANNEL, "web"),
+                headers -> headers.set("tenant-id", "acme"));
+
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(FORBIDDEN_HEADER, "tenant"));
+    }
+
+    @Test
+    @DisplayName("WIRE-07 a removed header name with several values is reported once")
+    void aRemovedHeaderNameWithSeveralValuesIsReportedOnce() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.external(), Context.with(CHANNEL, "web"), headers -> {
+            headers.add("Tenant-Id", "acme");
+            headers.add("Tenant-Id", "globex");
+        });
+
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(FORBIDDEN_HEADER, "tenant"));
+    }
+
+    @Test
+    @DisplayName("WIRE-07 a forbidden header name with no values is removed and not reported")
+    void aForbiddenHeaderNameWithNoValuesIsRemovedAndNotReported() {
+        // A name with no values is not sent on the wire, so an interceptor after the library's observes the headers it leaves.
+        List<String> names = new CopyOnWriteArrayList<>();
+        Consumer<RestClient.Builder> observed = BoundrailClients.external().andThen(builder -> builder.requestInterceptor(
+                (request, body, execution) -> {
+                    names.addAll(request.getHeaders().headerNames());
+                    return execution.execute(request, body);
+                }));
+
+        Exchange exchange = exchange(POLICY, observed, Context.with(CHANNEL, "web"),
+                headers -> headers.put("Tenant-Id", new ArrayList<>()));
+
+        assertThat(names).as("the interceptor ran").isNotEmpty();
+        assertThat(names).noneMatch(name -> name.equalsIgnoreCase("Tenant-Id"));
+        assertThat(exchange.violations()).isEmpty();
     }
 
     /** The request the server received and the violations reported while sending it. */

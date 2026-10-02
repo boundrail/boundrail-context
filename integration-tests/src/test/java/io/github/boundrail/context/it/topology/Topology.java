@@ -1,9 +1,14 @@
 package io.github.boundrail.context.it.topology;
 
+import io.github.boundrail.context.Violation;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -115,6 +120,8 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                         context.getBeanFactory().registerSingleton("observedContext", observed);
                         context.getBeanFactory().registerSingleton("testJwts", jwts);
                         context.getBeanFactory().registerSingleton("topologyPolicy", TopologyPolicy.policy());
+                        // Each service counts its own violations (DIAG-03).
+                        context.getBeanFactory().registerSingleton("meterRegistry", new SimpleMeterRegistry());
                         if (service == Service.EDGE) {
                             // Edge resolves the other services' URIs per request: they start after it, on random ports.
                             context.getBeanFactory().registerSingleton("topology", this);
@@ -144,6 +151,15 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
         /** How many times token-exchange's token endpoint has been called in this run. */
         public int tokenExchangeCalls() {
             return contexts.get(Service.TOKEN_EXCHANGE).getBean(TokenExchangeApp.class).calls();
+        }
+
+        /** How many violations of this kind a service has counted in this run, summed over keys and boundaries. */
+        public double violations(Service service, Violation.Kind kind) {
+            return contexts.get(service).getBean(MeterRegistry.class).find("boundrail.context.violations")
+                    .tag("kind", kind.name().toLowerCase(Locale.ROOT))
+                    .counters().stream()
+                    .mapToDouble(Counter::count)
+                    .sum();
         }
 
         @Override

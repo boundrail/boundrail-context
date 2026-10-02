@@ -423,7 +423,7 @@ enforces required keys, the length limit and valid field values.
     stays green.
   - Completes: IT-2.2; IT-2.3 (OUT-02, OUT-03, OUT-04, DEST-02, DEST-03 end to end).
   - Verify: IT.
-- [ ] T014 [US1] Forbidden headers on external calls; enable IT-2.4.
+- [x] T014 [US1] Forbidden headers on external calls; enable IT-2.4.
   - Red:
     - enable IT-2.4: edge application code sets `Tenant-Id: acme` and `Authorization: Bearer partner-key` on a call through an `external()`
       client. Partner receives the `Authorization` header and no `Tenant-Id`, edge's `FORBIDDEN_HEADER` count rises by exactly 1, and the call

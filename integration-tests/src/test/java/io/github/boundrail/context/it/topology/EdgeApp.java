@@ -68,6 +68,17 @@ public class EdgeApp {
         return callOrdersThenPartner(undeclaredPartner, marker);
     }
 
+    /** Calls partner through an {@code external()} client with {@code Tenant-Id} and {@code Authorization} set by application code. */
+    @GetMapping("/call-partner/forbidden-headers")
+    String callPartnerWithForbiddenHeaders(@RequestParam("marker") String marker) {
+        externalPartner.get().uri(topology.uri(Service.PARTNER).resolve("/ping"))
+                .header(MARKER, marker)
+                .header("Tenant-Id", "acme")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer partner-key")
+                .retrieve().toBodilessEntity();
+        return "edge";
+    }
+
     private String callOrdersThenPartner(RestClient partner, String marker) {
         return Context.with(AppKeys.TENANT, "acme")
                 .with(AppKeys.PRIORITY, 5L)

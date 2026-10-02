@@ -11,6 +11,7 @@ import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.OutboundRequest;
 import io.github.boundrail.context.Violation;
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
@@ -34,7 +35,7 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
 
     /**
      * Classifies the request URI and the client's declaration, if any (OUT-02), writes the wire headers of the bound keys that propagate
-     * to the boundary (OUT-04), then executes the request once.
+     * to the boundary (OUT-04), strips forbidden headers from an external or unknown request (WIRE-07), then executes the request once.
      */
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
@@ -43,7 +44,32 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         // DEST-03: UNKNOWN is treated exactly like EXTERNAL.
         Boundary boundary = destination.kind() == Destination.Kind.INTERNAL ? Boundary.INTERNAL_CALL : Boundary.EXTERNAL_CALL;
         writeHeaders(request, policy.filter(Context.capture(), boundary), boundary, destination);
+        if (boundary == Boundary.EXTERNAL_CALL) {
+            stripForbiddenHeaders(request, destination);
+        }
         return execution.execute(request, body);
+    }
+
+    /**
+     * Removes every header named after the wire name of a policy key that does not propagate to {@code EXTERNAL_CALL}, and reports one
+     * {@code FORBIDDEN_HEADER} per removed name that had at least one value, with the key's name (WIRE-07, DIAG-01). {@code HttpHeaders}
+     * holds every value of a name under one entry, compared ignoring case (WIRE-06). {@code Authorization} is never a policy wire name.
+     */
+    private void stripForbiddenHeaders(HttpRequest request, Destination destination) {
+        for (ContextKey<?> key : policy.keys()) {
+            if (policy.propagates(key, Boundary.EXTERNAL_CALL)) {
+                continue;
+            }
+            Optional<String> wireName = policy.wireName(key);
+            if (wireName.isEmpty()) {
+                continue;
+            }
+            List<String> removed = request.getHeaders().remove(wireName.get());
+            if (removed != null && !removed.isEmpty()) {
+                reporter.report(new Violation(Violation.Kind.FORBIDDEN_HEADER, key.name(), Boundary.EXTERNAL_CALL, Optional.of(destination),
+                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            }
+        }
     }
 
     /**
