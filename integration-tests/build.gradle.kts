@@ -16,3 +16,19 @@ dependencies {
     testImplementation(libs.micrometer.core)
     testImplementation(libs.testcontainers.kafka)
 }
+
+// BuildSmokeIT checks the generated POM and module metadata of boundrail-context-test (TEST-01).
+val testModulePublication = rootProject.layout.projectDirectory.dir("boundrail-context-test/build/publications/maven")
+val testModulePom = testModulePublication.file("pom-default.xml")
+val testModuleMetadata = testModulePublication.file("module.json")
+
+tasks.withType<Test>().configureEach {
+    dependsOn(
+        ":boundrail-context-test:generatePomFileForMavenPublication",
+        ":boundrail-context-test:generateMetadataFileForMavenPublication",
+    )
+    inputs.file(testModulePom).withPropertyName("testModulePom").withPathSensitivity(PathSensitivity.NONE)
+    inputs.file(testModuleMetadata).withPropertyName("testModuleMetadata").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("boundrail.it.test-module.pom", testModulePom.asFile.absolutePath)
+    systemProperty("boundrail.it.test-module.metadata", testModuleMetadata.asFile.absolutePath)
+}

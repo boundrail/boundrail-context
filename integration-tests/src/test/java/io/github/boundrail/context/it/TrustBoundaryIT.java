@@ -51,7 +51,9 @@ class TrustBoundaryIT {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(observed(topology, "orders", marker)).containsEntry("tenant-id", "acme");
-        assertThat(observed(topology, "partner", marker)).doesNotContainKeys(CONTEXT_HEADERS);
+        assertThat(observed(topology, "partner", marker))
+                .doesNotContainKeys(CONTEXT_HEADERS)
+                .doesNotContainKey("boundrail-test-peer");
     }
 
     @Test
@@ -66,7 +68,9 @@ class TrustBoundaryIT {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(topology.uri(Service.PARTNER).getHost()).isEqualTo("partner.example.test");
         assertThat(observed(topology, "orders", marker)).containsEntry("tenant-id", "acme");
-        assertThat(observed(topology, "partner", marker)).doesNotContainKeys(CONTEXT_HEADERS);
+        assertThat(observed(topology, "partner", marker))
+                .doesNotContainKeys(CONTEXT_HEADERS)
+                .doesNotContainKey("boundrail-test-peer");
     }
 
     @Test

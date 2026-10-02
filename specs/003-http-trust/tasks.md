@@ -656,7 +656,7 @@ authentication through contributors.
       recorded by every `/ping`.
   - Completes: TEST-01; CORE-13 (test verifier); IT-2.7 (IN-02, IN-03 end to end).
   - Verify: Unit `TestInboundTrustVerifierTest` in `:boundrail-context-test`; IT.
-- [ ] T020a [US2] Test module dependency scopes and the T020 review follow-ups.
+- [x] T020a [US2] Test module dependency scopes and the T020 review follow-ups.
   - Red, in `integration-tests/src/test/java/io/github/boundrail/context/it/BuildSmokeIT.java`:
     - `TEST-01 boundrail-context-test publishes boundrail-context-spring as an api dependency and no spring-web or servlet API`. Like the
       existing BuildSmokeIT tests, it reads a build output of a library project, and like `BLD-06 runs on the JDK its task declares`, it gets
