@@ -50,7 +50,8 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
      * Writes each key's wire header, except {@code AUTHORITY} (ID-03) and {@code DEADLINE} (DL-05), and except a header application code
      * already set with at least one value, whose context value is neither encoded nor checked (OUT-04); {@code HttpHeaders} compares names
      * ignoring case (WIRE-06). An exception from {@code encode} propagates (WIRE-05). An encoding longer than {@code maxValueLength} is not
-     * written and is reported as {@code OVERSIZED_VALUE} (WIRE-04).
+     * written and is reported as {@code OVERSIZED_VALUE} (WIRE-04); otherwise an encoding that is not a valid field value is not written and
+     * is reported as {@code INVALID_VALUE} (WIRE-08).
      */
     private void writeHeaders(HttpRequest request, ContextSnapshot snapshot, Boundary boundary, Destination destination) {
         for (ContextKey<?> key : snapshot.keys()) {
@@ -67,6 +68,11 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
                         Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
                 continue;
             }
+            if (!isFieldValue(encoded)) {
+                reporter.report(new Violation(Violation.Kind.INVALID_VALUE, key.name(), boundary, Optional.of(destination),
+                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+                continue;
+            }
             request.getHeaders().set(wireName.get(), encoded);
         }
     }
@@ -77,5 +83,29 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
             return BuiltInKeys.INITIATOR.type().cast(value).value();
         }
         return policy.codec(key).orElseThrow().encode(value);
+    }
+
+    /**
+     * {@return whether the value is empty, or starts and ends with a visible US-ASCII character and contains only visible US-ASCII
+     * characters, spaces and horizontal tabs} (WIRE-08)
+     */
+    private static boolean isFieldValue(String value) {
+        if (value.isEmpty()) {
+            return true;
+        }
+        if (!isVisible(value.charAt(0)) || !isVisible(value.charAt(value.length() - 1))) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (!isVisible(c) && c != ' ' && c != '\t') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isVisible(char c) {
+        return c >= '\u0021' && c <= '\u007E';
     }
 }

@@ -45,7 +45,14 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
      * Wire values (WIRE-04).
      *
      * @param maxValueLength the maximum length of an encoded wire value, in UTF-16 code units ({@code String.length()})
+     * @throws IllegalArgumentException if {@code maxValueLength} is less than 1
      */
     public record Wire(@DefaultValue("256") int maxValueLength) {
+
+        public Wire {
+            if (maxValueLength < 1) {
+                throw new IllegalArgumentException("boundrail.context.wire.max-value-length must be at least 1: " + maxValueLength);
+            }
+        }
     }
 }

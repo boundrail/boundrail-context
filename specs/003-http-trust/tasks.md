@@ -373,7 +373,7 @@ enforces required keys, the length limit and valid field values.
     values is unset, `""` is set, an application-set header's context value is neither encoded nor length-checked); DIAG-02 (report-only
     kind).
   - Verify: Unit `ContextClientInterceptorTest`.
-- [ ] T012 [US1] Outbound field values.
+- [x] T012 [US1] Outbound field values.
   - Red, in `ContextClientInterceptorTest`:
     - `WIRE-08 a value that is not a valid field value is not written and is reported as INVALID_VALUE`, parametrized over CR, LF, CRLF, NUL,
       DEL (U+007F), `é` (U+00E9), U+0080, an emoji, a leading space and a trailing tab. Each request is sent with the other keys, and one

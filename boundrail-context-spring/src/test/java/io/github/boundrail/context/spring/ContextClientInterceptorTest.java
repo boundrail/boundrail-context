@@ -5,6 +5,7 @@ import static io.github.boundrail.context.Boundary.DETACHED;
 import static io.github.boundrail.context.Boundary.EXTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.MESSAGE;
+import static io.github.boundrail.context.Violation.Kind.INVALID_VALUE;
 import static io.github.boundrail.context.Violation.Kind.OVERSIZED_VALUE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -25,6 +26,7 @@ import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.support.RecordingServer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration;
 import org.springframework.boot.restclient.autoconfigure.RestTemplateAutoConfiguration;
@@ -346,7 +349,8 @@ class ContextClientInterceptorTest {
                 .build();
         return Stream.of(
                 Arguments.of(Named.of("a codec whose encode throws", brokenPolicy), Context.with(broken, "value"), "Broken"),
-                Arguments.of(Named.of("a 257-character tenant", POLICY), Context.with(TENANT, "9".repeat(257)), "Tenant-Id"));
+                Arguments.of(Named.of("a 257-character tenant", POLICY), Context.with(TENANT, "9".repeat(257)), "Tenant-Id"),
+                Arguments.of(Named.of("a tenant that is not a valid field value", POLICY), Context.with(TENANT, "a\nb"), "Tenant-Id"));
     }
 
     @ParameterizedTest(name = "[{index}] {0}")
@@ -357,6 +361,139 @@ class ContextClientInterceptorTest {
 
         assertThat(header(exchange.request(), wireName)).containsExactly("mine");
         assertThat(exchange.violations()).isEmpty();
+    }
+
+    static Stream<Named<String>> invalidFieldValues() {
+        return Stream.of(
+                Named.of("CR", "ac\rme"),
+                Named.of("LF", "ac\nme"),
+                Named.of("CRLF", "ac\r\nme"),
+                Named.of("NUL", "ac\u0000me"),
+                Named.of("DEL (U+007F)", "ac\u007Fme"),
+                Named.of("\u00e9 (U+00E9)", "acm\u00E9"),
+                Named.of("U+0080", "ac\u0080me"),
+                Named.of("an emoji", "ac\uD83D\uDE00me"),
+                Named.of("a leading space", " acme"),
+                Named.of("a trailing tab", "acme\t"));
+    }
+
+    @ParameterizedTest(name = "[{index}] {0}")
+    @MethodSource("invalidFieldValues")
+    @DisplayName("WIRE-08 a value that is not a valid field value is not written and is reported as INVALID_VALUE")
+    void aValueThatIsNotAValidFieldValueIsNotWrittenAndIsReportedAsInvalidValue(String tenant) {
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"), Context.with(TENANT, tenant).with(PRIORITY, 5L),
+                NO_HEADERS);
+
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(header(exchange.request(), "Priority")).as("the request is sent with the other keys").containsExactly("5");
+        assertThat(exchange.violations()).containsExactly(new Violation(INVALID_VALUE, "tenant", INTERNAL_CALL,
+                Optional.of(new Destination(Destination.Kind.INTERNAL, Optional.of("orders"))), Thread.currentThread().getName(),
+                Optional.empty(), Optional.empty()));
+    }
+
+    @Test
+    @DisplayName("WIRE-08 visible ASCII with inner spaces and tabs is written")
+    void visibleAsciiWithInnerSpacesAndTabsIsWritten() {
+        // The JDK HttpServer replaces a tab in a received header value with a space, so the written value is observed by an
+        // interceptor that runs after the library's.
+        List<String> written = new CopyOnWriteArrayList<>();
+        Consumer<RestClient.Builder> observed = BoundrailClients.internal("orders").andThen(builder -> builder.requestInterceptor(
+                (request, body, execution) -> {
+                    written.addAll(request.getHeaders().getOrEmpty("Tenant-Id"));
+                    return execution.execute(request, body);
+                }));
+
+        Exchange exchange = exchange(POLICY, observed, Context.with(TENANT, "a b\tc"), NO_HEADERS);
+
+        assertThat(written).containsExactly("a b\tc");
+        assertThat(header(exchange.request(), "Tenant-Id")).hasSize(1);
+        assertThat(exchange.violations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-08 an empty value is written")
+    void anEmptyValueIsWritten() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"), Context.with(TENANT, ""), NO_HEADERS);
+
+        assertThat(header(exchange.request(), "Tenant-Id")).containsExactly("");
+        assertThat(exchange.violations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-08 applies to Boundrail-Initiator")
+    void appliesToBoundrailInitiator() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"),
+                Context.with(BuiltInKeys.INITIATOR, Initiator.of("a\nb")).with(PRIORITY, 5L), NO_HEADERS);
+
+        assertThat(header(exchange.request(), "Boundrail-Initiator")).isEmpty();
+        assertThat(header(exchange.request(), "Priority")).containsExactly("5");
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(INVALID_VALUE, BuiltInKeys.INITIATOR.name()));
+    }
+
+    @Test
+    @DisplayName("DIAG-09 an invalid outbound value is reported without the value")
+    void anInvalidOutboundValueIsReportedWithoutTheValue(CapturedOutput output) {
+        String invalid = "secr\u00E9t-tenant";
+
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"), Context.with(TENANT, invalid), NO_HEADERS);
+
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(INVALID_VALUE, "tenant"));
+        assertThat(exchange.violations().getFirst().toString()).doesNotContain(invalid).doesNotContain("secr");
+        assertThat(output.getOut()).contains("INVALID_VALUE").doesNotContain(invalid).doesNotContain("secr");
+    }
+
+    @Test
+    @DisplayName("WIRE-04 an outbound value both oversized and not a valid field value is reported once, as OVERSIZED_VALUE")
+    void anOutboundValueBothOversizedAndNotAValidFieldValueIsReportedOnceAsOversizedValue() {
+        String oversizedAndInvalid = "\n" + "9".repeat(256);
+
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, oversizedAndInvalid).with(PRIORITY, 5L), NO_HEADERS);
+
+        assertThat(oversizedAndInvalid).hasSize(257);
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(header(exchange.request(), "Priority")).containsExactly("5");
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(OVERSIZED_VALUE, "tenant"));
+    }
+
+    @Test
+    @DisplayName("WIRE-04 a non-ASCII value within max-value-length in UTF-16 code units but not in UTF-8 bytes is reported as INVALID_VALUE, "
+            + "not OVERSIZED_VALUE")
+    void aNonAsciiValueWithinMaxValueLengthInUtf16CodeUnitsButNotInUtf8BytesIsReportedAsInvalidValueNotOversizedValue() {
+        String accents = "\u00E9".repeat(6);
+
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"), Context.with(TENANT, accents).with(PRIORITY, 5L),
+                NO_HEADERS, "boundrail.context.wire.max-value-length=10");
+
+        assertThat(accents).hasSize(6);
+        assertThat(accents.getBytes(StandardCharsets.UTF_8)).hasSize(12);
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(header(exchange.request(), "Priority")).containsExactly("5");
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(INVALID_VALUE, "tenant"));
+    }
+
+    static Stream<Arguments> maxValueLengthsBelowOne() {
+        return Stream.of(
+                Arguments.of("0", false),
+                Arguments.of("-1", false),
+                Arguments.of("0", true),
+                Arguments.of("-1", true));
+    }
+
+    @ParameterizedTest(name = "max-value-length={0}, lazy initialization: {1}")
+    @MethodSource("maxValueLengthsBelowOne")
+    @DisplayName("WIRE-04 a max-value-length below 1 fails startup")
+    void aMaxValueLengthBelowOneFailsStartup(String maxValueLength, boolean lazyInitialization) {
+        ApplicationContextRunner configured = runner.withPropertyValues("boundrail.context.wire.max-value-length=" + maxValueLength);
+        if (lazyInitialization) {
+            configured = configured.withPropertyValues("spring.main.lazy-initialization=true")
+                    .withInitializer(context -> context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()));
+        }
+        configured.run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(IllegalArgumentException.class);
+        });
     }
 
     /** The request the server received and the violations reported while sending it. */
