@@ -4,6 +4,7 @@ import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.URI;
 import java.util.ArrayList;
@@ -163,6 +164,15 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     .counters().stream()
                     .mapToDouble(Counter::count)
                     .sum();
+        }
+
+        /** The tag values of every violation counter a service has registered in this run. */
+        public List<String> violationTagValues(Service service) {
+            return contexts.get(service).getBean(MeterRegistry.class).find("boundrail.context.violations")
+                    .counters().stream()
+                    .flatMap(counter -> counter.getId().getTags().stream())
+                    .map(Tag::getValue)
+                    .toList();
         }
 
         @Override

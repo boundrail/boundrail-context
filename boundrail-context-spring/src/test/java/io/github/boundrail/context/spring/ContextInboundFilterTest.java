@@ -24,6 +24,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
@@ -528,6 +529,182 @@ class ContextInboundFilterTest {
         assertThat(oversized.observed().tenant()).isEmpty();
         assertThat(oversized.violations()).extracting(Violation::kind, Violation::key)
                 .containsExactly(tuple(Violation.Kind.OVERSIZED_VALUE, "tenant"));
+    }
+
+    @Test
+    @DisplayName("WIRE-05 a trusted value that fails to decode is not bound and is reported as INVALID_VALUE")
+    void aTrustedValueThatFailsToDecodeIsNotBoundAndIsReportedAsInvalidValue() {
+        Filtered priority = filterTrusted(POLICY, request -> {
+            request.addHeader("Priority", "abc");
+            request.addHeader("Tenant-Id", "acme");
+        });
+        Filtered initiator = filterTrusted(POLICY, request -> request.addHeader("Boundrail-Initiator", ""));
+
+        assertThat(priority.observed().priority()).isEmpty();
+        assertThat(priority.observed().tenant()).as("other keys of the same request are bound").contains("acme");
+        assertThat(priority.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "priority"));
+        assertThat(initiator.observed().initiator()).as("Initiator.of rejects an empty value").isEmpty();
+        assertThat(initiator.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "boundrail.initiator"));
+    }
+
+    @Test
+    @DisplayName("WIRE-05 the request continues after a decode failure")
+    void theRequestContinuesAfterADecodeFailure() {
+        Filtered filtered = filterTrusted(POLICY, request -> {
+            request.addHeader("Priority", "abc");
+            request.addHeader("Tenant-Id", "acme");
+        }, "boundrail.context.violations.mode=fail");
+
+        assertThat(filtered.violations()).as("the violation is reported").hasSize(1);
+        assertThat(filtered.observed().tenant()).as("the chain ran in fail mode, with the other keys bound").contains("acme");
+    }
+
+    @Test
+    @DisplayName("DIAG-09 a decode failure is reported without the value or the codec's message")
+    void aDecodeFailureIsReportedWithoutTheValueOrTheCodecsMessage(CapturedOutput output) {
+        String message = catchThrowable(() -> Codecs.longValue().decode("abc")).getMessage();
+
+        Filtered filtered = filterTrusted(POLICY, request -> request.addHeader("Priority", "abc"));
+
+        assertThat(message).as("the codec's message echoes the input").contains("abc");
+        assertThat(filtered.violations()).containsExactly(new Violation(Violation.Kind.INVALID_VALUE, "priority", INTERNAL_CALL,
+                Optional.empty(), Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+        assertThat(filtered.violations().getFirst().toString()).doesNotContain("abc").doesNotContain(message);
+        List<String> entries = output.getOut().lines().filter(line -> line.contains("Context violation")).toList();
+        assertThat(entries).singleElement().asString()
+                .contains("INVALID_VALUE").contains("key priority").contains("wire name Priority").contains("boundary INTERNAL_CALL")
+                .doesNotContain("abc").doesNotContain(message);
+        assertThat(output.getOut()).doesNotContain(message);
+    }
+
+    @Test
+    @DisplayName("DIAG-08 a decode failure has boundary INTERNAL_CALL and no destination")
+    void aDecodeFailureHasBoundaryInternalCallAndNoDestination() {
+        Filtered filtered = filterTrusted(POLICY, request -> request.addHeader("Priority", "abc"));
+
+        assertThat(filtered.violations()).singleElement().satisfies(violation -> {
+            assertThat(violation.kind()).isEqualTo(Violation.Kind.INVALID_VALUE);
+            assertThat(violation.boundary()).isEqualTo(INTERNAL_CALL);
+            assertThat(violation.destination()).isEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec")
+    void anInboundValueBothOversizedAndUndecodableIsReportedOnceAsOversizedValueWithoutCallingTheCodec() {
+        List<String> decoded = new CopyOnWriteArrayList<>();
+        ContextCodec<String> rejecting = new ContextCodec<>() {
+            @Override
+            public String encode(String value) {
+                return value;
+            }
+
+            @Override
+            public String decode(String text) {
+                decoded.add(text);
+                throw new IllegalArgumentException("rejected");
+            }
+        };
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(rejecting).wireName("Tenant-Id").propagateTo(ATTACHED, INTERNAL_CALL))
+                .build();
+
+        Filtered filtered = filterTrusted(policy, request -> request.addHeader("Tenant-Id", "q".repeat(300)));
+
+        assertThat(filtered.observed().tenant()).isEmpty();
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.OVERSIZED_VALUE, "tenant"));
+        assertThat(decoded).as("the codec is not called for an oversized value").isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-05 a subclass of IllegalArgumentException from decode is a decode failure")
+    void aSubclassOfIllegalArgumentExceptionFromDecodeIsADecodeFailure() {
+        ContextCodec<Long> throwing = new ContextCodec<>() {
+            @Override
+            public String encode(Long value) {
+                return value.toString();
+            }
+
+            @Override
+            public Long decode(String text) {
+                throw new NumberFormatException("bad number");
+            }
+        };
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("Tenant-Id").propagateTo(ATTACHED, INTERNAL_CALL))
+                .key(PRIORITY, rules -> rules.codec(throwing).wireName("Priority").propagateTo(ATTACHED, INTERNAL_CALL))
+                .build();
+
+        Filtered filtered = filterTrusted(policy, request -> {
+            request.addHeader("Priority", "5");
+            request.addHeader("Tenant-Id", "acme");
+        });
+
+        assertThat(filtered.observed().priority()).isEmpty();
+        assertThat(filtered.observed().tenant()).as("the chain ran").contains("acme");
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "priority"));
+    }
+
+    @Test
+    @DisplayName("WIRE-05 any other exception from decode propagates unchanged and no violation is reported")
+    void anyOtherExceptionFromDecodePropagatesUnchangedAndNoViolationIsReported() {
+        IllegalStateException bug = new IllegalStateException("codec bug");
+        ContextCodec<Long> throwing = new ContextCodec<>() {
+            @Override
+            public String encode(Long value) {
+                return value.toString();
+            }
+
+            @Override
+            public Long decode(String text) {
+                throw bug;
+            }
+        };
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(PRIORITY, rules -> rules.codec(throwing).wireName("Priority").propagateTo(ATTACHED, INTERNAL_CALL))
+                .build();
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        AtomicBoolean chainRan = new AtomicBoolean();
+
+        contextRunner(policy)
+                .withBean(InboundTrustVerifier.class, () -> TRUSTING)
+                .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                .run(context -> {
+                    MockHttpServletRequest request = new MockHttpServletRequest();
+                    request.addHeader("Priority", "5");
+                    HttpServlet recording = new HttpServlet() {
+                        @Override
+                        protected void service(HttpServletRequest req, HttpServletResponse resp) {
+                            chainRan.set(true);
+                        }
+                    };
+
+                    Throwable thrown = catchThrowable(() -> new MockFilterChain(recording, inboundRegistration(context).getFilter())
+                            .doFilter(request, new MockHttpServletResponse()));
+
+                    assertThat(thrown).isSameAs(bug);
+                });
+
+        assertThat(chainRan.get()).as("the chain did not run").isFalse();
+        assertThat(violations).isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-05 a single comma-containing value that the codec rejects is INVALID_VALUE")
+    void aSingleCommaContainingValueThatTheCodecRejectsIsInvalidValue() {
+        Filtered filtered = filterTrusted(POLICY, request -> {
+            request.addHeader("Priority", "1, 2");
+            request.addHeader("Tenant-Id", "acme");
+        });
+
+        assertThat(filtered.observed().priority()).isEmpty();
+        assertThat(filtered.observed().tenant()).as("the chain ran").contains("acme");
+        assertThat(filtered.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "priority"));
     }
 
     @ParameterizedTest(name = "spring.security.filter.order={0}, lazy initialization: {1}")

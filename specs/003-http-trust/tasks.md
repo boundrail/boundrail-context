@@ -818,7 +818,7 @@ authentication through contributors.
   - Green: the length check in `ContextInboundFilter` before the value reaches the codec.
   - Completes: WIRE-04 (inbound); DIAG-08; DIAG-09 (oversized inbound).
   - Verify: Unit `ContextInboundFilterTest`.
-- [ ] T024 [US2] Decode failures; enable IT-2.8.
+- [x] T024 [US2] Decode failures; enable IT-2.8.
   - Red:
     - enable IT-2.8, with `@ExtendWith(OutputCaptureExtension.class)`. A trusted caller (the test's own `RestClient`, with `peer()`) sends
       requests to orders:

@@ -7,6 +7,7 @@ import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.ObservedContext;
 import io.github.boundrail.context.it.topology.Topology;
 import io.github.boundrail.context.it.topology.Topology.Service;
+import io.github.boundrail.context.test.TestInboundTrustVerifier;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -19,6 +20,9 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.web.client.RestClient;
 
 /**
  * Trust boundary suite (IT-2): context crosses HTTP only to trusted internal destinations and is bound only from trusted callers.
@@ -125,12 +129,45 @@ class TrustBoundaryIT {
     }
 
     @Test
-    @Disabled("Pending: M2")
+    @ExtendWith(OutputCaptureExtension.class)
     @DisplayName("IT-2.8 Invalid and oversized values")
-    void it28InvalidAndOversizedValues() {
+    void it28InvalidAndOversizedValues(Topology.Running topology, CapturedOutput output) {
         // IT-2.8: When a trusted caller sends `Priority: abc`, then orders leaves `priority` unbound and one `INVALID_VALUE` violation is
         // reported. When it sends a 300-character `Tenant-Id`, then orders leaves `tenant` unbound and one `OVERSIZED_VALUE` violation is
-        // reported. Both requests succeed. *(WIRE-04, WIRE-05)*
+        // reported. Both requests succeed, and neither the violation log entries nor the tags of the `boundrail.context.violations`
+        // counter contain `abc` or the `Tenant-Id` value. *(WIRE-04, WIRE-05, DIAG-09)*
+        String oversized = "acme-" + "q".repeat(295);
+        String invalidMarker = UUID.randomUUID().toString();
+        String oversizedMarker = UUID.randomUUID().toString();
+        // A trusted caller: the test's own client, with the test peer header (TEST-01).
+        RestClient orders = RestClient.builder().baseUrl(topology.uri(Service.ORDERS).toString())
+                .apply(TestInboundTrustVerifier.peer()).build();
+        // The topology is shared, so the counts are deltas around these requests.
+        double invalidBefore = topology.violations(Service.ORDERS, Violation.Kind.INVALID_VALUE);
+        double oversizedBefore = topology.violations(Service.ORDERS, Violation.Kind.OVERSIZED_VALUE);
+
+        int invalidStatus = ping(orders, invalidMarker, "Priority", "abc");
+        double invalidAfter = topology.violations(Service.ORDERS, Violation.Kind.INVALID_VALUE);
+        int oversizedStatus = ping(orders, oversizedMarker, "Tenant-Id", oversized);
+        double oversizedAfter = topology.violations(Service.ORDERS, Violation.Kind.OVERSIZED_VALUE);
+
+        assertThat(oversized).hasSize(300);
+        assertThat(invalidStatus).isEqualTo(200);
+        assertThat(observed(topology, "orders", invalidMarker)).doesNotContainKey(ObservedContext.PRIORITY);
+        assertThat(invalidAfter).isEqualTo(invalidBefore + 1);
+        assertThat(oversizedStatus).isEqualTo(200);
+        assertThat(observed(topology, "orders", oversizedMarker)).doesNotContainKey(ObservedContext.TENANT);
+        assertThat(oversizedAfter).isEqualTo(oversizedBefore + 1);
+        // The log entry is rate-limited per (kind, key, boundary) on orders; no other scenario raises these two on orders.
+        List<String> entries = output.getOut().lines().filter(line -> line.contains("Context violation")).toList();
+        assertThat(entries).anyMatch(line -> line.contains("INVALID_VALUE: key priority"))
+                .anyMatch(line -> line.contains("OVERSIZED_VALUE: key tenant"))
+                .noneMatch(line -> line.contains("abc"))
+                .noneMatch(line -> line.contains(oversized))
+                .noneMatch(line -> line.contains("qqqqqqqqqq"));
+        assertThat(topology.violationTagValues(Service.ORDERS)).isNotEmpty()
+                .noneMatch(tag -> tag.contains("abc"))
+                .noneMatch(tag -> tag.contains("qqqqqqqqqq"));
     }
 
     @Test
@@ -149,6 +186,12 @@ class TrustBoundaryIT {
         assertThat(response.body()).as("the kind of the ContextViolationException edge caught").isEqualTo("MISSING_REQUIRED");
         assertThat(topology.violations(Service.EDGE, Violation.Kind.MISSING_REQUIRED)).isEqualTo(before + 1);
         assertThat(topology.observed().of("orders")).hasSize(ordersBefore);
+    }
+
+    /** Calls orders' {@code /ping} with one header and the marker, and returns the status. */
+    private static int ping(RestClient orders, String marker, String header, String value) {
+        return orders.get().uri("/ping").header(EdgeApp.MARKER, marker).header(header, value)
+                .exchange((request, response) -> response.getStatusCode().value());
     }
 
     /** Calls an edge endpoint as alice, the public caller. */
