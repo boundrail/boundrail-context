@@ -13,6 +13,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.restclient.RestClientCustomizer;
 import org.springframework.boot.restclient.RestTemplateCustomizer;
@@ -114,9 +115,18 @@ public class BoundrailContextAutoConfiguration {
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     static class InboundConfiguration {
 
+        /** Trusts callers whose remote address is inside one of {@code inbound.trusted-cidrs} (IN-03, IN-08). */
+        @Bean
+        @ConditionalOnMissingBean(InboundTrustVerifier.class)
+        @ConditionalOnProperty(name = "boundrail.context.inbound.trust", havingValue = "cidr")
+        InboundTrustVerifier boundrailCidrInboundTrustVerifier(BoundrailContextProperties properties) {
+            return new CidrInboundTrustVerifier(properties.inbound().trustedCidrs());
+        }
+
         /** Trusts no caller (IN-03). */
         @Bean
         @ConditionalOnMissingBean(InboundTrustVerifier.class)
+        @ConditionalOnProperty(name = "boundrail.context.inbound.trust", havingValue = "none", matchIfMissing = true)
         InboundTrustVerifier boundrailInboundTrustVerifier() {
             return request -> {
                 Objects.requireNonNull(request, "request");

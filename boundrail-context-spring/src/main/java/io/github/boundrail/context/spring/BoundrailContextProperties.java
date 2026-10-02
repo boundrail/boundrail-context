@@ -43,11 +43,12 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
     }
 
     /**
-     * Inbound trust (IN-03).
+     * Inbound trust (IN-03, IN-08).
      *
      * @param trust which built-in verifier decides trust; an {@code InboundTrustVerifier} bean overrides it
+     * @param trustedCidrs the IPv4 and IPv6 CIDRs whose remote addresses are trusted when {@code trust} is {@code cidr}
      */
-    public record Inbound(@DefaultValue("none") Trust trust) {
+    public record Inbound(@DefaultValue("none") Trust trust, @DefaultValue List<String> trustedCidrs) {
 
         /** The built-in verifier (IN-03). */
         public enum Trust {

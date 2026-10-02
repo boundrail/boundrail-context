@@ -697,7 +697,7 @@ authentication through contributors.
     partner).
   - Verify: IT (`./gradlew --continue :integration-tests:integrationTestJdk21 --tests '*BuildSmokeIT' --tests '*TrustBoundaryIT'
     :integration-tests:integrationTestJdk25 --tests '*BuildSmokeIT' --tests '*TrustBoundaryIT'`); `./gradlew check`.
-- [ ] T021 [US2] CIDR verifier.
+- [x] T021 [US2] CIDR verifier.
   - Red, in `springtest/CidrInboundTrustVerifierTest.java`:
     - `IN-03 with inbound.trust=cidr a remote address inside a trusted CIDR is TRUSTED_INTERNAL`: IPv4 `10.0.0.0/8` with `10.1.2.3`; IPv6
       `fd00::/8` with `fd00::1`;
