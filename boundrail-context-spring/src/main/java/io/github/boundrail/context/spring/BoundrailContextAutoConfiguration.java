@@ -139,9 +139,9 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         @Lazy(false)
         FilterRegistrationBean<ContextInboundFilter> boundrailInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy,
-                ViolationReporter reporter, Environment environment) {
-            FilterRegistrationBean<ContextInboundFilter> registration =
-                    new FilterRegistrationBean<>(new ContextInboundFilter(verifier, policy, reporter));
+                ViolationReporter reporter, BoundrailContextProperties properties, Environment environment) {
+            FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(
+                    new ContextInboundFilter(verifier, policy, reporter, properties.wire().maxValueLength()));
             int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
                     ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
             if (securityOrder == Integer.MIN_VALUE) {

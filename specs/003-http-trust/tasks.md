@@ -809,7 +809,7 @@ authentication through contributors.
     square brackets, decimal form, startup failure, also under lazy initialization; bracketed IPv4 remote addresses, hex-form IPv4-mapped
     remote addresses and entries, IPv4-compatible and IPv4-translated entries).
   - Verify: Unit `CidrInboundTrustVerifierTest`.
-- [ ] T023 [US2] Inbound length limit.
+- [x] T023 [US2] Inbound length limit.
   - Red, in `ContextInboundFilterTest`:
     - `WIRE-04 a trusted value longer than max-value-length is not bound and is reported as OVERSIZED_VALUE`: a 300-character value leaves
       `tenant` unbound and gives one `OVERSIZED_VALUE`, with boundary `INTERNAL_CALL` and no destination (DIAG-08). The chain runs in `fail`

@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
@@ -37,11 +38,14 @@ import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ContextInboundFilterTest {
 
     private static final ContextKey<String> TENANT = ContextKey.of("tenant", String.class);
@@ -471,6 +475,59 @@ class ContextInboundFilterTest {
 
         assertThat(filtered.observed().tenant()).as("decoded whole by the string codec").contains("a, b");
         assertThat(filtered.violations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-04 a trusted value longer than max-value-length is not bound and is reported as OVERSIZED_VALUE")
+    void aTrustedValueLongerThanMaxValueLengthIsNotBoundAndIsReportedAsOversizedValue(CapturedOutput output) {
+        String oversized = "acme-" + "q".repeat(295);
+
+        Filtered tenant = filterTrusted(POLICY, request -> {
+            request.addHeader("Tenant-Id", oversized);
+            request.addHeader("Priority", "5");
+        }, "boundrail.context.violations.mode=fail");
+        Filtered initiator = filterTrusted(POLICY, request -> request.addHeader("Boundrail-Initiator", oversized));
+        Filtered deadline = filterTrusted(POLICY, request -> request.addHeader("Boundrail-Deadline-Ms", oversized));
+
+        assertThat(oversized).hasSize(300);
+        assertThat(tenant.observed().tenant()).isEmpty();
+        assertThat(tenant.observed().priority()).as("the chain ran in fail mode, with the other keys bound").contains(5L);
+        assertThat(tenant.violations()).containsExactly(new Violation(Violation.Kind.OVERSIZED_VALUE, "tenant", INTERNAL_CALL,
+                Optional.empty(), Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+        assertThat(initiator.observed().initiator()).as("checked before Initiator.of").isEmpty();
+        assertThat(initiator.violations()).containsExactly(new Violation(Violation.Kind.OVERSIZED_VALUE, "boundrail.initiator",
+                INTERNAL_CALL, Optional.empty(), Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+        assertThat(deadline.violations()).as("the deadline is skipped before the length check").isEmpty();
+        assertThat(output.getOut()).contains("OVERSIZED_VALUE").contains("key tenant").doesNotContain("acme-")
+                .doesNotContain("qqqqqqqqqq");
+    }
+
+    @Test
+    @DisplayName("WIRE-04 a trusted value of exactly max-value-length is bound")
+    void aTrustedValueOfExactlyMaxValueLengthIsBound() {
+        String atLimit = "q".repeat(256);
+
+        Filtered filtered = filterTrusted(POLICY, request -> request.addHeader("Tenant-Id", atLimit));
+
+        assertThat(filtered.observed().tenant()).contains(atLimit);
+        assertThat(filtered.violations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-04 the inbound limit is boundrail.context.wire.max-value-length")
+    void theInboundLimitIsBoundrailContextWireMaxValueLength() {
+        String atLimit = "q".repeat(10);
+
+        Filtered bound = filterTrusted(POLICY, request -> request.addHeader("Tenant-Id", atLimit),
+                "boundrail.context.wire.max-value-length=10");
+        Filtered oversized = filterTrusted(POLICY, request -> request.addHeader("Tenant-Id", atLimit + "q"),
+                "boundrail.context.wire.max-value-length=10");
+
+        assertThat(bound.observed().tenant()).contains(atLimit);
+        assertThat(bound.violations()).isEmpty();
+        assertThat(oversized.observed().tenant()).isEmpty();
+        assertThat(oversized.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.OVERSIZED_VALUE, "tenant"));
     }
 
     @ParameterizedTest(name = "spring.security.filter.order={0}, lazy initialization: {1}")
