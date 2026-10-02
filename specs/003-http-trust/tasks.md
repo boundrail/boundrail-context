@@ -13,11 +13,11 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Forty-five guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+- Forty-eight guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
   T002, T005, T015, T017, T019 and T020a, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
-  and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and seven unit tests in T022 (two of them parametrized
-  tests counted by their green cases only: the eleven invalid entries T021's code already rejects, and the invalid `inbound.trust` with a
-  verifier bean).
+  and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and ten unit tests in T022 (two of them parametrized
+  tests counted by their green cases only: the eleven invalid entries T021's code already rejects plus the two hex-form IPv4-mapped entries
+  added in the e84bb96 follow-up, and the invalid `inbound.trust` with a verifier bean).
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -724,7 +724,7 @@ authentication through contributors.
     nothing.
   - Completes: IN-03 (CIDR, non-literal remote address); IN-08 (matching, remote address parsing); CORE-13 (CIDR verifier).
   - Verify: Unit `CidrInboundTrustVerifierTest`.
-- [ ] T022 [US2] Strict CIDR literals and `inbound.trust` values.
+- [x] T022 [US2] Strict CIDR literals and `inbound.trust` values.
   - Red, in `CidrInboundTrustVerifierTest`:
     - `IN-08 a bare address is a single host`: `10.1.2.3` trusts `10.1.2.3` and not `10.1.2.4`; `fd00::1` trusts only itself;
     - `IN-08 prefix lengths are 0 to 32 for IPv4 and 0 to 128 for IPv6`: `0.0.0.0/0` and `::/0` are accepted. This is a guard: T021 accepts
@@ -790,10 +790,24 @@ authentication through contributors.
       address straight to `InetAddress.getByName`, then revert ([plan.md](plan.md#guard-tests));
     - if a positive control fails because the JDK chose its resolver before the provider was visible, stop and report it
       (`systematic-debugging`); don't weaken the test.
+  - Follow-up from e84bb96, IPv4 forms (IN-08). The current code already passes all four, so each is a guard: show it red with its temporary
+    change, then revert ([plan.md](plan.md#guard-tests)). In `CidrInboundTrustVerifierTest`:
+    - `IN-08 a bracketed IPv4 remote address is unbracketed`: against `10.0.0.0/8`, `[10.0.0.1]` is `TRUSTED_INTERNAL`. Show it red with
+      `unbracketed()` temporarily removing the brackets only when the text inside contains `:`;
+    - `IN-08 a hex-form IPv4-mapped remote address is matched as IPv4`: against `10.0.0.0/8`, `::ffff:a00:1` is `TRUSTED_INTERNAL`. Show it
+      red with `verify` temporarily treating only the dotted form `::ffff:a.b.c.d` as mapped, for example by returning `UNTRUSTED` for a
+      remote address that parses to an `Inet4Address` but whose text isn't dotted;
+    - add the hex-form IPv4-mapped entries `::ffff:a00:1` and `0:0:0:0:0:ffff:a00:1` to the cases of `IN-08 an invalid entry fails startup`.
+      Show them red with the mapped-entry check temporarily the textual test `text.startsWith("::ffff:")` instead of
+      `address instanceof Inet4Address`;
+    - `IN-08 IPv4-compatible and IPv4-translated entries are plain IPv6 entries`: with entries `::10.0.0.1` and `::ffff:0:10.0.0.1`, startup
+      succeeds, the IPv4 remote address `10.0.0.1` is `UNTRUSTED`, and the remote address `::10.0.0.1` is `TRUSTED_INTERNAL`. Show it red with
+      any IPv6 entry that has a dotted part temporarily rejected.
   - Refactor, with `CidrInboundTrustVerifierTest` green before and after: in `CidrInboundTrustVerifier`, parse the prefix once into a local
     after it matches the prefix pattern, then range-check and use that local, instead of calling `Integer.parseInt` twice.
   - Completes: IN-03 (relaxed, blank and invalid `inbound.trust`, also under lazy initialization and with a verifier bean); IN-08 (entries,
-    square brackets, decimal form, startup failure, also under lazy initialization).
+    square brackets, decimal form, startup failure, also under lazy initialization; bracketed IPv4 remote addresses, hex-form IPv4-mapped
+    remote addresses and entries, IPv4-compatible and IPv4-translated entries).
   - Verify: Unit `CidrInboundTrustVerifierTest`.
 - [ ] T023 [US2] Inbound length limit.
   - Red, in `ContextInboundFilterTest`:
@@ -961,7 +975,7 @@ authentication through contributors.
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
 - [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019 and T020a guards
   (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024 and T028, the three unit guards each in T010, T011
-  and T015a, the four unit guards in T012, and the six unit guards in T022)
+  and T015a, the four unit guards in T012, and the ten unit guards in T022)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green
