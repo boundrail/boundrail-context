@@ -82,20 +82,24 @@ public class BoundrailContextAutoConfiguration {
 
         @Bean
         @Lazy(false)
-        RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier, EffectivePolicy policy) {
+        RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
+                ViolationReporter reporter, BoundrailContextProperties properties) {
             return builder -> builder.requestInterceptors(interceptors -> {
                 if (interceptors.stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
-                    interceptors.add(new ContextClientInterceptor(classifier, policy));
+                    interceptors.add(new ContextClientInterceptor(classifier, policy, reporter,
+                            properties.wire().maxValueLength()));
                 }
             });
         }
 
         @Bean
         @Lazy(false)
-        RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier, EffectivePolicy policy) {
+        RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
+                ViolationReporter reporter, BoundrailContextProperties properties) {
             return restTemplate -> {
                 if (restTemplate.getInterceptors().stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
-                    restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy));
+                    restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy, reporter,
+                            properties.wire().maxValueLength()));
                 }
             };
         }

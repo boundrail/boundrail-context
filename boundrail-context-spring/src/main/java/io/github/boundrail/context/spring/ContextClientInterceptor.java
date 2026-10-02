@@ -9,6 +9,7 @@ import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.OutboundRequest;
+import io.github.boundrail.context.Violation;
 import java.io.IOException;
 import java.util.Optional;
 import org.springframework.http.HttpRequest;
@@ -21,10 +22,14 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
 
     private final DestinationClassifier classifier;
     private final ContextPolicy policy;
+    private final ViolationReporter reporter;
+    private final int maxValueLength;
 
-    ContextClientInterceptor(DestinationClassifier classifier, EffectivePolicy policy) {
+    ContextClientInterceptor(DestinationClassifier classifier, EffectivePolicy policy, ViolationReporter reporter, int maxValueLength) {
         this.classifier = classifier;
         this.policy = policy.policy();
+        this.reporter = reporter;
+        this.maxValueLength = maxValueLength;
     }
 
     /**
@@ -37,22 +42,32 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         Destination destination = classifier.classify(new OutboundRequest(request.getURI(), declared));
         // DEST-03: UNKNOWN is treated exactly like EXTERNAL.
         Boundary boundary = destination.kind() == Destination.Kind.INTERNAL ? Boundary.INTERNAL_CALL : Boundary.EXTERNAL_CALL;
-        writeHeaders(request, policy.filter(Context.capture(), boundary));
+        writeHeaders(request, policy.filter(Context.capture(), boundary), boundary, destination);
         return execution.execute(request, body);
     }
 
     /**
      * Writes each key's wire header, except {@code AUTHORITY} (ID-03) and {@code DEADLINE} (DL-05), and except a header application code
-     * already set; {@code HttpHeaders} compares names ignoring case (WIRE-06). An exception from {@code encode} propagates (WIRE-05).
+     * already set with at least one value, whose context value is neither encoded nor checked (OUT-04); {@code HttpHeaders} compares names
+     * ignoring case (WIRE-06). An exception from {@code encode} propagates (WIRE-05). An encoding longer than {@code maxValueLength} is not
+     * written and is reported as {@code OVERSIZED_VALUE} (WIRE-04).
      */
-    private void writeHeaders(HttpRequest request, ContextSnapshot snapshot) {
+    private void writeHeaders(HttpRequest request, ContextSnapshot snapshot, Boundary boundary, Destination destination) {
         for (ContextKey<?> key : snapshot.keys()) {
             if (key == BuiltInKeys.AUTHORITY || key == BuiltInKeys.DEADLINE) {
                 continue;
             }
-            policy.wireName(key)
-                    .filter(wireName -> !request.getHeaders().containsHeader(wireName))
-                    .ifPresent(wireName -> request.getHeaders().set(wireName, encode(key, snapshot)));
+            Optional<String> wireName = policy.wireName(key).filter(name -> request.getHeaders().getOrEmpty(name).isEmpty());
+            if (wireName.isEmpty()) {
+                continue;
+            }
+            String encoded = encode(key, snapshot);
+            if (encoded.length() > maxValueLength) {
+                reporter.report(new Violation(Violation.Kind.OVERSIZED_VALUE, key.name(), boundary, Optional.of(destination),
+                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+                continue;
+            }
+            request.getHeaders().set(wireName.get(), encoded);
         }
     }
 

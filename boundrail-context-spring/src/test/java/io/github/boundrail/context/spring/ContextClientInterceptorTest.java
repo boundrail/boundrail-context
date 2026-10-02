@@ -5,8 +5,10 @@ import static io.github.boundrail.context.Boundary.DETACHED;
 import static io.github.boundrail.context.Boundary.EXTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.MESSAGE;
+import static io.github.boundrail.context.Violation.Kind.OVERSIZED_VALUE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.BuiltInKeys;
@@ -17,26 +19,38 @@ import io.github.boundrail.context.ContextCodec;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.Initiator;
+import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.support.RecordingServer;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration;
 import org.springframework.boot.restclient.autoconfigure.RestTemplateAutoConfiguration;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ContextClientInterceptorTest {
 
     private static final ContextKey<String> TENANT = ContextKey.of("tenant", String.class);
@@ -228,6 +242,146 @@ class ContextClientInterceptorTest {
                 assertThat(server.requests()).isEmpty();
                 assertThat(context.getBean(MeterRegistry.class).find("boundrail.context.violations").meters()).isEmpty();
             });
+        }
+    }
+
+    @Test
+    @DisplayName("WIRE-04 an encoded value longer than max-value-length is not sent and is reported as OVERSIZED_VALUE")
+    void anEncodedValueLongerThanMaxValueLengthIsNotSentAndIsReportedAsOversizedValue(CapturedOutput output) {
+        String oversized = "acme-" + "9".repeat(252);
+
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, oversized).with(PRIORITY, 5L), NO_HEADERS);
+
+        assertThat(oversized).hasSize(257);
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(header(exchange.request(), "Priority")).as("the request is sent with the other keys").containsExactly("5");
+        assertThat(exchange.violations()).containsExactly(new Violation(OVERSIZED_VALUE, "tenant", INTERNAL_CALL,
+                Optional.of(new Destination(Destination.Kind.INTERNAL, Optional.of("orders"))), Thread.currentThread().getName(),
+                Optional.empty(), Optional.empty()));
+        assertThat(output.getOut()).contains("OVERSIZED_VALUE").doesNotContain("acme-").doesNotContain("9999999999");
+    }
+
+    @Test
+    @DisplayName("WIRE-04 a value of exactly max-value-length is sent")
+    void aValueOfExactlyMaxValueLengthIsSent() {
+        String atLimit = "9".repeat(256);
+
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"), Context.with(TENANT, atLimit), NO_HEADERS);
+
+        assertThat(header(exchange.request(), "Tenant-Id")).containsExactly(atLimit);
+        assertThat(exchange.violations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("WIRE-04 max-value-length is configurable and defaults to 256")
+    void maxValueLengthIsConfigurableAndDefaultsTo256() {
+        Exchange limited = exchange(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "0123456789").with(REGION, "0123456789a"), NO_HEADERS,
+                "boundrail.context.wire.max-value-length=10");
+
+        assertThat(header(limited.request(), "Tenant-Id")).containsExactly("0123456789");
+        assertThat(header(limited.request(), "Region")).isEmpty();
+        assertThat(limited.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(OVERSIZED_VALUE, "region"));
+
+        Exchange byDefault = exchange(POLICY, BoundrailClients.internal("orders"),
+                Context.with(TENANT, "1".repeat(256)).with(REGION, "2".repeat(257)), NO_HEADERS);
+
+        assertThat(header(byDefault.request(), "Tenant-Id")).containsExactly("1".repeat(256));
+        assertThat(header(byDefault.request(), "Region")).isEmpty();
+        assertThat(byDefault.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(OVERSIZED_VALUE, "region"));
+    }
+
+    @Test
+    @DisplayName("WIRE-04 the length is counted in UTF-16 code units")
+    void theLengthIsCountedInUtf16CodeUnits() {
+        String emojis = "😀".repeat(6);
+
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"), Context.with(TENANT, emojis).with(PRIORITY, 5L),
+                NO_HEADERS, "boundrail.context.wire.max-value-length=10");
+
+        assertThat(emojis.codePointCount(0, emojis.length())).isEqualTo(6);
+        assertThat(header(exchange.request(), "Tenant-Id")).isEmpty();
+        assertThat(header(exchange.request(), "Priority")).containsExactly("5");
+        assertThat(exchange.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(OVERSIZED_VALUE, "tenant"));
+    }
+
+    @Test
+    @DisplayName("OUT-04 a header name with no values counts as unset and the context value is written")
+    void aHeaderNameWithNoValuesCountsAsUnsetAndTheContextValueIsWritten() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.internal("orders"), Context.with(TENANT, "acme").with(PRIORITY, 5L),
+                headers -> {
+                    headers.put("Tenant-Id", new ArrayList<>());
+                    headers.set("Priority", "");
+                });
+
+        assertThat(header(exchange.request(), "Tenant-Id")).containsExactly("acme");
+        assertThat(header(exchange.request(), "Priority")).as("\"\" is a value, so the header is set").containsExactly("");
+    }
+
+    @Test
+    @DisplayName("OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call")
+    void anApplicationSetHeaderForAKeyThatPropagatesToExternalCallIsSentUnchangedOnAnExternalCall() {
+        Exchange exchange = exchange(POLICY, BoundrailClients.external(), Context.with(CHANNEL, "web"),
+                headers -> headers.set("Channel", "mine"));
+
+        assertThat(header(exchange.request(), "Channel")).containsExactly("mine");
+    }
+
+    static Stream<Arguments> applicationSetHeadersWithUncheckedContextValues() {
+        ContextKey<String> broken = ContextKey.of("broken", String.class);
+        ContextCodec<String> throwing = new ContextCodec<>() {
+            @Override
+            public String encode(String value) {
+                throw new IllegalStateException("codec bug");
+            }
+
+            @Override
+            public String decode(String text) {
+                return text;
+            }
+        };
+        ContextPolicy brokenPolicy = ContextPolicy.builder()
+                .key(broken, rules -> rules.codec(throwing).wireName("Broken").propagateTo(INTERNAL_CALL))
+                .build();
+        return Stream.of(
+                Arguments.of(Named.of("a codec whose encode throws", brokenPolicy), Context.with(broken, "value"), "Broken"),
+                Arguments.of(Named.of("a 257-character tenant", POLICY), Context.with(TENANT, "9".repeat(257)), "Tenant-Id"));
+    }
+
+    @ParameterizedTest(name = "[{index}] {0}")
+    @MethodSource("applicationSetHeadersWithUncheckedContextValues")
+    @DisplayName("OUT-04 an application-set header's context value is not encoded or checked")
+    void anApplicationSetHeadersContextValueIsNotEncodedOrChecked(ContextPolicy policy, ContextBinding binding, String wireName) {
+        Exchange exchange = exchange(policy, BoundrailClients.internal("orders"), binding, headers -> headers.set(wireName, "mine"));
+
+        assertThat(header(exchange.request(), wireName)).containsExactly("mine");
+        assertThat(exchange.violations()).isEmpty();
+    }
+
+    /** The request the server received and the violations reported while sending it. */
+    private record Exchange(RecordingServer.Request request, List<Violation> violations) {
+    }
+
+    /**
+     * Sends one GET like {@link #send}, with the given properties, and records every reported violation. Micrometer is hidden so that the
+     * recording counter is the only {@code ViolationReporter.Counter} bean.
+     */
+    private Exchange exchange(ContextPolicy policy, Consumer<RestClient.Builder> declaration, ContextBinding binding,
+            Consumer<HttpHeaders> applicationHeaders, String... properties) {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        try (RecordingServer server = RecordingServer.start("ok")) {
+            runner.withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                    .withPropertyValues(properties)
+                    .withBean(ContextPolicy.class, () -> policy)
+                    .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                    .run(context -> {
+                        RestClient client = context.getBean(RestClient.Builder.class).baseUrl(server.uri()).apply(declaration).build();
+
+                        binding.run(() -> client.get().uri("/").headers(applicationHeaders).retrieve().toBodilessEntity());
+                    });
+            assertThat(server.requests()).hasSize(1);
+            return new Exchange(server.requests().getFirst(), List.copyOf(violations));
         }
     }
 

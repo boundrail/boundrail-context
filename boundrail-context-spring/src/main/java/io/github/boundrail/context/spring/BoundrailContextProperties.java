@@ -10,9 +10,11 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *
  * @param violations how violations are reported
  * @param destinations how outbound destinations are classified
+ * @param wire limits on wire values
  */
 @ConfigurationProperties("boundrail.context")
-public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Destinations destinations) {
+public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Destinations destinations,
+        @DefaultValue Wire wire) {
 
     /**
      * Violation reporting (DIAG-03).
@@ -37,5 +39,13 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
      * @param externalHosts host patterns classified as external
      */
     public record Destinations(@DefaultValue List<String> internalHosts, @DefaultValue List<String> externalHosts) {
+    }
+
+    /**
+     * Wire values (WIRE-04).
+     *
+     * @param maxValueLength the maximum length of an encoded wire value, in UTF-16 code units ({@code String.length()})
+     */
+    public record Wire(@DefaultValue("256") int maxValueLength) {
     }
 }

@@ -337,7 +337,7 @@ enforces required keys, the length limit and valid field values.
     (outbound); DEST-03 (writing); OUT-03 (several classifier beans, none primary also under lazy initialization, last declaration wins);
     DIAG-03 (startup failure under lazy initialization, also with an application classifier).
   - Verify: Unit `ContextClientInterceptorTest`, `BoundrailClientsTest`, `ViolationReporterTest`.
-- [ ] T011 [US1] Outbound length limit.
+- [x] T011 [US1] Outbound length limit.
   - Red, in `ContextClientInterceptorTest`:
     - `WIRE-04 an encoded value longer than max-value-length is not sent and is reported as OVERSIZED_VALUE`: for a 257-character tenant, no
       `Tenant-Id` is sent and one `OVERSIZED_VALUE` is reported for key `tenant`, boundary `INTERNAL_CALL`, with the classified destination. The
