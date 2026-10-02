@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Twenty-one guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002, T005 and T012, two unit tests
-  each in T001, T003, T006a, T007, T024 and T028, and three unit tests in T010.
+- Twenty-four guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, one unit test each in T002 and T005, two unit tests each
+  in T001, T003, T006a, T007, T011, T012, T024 and T028, and three unit tests in T010.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -346,10 +346,30 @@ enforces required keys, the length limit and valid field values.
     - `WIRE-04 a value of exactly max-value-length is sent` (256);
     - `WIRE-04 max-value-length is configurable and defaults to 256`: a limit of 10;
     - `WIRE-04 the length is counted in UTF-16 code units`: with a limit of 10, a tenant of six U+1F600 characters (6 code points, 12 code
-      units) is not sent and gives one `OVERSIZED_VALUE`.
-  - Green: the length check (`String.length()`) before setting each header, `wire.max-value-length` in `BoundrailContextProperties`, and
-    reporting through `ViolationReporter`.
-  - Completes: WIRE-04 (outbound); DIAG-02 (report-only kind).
+      units) is not sent and gives one `OVERSIZED_VALUE`;
+    - `OUT-04 a header name with no values counts as unset and the context value is written`: with `tenant=acme` and `priority=5` bound on an
+      internal call, application code puts `Tenant-Id` with no values (`headers.put("Tenant-Id", new ArrayList<>())`) and sets `Priority`
+      to `""`. The server receives `Tenant-Id: acme` and `Priority` with the single value `""` (`""` is a value, so `Priority` is set and left
+      unchanged). Red against T010, whose `containsHeader` check skips the name with no values, so no `Tenant-Id` is sent;
+    - `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call`: with `channel=web`
+      bound (`CHANNEL` propagates to `EXTERNAL_CALL`) and application code setting `Channel: mine` on an `external()` call, the server receives
+      only `Channel: mine`. This is a guard: T010's application-set check already runs on every boundary. Show it red with the
+      application-set check temporarily applied only on `INTERNAL_CALL`, so the context value overwrites the header, then revert
+      ([plan.md](plan.md#guard-tests));
+    - `OUT-04 an application-set header's context value is not encoded or checked`, parametrized over two cases on an internal call, each
+      with application code setting the key's header to `mine`: a key whose codec's `encode` throws `IllegalStateException`, and a
+      257-character tenant. In each case no exception reaches the caller, the server receives only `mine` under the header, and no violation
+      is reported (no `OVERSIZED_VALUE`). This is a guard: T010 skips an application-set header before calling `encode`, and has no length
+      check. Show it red with the value temporarily encoded and length-checked before the application-set check (the first case throws, the
+      second reports `OVERSIZED_VALUE`), then revert ([plan.md](plan.md#guard-tests)).
+  - Green:
+    - the application-set check counts a header as set only when it has at least one value (`!request.getHeaders().getOrEmpty(wireName)
+      .isEmpty()`) instead of `containsHeader`, still on every boundary and still before `encode`;
+    - the length check (`String.length()`) after encoding and before setting each header, `wire.max-value-length` in
+      `BoundrailContextProperties`, and reporting through `ViolationReporter`.
+  - Completes: WIRE-04 (outbound, only on values the interceptor writes); OUT-04 (application-set header on every boundary, a name with no
+    values is unset, `""` is set, an application-set header's context value is neither encoded nor length-checked); DIAG-02 (report-only
+    kind).
   - Verify: Unit `ContextClientInterceptorTest`.
 - [ ] T012 [US1] Outbound field values.
   - Red, in `ContextClientInterceptorTest`:
@@ -361,9 +381,14 @@ enforces required keys, the length limit and valid field values.
     - `WIRE-08 applies to Boundrail-Initiator`: an initiator `a\nb` is not written and is reported;
     - `DIAG-09 an invalid outbound value is reported without the value`: neither the violation nor the log entry contains it;
     - `WIRE-04 an outbound value both oversized and not a valid field value is reported once, as OVERSIZED_VALUE`. This is a guard: show it red
-      with the WIRE-08 check temporarily moved before the WIRE-04 check, then revert ([plan.md](plan.md#guard-tests)).
+      with the WIRE-08 check temporarily moved before the WIRE-04 check, then revert ([plan.md](plan.md#guard-tests));
+    - add a third case to T011's `OUT-04 an application-set header's context value is not encoded or checked`: a tenant `a\nb` with
+      application code setting `Tenant-Id: mine`; the server receives only `mine` and no `INVALID_VALUE` is reported. This is a guard: the
+      application-set check already skips the key before encoding. Show it red with the value temporarily encoded and checked (WIRE-04,
+      then WIRE-08) before the application-set check, so `INVALID_VALUE` is reported, then revert ([plan.md](plan.md#guard-tests)).
   - Green: the field value check after the length check in `ContextClientInterceptor` ([plan.md](plan.md#outbound)).
-  - Completes: WIRE-08; WIRE-04 (order); DIAG-09 (outbound).
+  - Completes: WIRE-08 (only on values the interceptor writes); WIRE-04 (order); OUT-04 (an application-set header's context value is not
+    field-value-checked); DIAG-09 (outbound).
   - Verify: Unit `ContextClientInterceptorTest`.
 - [ ] T013 [US1] Topology for TrustBoundaryIT; enable IT-2.2 and IT-2.3 (guard tests).
   - Red (guard): enable IT-2.2 (edge calls partner through an `external()` client) and IT-2.3 (through an undeclared client to
@@ -390,23 +415,30 @@ enforces required keys, the length limit and valid field values.
       succeeds;
     - in `ContextClientInterceptorTest`:
       - `WIRE-07 an application-set header named after a key that does not propagate to EXTERNAL_CALL is removed on an external call`, also
-        `Boundrail-Initiator` and `Boundrail-Deadline-Ms`;
+        `Boundrail-Initiator` and `Boundrail-Deadline-Ms`. In the same request application code sets `Channel: mine`, whose key propagates
+        to `EXTERNAL_CALL`, and the server receives only `Channel: mine`: the kept header is asserted next to the removals, which are red
+        before this task, so it needs no guard of its own;
       - `WIRE-07 one FORBIDDEN_HEADER violation is reported per removed header`: `Tenant-Id` and `Boundrail-Initiator` give two violations,
         with keys `tenant` and `boundrail.initiator` (key names, not header names) and destination `EXTERNAL`, and the call continues in
         `fail` mode (DIAG-02);
       - `WIRE-07 Authorization is never removed`;
-      - `WIRE-07 a header of a key that propagates to EXTERNAL_CALL is kept`;
       - `DEST-03 an UNKNOWN destination is stripped like EXTERNAL`;
       - `WIRE-06 forbidden headers are matched ignoring case`: `tenant-id` is removed and reported with key `tenant`;
       - `WIRE-07 a removed header name with several values is reported once`: application code adds `Tenant-Id` twice, with two values, on
-        an external call; partner receives neither value, and one `FORBIDDEN_HEADER` with key `tenant` is reported.
+        an external call; partner receives neither value, and one `FORBIDDEN_HEADER` with key `tenant` is reported;
+      - `WIRE-07 a forbidden header name with no values is removed and not reported`: on an `external()` call, application code puts
+        `Tenant-Id` with no values. A name with no values is not sent on the wire, so the test adds a recording `ClientHttpRequestInterceptor`
+        to the builder after the library's (`requestInterceptor(..)` on the customized builder) and asserts it sees no `Tenant-Id` name in
+        `request.getHeaders().headerNames()`; no violation is reported. Red before this task, which strips nothing.
   - Green:
-    - stripping in `ContextClientInterceptor` over the wire names of `policy.keys()`, one violation per removed name;
+    - stripping in `ContextClientInterceptor` over the wire names of `policy.keys()`: each name present is removed, and one violation is
+      reported per removed name that had at least one value (`getOrEmpty(name)` not empty);
     - topology test code: a `SimpleMeterRegistry` bean per service and `Running.violations(Service, Violation.Kind)` in `topology/Topology.java`;
     - `micrometer-core` in `integration-tests/build.gradle.kts`.
 
     Review note: interceptors registered after the library's can still add headers ([plan.md](plan.md#risks)).
-  - Completes: WIRE-07; OUT-04 (external); DEST-03 (stripping); WIRE-06; IT-2.4.
+  - Completes: WIRE-07 (including names with no values, and keeping headers of keys that propagate to `EXTERNAL_CALL`); OUT-04 (external);
+    DEST-03 (stripping); WIRE-06; IT-2.4.
   - Verify: Unit `ContextClientInterceptorTest`; IT.
 - [ ] T015 [US1] Required keys before a remote call; enable IT-2.9.
   - Red:
@@ -726,8 +758,8 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002, T005 and T012 unit guards, the two unit guards each in T001, T003, T006a, T007, T024
-  and T028, and the three unit guards in T010)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, the T002 and T005 unit guards, the two unit guards each in T001, T003, T006a, T007, T011, T012,
+  T024 and T028, and the three unit guards in T010)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

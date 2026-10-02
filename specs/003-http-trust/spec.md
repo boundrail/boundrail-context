@@ -100,6 +100,11 @@ values are ignored and reported, and never fail the request.
   `UNTRUSTED_HEADER` each).
 - Two required keys are unbound on one internal call: DIAG-02 (both reported, in key-name order; in `fail` mode the exception carries the first).
 - Application code sets a forbidden header twice on an external call: WIRE-07 (one `FORBIDDEN_HEADER`).
+- Application code sets a forbidden header name with no values on an external or unknown call: WIRE-07 (removed, no `FORBIDDEN_HEADER`;
+  OUT-04 treats the name as unset).
+- Application code sets a policy wire header whose context value would be oversized or not a valid field value, or whose key's codec
+  `encode` would throw: OUT-04 (the value is not encoded, so no `OVERSIZED_VALUE` or `INVALID_VALUE` is reported and no exception is
+  thrown; WIRE-04 and WIRE-08 check only values the interceptor writes).
 - Application code customizes the same `RestTemplate` or `RestClient.Builder` twice: OUT-01 (the interceptor is added once, so a violation
   is reported once per request).
 - An application codec's `decode` throws something other than `IllegalArgumentException`, or its `encode` throws anything: WIRE-05 (it
@@ -192,7 +197,8 @@ in UTF-16 code units as Java's `String.length()` counts them, THEN it SHALL be n
 be reported. The operation SHALL continue. The adapter SHALL check the length first: before decoding an inbound value (WIRE-05) and before
 checking the characters of an outbound value (WIRE-08). A value that is oversized and also invalid SHALL therefore be reported once, as
 `OVERSIZED_VALUE`. This is the only length limit; codecs (WIRE-03) stay limit-free, and values from authentication, such as JWT claims
-(IN-06), are not wire values (DESIGN D35).
+(IN-06), are not wire values (DESIGN D35). An outbound value is checked only when the adapter is about to write it: a header value set by
+application code is not an encoded wire value, and is not checked (OUT-04).
 
 **WIRE-05** `[M2]` IF a trusted inbound value fails to decode, THEN the key SHALL be left unbound and an `INVALID_VALUE` violation SHALL be reported.
 The request SHALL continue. The report and its log entry SHALL follow DIAG-09: they contain neither the value nor the codec's exception message.
@@ -205,15 +211,17 @@ not an invalid value. Only `decode` has a defined rejection: any exception throw
 
 **WIRE-07** `[M2]` WHEN sending to an `EXTERNAL` or `UNKNOWN` destination, the adapter SHALL remove every header whose name is a policy wire name of a
 key that does not propagate to `EXTERNAL_CALL`, even if application code set it. It SHALL report one `FORBIDDEN_HEADER` violation per removed
-header name, however many values application code set under that name (names compared as WIRE-06 defines). The `Authorization` header SHALL
-NOT be removed. A header set by application code whose key propagates to `EXTERNAL_CALL` is kept unchanged (OUT-04).
+header name that has at least one value, however many values application code set under that name (names compared as WIRE-06 defines). IF a
+removed header name has no values, THEN no violation SHALL be reported for it: nothing could leak, and OUT-04 treats such a name as unset. The
+`Authorization` header SHALL NOT be removed. A header set by application code whose key propagates to `EXTERNAL_CALL` is kept unchanged (OUT-04).
 
-**WIRE-08** `[M2]` IF a value about to be written to an HTTP header (WIRE-01, WIRE-02) is not a valid field value as defined here, THEN the
-adapter SHALL NOT write it, SHALL report an `INVALID_VALUE` violation, and the call SHALL continue. A valid field value is empty, or starts and
-ends with a visible US-ASCII character (U+0021 – U+007E) and contains only visible US-ASCII characters, spaces and horizontal tabs. This is RFC
-9110 §5.5's field value without `obs-text`: CR, LF, other control characters, and every character above U+007E, including U+0080 – U+00FF, are
-invalid. A value that is also oversized is reported as WIRE-04 defines. This follows DIAG-02 and DESIGN §10, where only `MISSING_REQUIRED` can
-fail an operation, and treats invalid values the way WIRE-04 treats oversized ones.
+**WIRE-08** `[M2]` IF a value the adapter is about to write to an HTTP header (WIRE-01, WIRE-02) is not a valid field value as defined here,
+THEN the adapter SHALL NOT write it, SHALL report an `INVALID_VALUE` violation, and the call SHALL continue. A valid field value is empty, or
+starts and ends with a visible US-ASCII character (U+0021 – U+007E) and contains only visible US-ASCII characters, spaces and horizontal tabs.
+This is RFC 9110 §5.5's field value without `obs-text`: CR, LF, other control characters, and every character above U+007E, including
+U+0080 – U+00FF, are invalid. A value that is also oversized is reported as WIRE-04 defines. This follows DIAG-02 and DESIGN §10, where only
+`MISSING_REQUIRED` can fail an operation, and treats invalid values the way WIRE-04 treats oversized ones. A header value set by application
+code is not written by the adapter, and is not checked (OUT-04).
 
 ### Inbound HTTP
 
@@ -302,8 +310,10 @@ value under that name, as ID-03 does for `Authorization`. On an `EXTERNAL` or `U
 key does not propagate to `EXTERNAL_CALL`; for a key that does, the application's value is sent. A header counts as already set only when it
 has at least one value (names compared as WIRE-06 defines): a name present with no values SHALL be treated as unset, so the interceptor
 writes the context value under it exactly as it would if the name were absent. The empty string `""` is a value, so a header whose only
-value is `""` is set. Any exception thrown by a codec's `encode`, including an `IllegalArgumentException`, SHALL propagate unchanged, and no
-violation SHALL be reported for it (WIRE-05).
+value is `""` is set. For a key whose wire header is already set, the interceptor SHALL NOT encode the context value, and SHALL run neither
+the WIRE-04 length check nor the WIRE-08 field-value check on it: it reports no `OVERSIZED_VALUE` or `INVALID_VALUE` for that key, and that
+key's `encode` is not called, so it cannot throw. Any exception thrown by a codec's `encode`, including an `IllegalArgumentException`, SHALL
+propagate unchanged, and no violation SHALL be reported for it (WIRE-05).
 
 ### Violations
 

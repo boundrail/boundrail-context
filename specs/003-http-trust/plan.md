@@ -28,7 +28,7 @@ Context crosses HTTP only where the policy and the trust rules allow.
 - `boundrail-context-test`: `TestInboundTrustVerifier` (TEST-01).
 
 Library code is driven by unit and `ApplicationContextRunner` tests in core and `-spring`. Each TrustBoundaryIT scenario is enabled in the task
-whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and eighteen
+whose code makes it pass, so it is that task's failing acceptance test where it can be. Three scenarios (IT-2.2, IT-2.3, IT-2.6) and twenty-one
 unit tests already pass before their task; each red is shown against a temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 
 ## Technical Context
@@ -86,7 +86,7 @@ unit tests already pass before their task; each red is shown against a temporary
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; twenty-one guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; twenty-four guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -207,7 +207,10 @@ unit tests already pass before their task; each red is shown against a temporary
      in that order. In `fail` mode, then throw one `ContextViolationException` carrying the first, before any header is written or `execute`
      is called. In `report` mode, continue.
   3. Write headers. For each key of `policy.filter(Context.capture(), boundary)` that has a wire name, except `AUTHORITY` and `DEADLINE`:
-     - skip it if the request already has that header (`HttpHeaders` is case-insensitive);
+     - skip it if application code already set that header, on every boundary (OUT-04). A header is set only when its name has at least one
+       value: `!getOrEmpty(wireName).isEmpty()`, not `containsHeader`, so a name with no values is unset and gets the context value, and
+       `""` counts as a value (T011). `HttpHeaders` is case-insensitive. The skip comes before encoding, so an application-set key's
+       `encode` is never called and its context value gets neither the WIRE-04 nor the WIRE-08 check (T011, T012);
      - encode it: the key's codec, or `Initiator.value()` for `INITIATOR` (WIRE-02). Nothing catches an exception from `encode`; it reaches
        the caller unchanged (OUT-04, WIRE-05);
      - if the encoding's `String.length()` (UTF-16 code units) is greater than `wire.max-value-length`, report `OVERSIZED_VALUE` and skip it
@@ -215,8 +218,10 @@ unit tests already pass before their task; each red is shown against a temporary
      - else if it is not a valid field value, report `INVALID_VALUE` and skip it (WIRE-08);
      - else set the header.
   4. For `EXTERNAL` and `UNKNOWN`, remove every header whose name is the wire name of a policy key that does not propagate to `EXTERNAL_CALL`, with
-     one `FORBIDDEN_HEADER` per removed name, however many values it had (WIRE-07). `HttpHeaders` holds all values of a name, compared
-     case-insensitively, under one entry. `Authorization` is never a policy wire name (POL-09).
+     one `FORBIDDEN_HEADER` per removed name that had at least one value, however many (WIRE-07). A removed name with no values is not
+     reported (T014). `HttpHeaders` holds all values of a name, compared case-insensitively, under one entry. `Authorization` is never a
+     policy wire name (POL-09). A header of a key that propagates to `EXTERNAL_CALL` is not touched, so an application-set value is sent
+     unchanged (OUT-04, T011).
   5. Call `execution.execute` exactly once and return its response.
 - **Field value check (WIRE-08).** A value is valid if it is empty, or if every character is in U+0020 – U+007E or is U+0009, and the first and
   last characters are in U+0021 – U+007E. Written as a loop over `charAt`, not a regex.
@@ -347,7 +352,10 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T013 | IT-2.2 External call carries no context | After T010, the interceptor writes nothing to `EXTERNAL` | In `ContextClientInterceptor`, the classified destination replaced by `Destination(INTERNAL, empty)` |
 | T013 | IT-2.3 Unknown means external | After T010, the interceptor writes nothing to `UNKNOWN` | The same change |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
+| T011 | `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call` | T010's application-set check already runs on every boundary | In `ContextClientInterceptor`, the application-set check applied only on `INTERNAL_CALL`, so the context value overwrites the header |
+| T011 | `OUT-04 an application-set header's context value is not encoded or checked` (the throwing `encode` and oversized cases) | T010 skips an application-set header before calling `encode`, and has no length check | In `ContextClientInterceptor`, the value encoded and length-checked before the application-set check |
 | T012 | `WIRE-04 an outbound value both oversized and not a valid field value is reported once, as OVERSIZED_VALUE` | T011's length check already drops the value before any character check exists | In `ContextClientInterceptor`, the WIRE-08 check run before the WIRE-04 check |
+| T012 | `OUT-04 an application-set header's context value is not encoded or checked` (the invalid field value case) | The application-set check already skips the key before it is encoded | In `ContextClientInterceptor`, the value encoded and checked (WIRE-04, then WIRE-08) before the application-set check |
 | T024 | `WIRE-04 an inbound value both oversized and undecodable is reported once, as OVERSIZED_VALUE, without calling the codec` | T023's length check already drops the value before decoding | In `ContextInboundFilter`, `decode` called before the length check |
 | T024 | `WIRE-05 any other exception from decode propagates unchanged and no violation is reported` | Before T024 nothing catches an exception from `decode`, so every exception propagates | In `ContextInboundFilter`, the catch widened from `IllegalArgumentException` to `RuntimeException` |
 | T028 | `IN-06 a claim value longer than max-value-length is bound` | No length check exists on the authentication path | In `ContextAuthenticationFilter`, contributed values longer than `wire.max-value-length` dropped |
@@ -426,11 +434,11 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | DEST-04 | T003, T009 (startup failure, also under lazy initialization) |
 | WIRE-01 | T010 (outbound), T016 (inbound) |
 | WIRE-02 | T010 (initiator out), T017 (initiator in; deadline and authority not bound) |
-| WIRE-04 | T011 (outbound, UTF-16 code units), T012 (before WIRE-08), T023 (inbound), T024 (before decode), T028 (not on claims) |
+| WIRE-04 | T011 (outbound, UTF-16 code units, not on application-set headers), T012 (before WIRE-08), T023 (inbound), T024 (before decode), T028 (not on claims) |
 | WIRE-05 | T010 (`encode` exceptions propagate), T024 (decode failures, other `decode` exceptions propagate), T028 (claims) |
 | WIRE-06 | T010, T014 (outbound), T016, T018, T019 (inbound) |
-| WIRE-07 | T014 (one violation per removed name) |
-| WIRE-08 | T012 |
+| WIRE-07 | T014 (one violation per removed name with values, none for a name with no values, headers of keys propagating to `EXTERNAL_CALL` kept) |
+| WIRE-08 | T012 (not on application-set headers) |
 | IN-01 | T016 |
 | IN-02 | T016, T017, T018, T019 |
 | IN-03 | T016 (default, bean replaces), T021 (CIDR, `getRemoteAddr()`, non-literal remote address) |
@@ -442,7 +450,7 @@ module holds only `TestInboundTrustVerifier`. TrustBoundaryIT stays in `integrat
 | OUT-01 | T008, T009 (at most once per client) |
 | OUT-02 | T009 |
 | OUT-03 | T009, T010 (several classifier beans, none primary also under lazy initialization, last declaration wins) |
-| OUT-04 | T010, T014 |
+| OUT-04 | T010, T011 (application-set headers on every boundary, a name with no values is unset, `""` is set, no `encode` or length check), T012 (no field-value check), T014 |
 | DIAG-01 | T004 |
 | DIAG-02 | T004 (exception), T015 (report, then throw; several keys in name order, exception carries the first); report-only kinds under the default `fail` mode in T011, T012, T014, T018, T019, T023, T024, T026 |
 | DIAG-03 | T007, T010 (startup failure under lazy initialization, also with an application classifier) |
