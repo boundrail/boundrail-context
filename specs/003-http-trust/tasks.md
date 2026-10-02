@@ -484,7 +484,7 @@ enforces required keys, the length limit and valid field values.
   - Completes: POL-08; DIAG-02; IT-2.9.
   - Verify: Unit `ContextClientInterceptorTest`; IT.
 
-- [ ] T015a [US1] Violation mode values and report-mode application headers (T015 review follow-up).
+- [x] T015a [US1] Violation mode values and report-mode application headers (T015 review follow-up).
   - Blocked until spec.md states the two user decisions (DIAG-02, POL-08; [plan.md](plan.md#spec-gaps)).
   - Red, in `ContextClientInterceptorTest`. All three are expected to pass on T015's code, so each is a guard, shown red against its named
     temporary change, then reverted ([plan.md](plan.md#guard-tests)):

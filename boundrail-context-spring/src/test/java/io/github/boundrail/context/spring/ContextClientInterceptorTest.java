@@ -45,8 +45,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration;
 import org.springframework.boot.restclient.autoconfigure.RestTemplateAutoConfiguration;
 import org.springframework.boot.test.context.FilteredClassLoader;
@@ -736,6 +738,64 @@ class ContextClientInterceptorTest {
                 .containsExactly(tuple(MISSING_REQUIRED, "region"), tuple(MISSING_REQUIRED, "tenant"));
         assertThat(reported.thrown()).isNull();
         assertThat(reported.requests()).hasSize(1);
+    }
+
+    @ParameterizedTest(name = "lazy initialization: {0}")
+    @ValueSource(booleans = {false, true})
+    @DisplayName("DIAG-02 an invalid violations.mode fails startup")
+    void anInvalidViolationsModeFailsStartup(boolean lazyInitialization) {
+        ApplicationContextRunner configured = runner.withPropertyValues("boundrail.context.violations.mode=bogus");
+        if (lazyInitialization) {
+            configured = configured.withPropertyValues("spring.main.lazy-initialization=true")
+                    .withInitializer(context -> context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()));
+        }
+        configured.run(context -> {
+            assertThat(context).hasFailed();
+            List<String> boundNames = new ArrayList<>();
+            for (Throwable cause = context.getStartupFailure(); cause != null; cause = cause.getCause()) {
+                if (cause instanceof BindException bind) {
+                    boundNames.add(bind.getName().toString());
+                }
+            }
+            assertThat(boundNames).contains("boundrail.context.violations.mode");
+        });
+    }
+
+    static Stream<Arguments> violationModeValues() {
+        return Stream.of(
+                Arguments.of("REPORT", true),
+                Arguments.of("Report", true),
+                Arguments.of("FAIL", false),
+                Arguments.of("", false));
+    }
+
+    @ParameterizedTest(name = "violations.mode={0}, report mode: {1}")
+    @MethodSource("violationModeValues")
+    @DisplayName("DIAG-02 violations.mode is matched ignoring case and an empty value means fail")
+    void violationsModeIsMatchedIgnoringCaseAndAnEmptyValueMeansFail(String mode, boolean reportMode) {
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.internal("orders"), Context.with(PRIORITY, 5L), NO_HEADERS,
+                "boundrail.context.violations.mode=" + mode);
+
+        assertThat(attempt.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(MISSING_REQUIRED, "tenant"));
+        if (reportMode) {
+            assertThat(attempt.thrown()).isNull();
+            assertThat(attempt.requests()).hasSize(1);
+        } else {
+            assertThat(attempt.thrown()).isInstanceOf(ContextViolationException.class);
+            assertThat(attempt.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("DIAG-02 in report mode an application-set header of an unbound required key is sent")
+    void inReportModeAnApplicationSetHeaderOfAnUnboundRequiredKeyIsSent() {
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.internal("orders"), Context.with(PRIORITY, 5L),
+                headers -> headers.set("Tenant-Id", "mine"), "boundrail.context.violations.mode=report");
+
+        assertThat(attempt.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(MISSING_REQUIRED, "tenant"));
+        assertThat(attempt.thrown()).isNull();
+        assertThat(attempt.requests()).hasSize(1);
+        assertThat(header(attempt.requests().getFirst(), "Tenant-Id")).containsExactly("mine");
     }
 
     /** The request the server received and the violations reported while sending it. */
