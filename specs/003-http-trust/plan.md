@@ -88,7 +88,7 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; forty-four guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; forty-five guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -300,6 +300,19 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
     an IPv6 literal (hex digits, `:` and `.`, no `%`). Only then is it passed to `InetAddress.getByName`, which does no lookup for a literal.
     Hostnames and zone IDs are rejected without DNS: an invalid entry fails startup, and a remote address that fails the check matches no entry,
     so the verdict is `UNTRUSTED` (IN-03, IN-08).
+  - The two no-lookup tests, for entries and for the remote address, observe lookups directly (IN-08, T022 review). A rejected result is not
+    proof enough: with entries passed straight to `getByName`, `localhost` was resolved through DNS and still failed startup, because the
+    mapped-entry check rejects the resulting `Inet4Address` after the lookup. So the tests use a test-scoped
+    `java.net.spi.InetAddressResolverProvider`, `springtest/support/RecordingResolverProvider.java`, registered in
+    `boundrail-context-spring/src/test/resources/META-INF/services/java.net.spi.InetAddressResolverProvider`.
+    - The JDK loads the provider once per JVM, at the first lookup, and uses it for every test in the module's test JVM. So it delegates
+      every forward and reverse lookup to the built-in resolver unchanged, except names under the reserved `boundrail-dns-probe.invalid`
+      (RFC 6761). It records those in a thread-safe set and answers them with `UnknownHostException` itself, so no probe reaches the network.
+    - `InetAddress` caches answers, failures included, so each test makes a fresh name, `<random UUID>.boundrail-dns-probe.invalid`. It
+      asserts that the name is not recorded, then runs a positive control: a direct `InetAddress.getByName` of the same name throws
+      `UnknownHostException` and the name is now recorded. The control runs after the assertion, so the name is never cached before it.
+    - If the control fails because the JDK chose its resolver before the provider was visible, the leader stops and reports it
+      (`systematic-debugging`); the test is not weakened.
   - A remote address longer than 45 characters, the longest textual literal, is rejected before any pattern runs (T021). T022 removes the
     brackets before that check, with `charAt` at both ends and `indexOf`, no pattern: a remote address whose first character is `[`, whose
     last is `]`, and which has no other bracket loses that pair; any other bracket stays in the text and fails the literal check. Entries
@@ -308,7 +321,8 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
     above 255 in a plain dotted quad. `getByName` does not apply this to the IPv4 part of an IPv6 literal: on JDK 21.0.11 and 25.0.4.1 it
     parses `::ffff:10.0.0.01` as `10.0.0.1`, accepts `::10.0.0.01`, and reads `010.0.0.1` as `10.0.0.1`; on JDK 21 it tries a DNS lookup for
     `10.0.0.256` (checked in `jshell`). So when an IPv6 literal contains `.`, the text after its last `:` must match the dotted-quad pattern.
-    A prefix must match `0|[1-9][0-9]*` before `Integer.parseInt`, which would accept `08` and `+8`, and is then range-checked.
+    A prefix must match `0|[1-9][0-9]{0,2}` before `Integer.parseInt`, which would accept `08` and `+8`, and is then parsed once, into a local,
+    and range-checked (T022 review).
   - `getByName` turns `::ffff:a.b.c.d` into an `Inet4Address`. So an IPv6-text entry that yields an `Inet4Address` is an IPv4-mapped entry and is
     rejected, and an IPv4-mapped remote address naturally matches IPv4 entries.
   - Host bits are checked by masking. A bare address gets `/32` or `/128`.
@@ -437,9 +451,10 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T020a | `TEST-01 the boundrail-context-test JAR ships no AutoConfiguration.imports and no spring.factories` (BuildSmokeIT) | T020 added no such file to the module | A temporary `boundrail-context-test/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` listing `io.github.boundrail.context.spring.BoundrailContextAutoConfiguration`, a class in another package, which T020's package-name scan does not catch |
 | T022 | `IN-08 prefix lengths are 0 to 32 for IPv4 and 0 to 128 for IPv6` | T021 accepts every prefix, `0` included | In `CidrInboundTrustVerifier`, the prefix range check starting at 1 |
 | T022 | `IN-08 an invalid entry fails startup`, the eleven cases T021 already rejects (`10.0.0.0/`, `::ffff:10.0.0.1`, `fe80::1%eth0`, `localhost`, `orders.svc.test`, `10.0.0`, `[2001:db8::1]`, `[2001:db8::]/32`, `010.0.0.1`, `10.0.0.256`, `::ffff:10.0.0.01`) | T021 requires a `/` in every entry, checks the address with its literal check, and `Integer.parseInt` rejects an empty prefix | The `CidrInboundTrustVerifier` constructor skipping an entry whose parsing throws `IllegalArgumentException` |
-| T022 | `IN-08 entries are parsed without DNS lookups` | T021 rejects `localhost` because it has no `/` | In `CidrInboundTrustVerifier`, the textual literal check skipped for entries, so `localhost` resolves to `127.0.0.1` and is accepted as a bare address |
+| T022 | `IN-08 entries are parsed without DNS lookups`, rewritten in the T022 review to use a fresh `boundrail-dns-probe.invalid` name and `RecordingResolverProvider` | T022's textual literal check rejects the probe name before `getByName`, so no lookup is recorded | In `CidrInboundTrustVerifier`, entries passed straight to `InetAddress.getByName`, so the probe name is looked up and recorded |
+| T022 | `IN-08 the remote address is parsed without DNS lookups` (T021's test), rewritten in the T022 review in the same way | T021's textual literal check rejects the probe name before `getByName`, so no lookup is recorded | In `CidrInboundTrustVerifier.verify`, the remote address passed straight to `InetAddress.getByName`, so the probe name is looked up and recorded |
 | T022 | `IN-08 invalid entries are ignored when inbound.trust is not cidr` | T021 creates the CIDR verifier only with `inbound.trust=cidr` | In `boundrailInboundTrustVerifier`, a `CidrInboundTrustVerifier` built from `trusted-cidrs` before the switch on `trust` |
-| T022 | `IN-03 an invalid inbound.trust fails startup with a binding error naming the property` (without and with lazy initialization, and with a verifier bean) | `Trust` is an enum, so binding `bogus` already fails, and the `@Lazy(false)` reporter and client customizers bind the properties at startup. If a case is red on T021's code, this row is removed | In `Inbound`, `trust` bound as a `String` and mapped to `NONE` unless it equals `cidr` ignoring case |
+| T022 | `IN-03 an invalid inbound.trust fails startup with a binding error naming the property`, the case with an application verifier bean only. The cases without and with lazy initialization were red on T021's code, so they are not guards | With a verifier bean, binding `bogus` into the `Trust` enum already fails on T021's code | In `BoundrailContextProperties.Inbound`, the `trust` component a `String` |
 | T022 | `IN-08 an over-long remote address is UNTRUSTED without costly parsing`, its input changed to `":".repeat(65535) + "%"` | T021's 45-character cap rejects it before any pattern runs | The cap removed and the IPv6 pattern replaced by the backtracking `[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*` (in `jshell` on JDK 21, about 0.4 s at 8,192 characters and 24 s at 65,536) |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
 | T011 | `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call` | T010's application-set check already runs on every boundary | In `ContextClientInterceptor`, the application-set check applied only on `INTERNAL_CALL`, so the context value overwrites the header |
@@ -507,6 +522,8 @@ boundrail-context-spring/src/test/java/io/github/boundrail/context/spring/
 ├── ContextInboundFilterTest.java  InboundTrustVerifierTest.java  CidrInboundTrustVerifierTest.java
 ├── ContextAuthenticationFilterTest.java  JwtClaimContributorTest.java
 ├── support/RecordingServer.java (JDK HttpServer recording requests)  support/RecordingLog.java (Commons Logging Log recording entries)
+├── support/RecordingResolverProvider.java (InetAddressResolverProvider recording probe-name lookups)   # T022 review
+boundrail-context-spring/src/test/resources/META-INF/services/java.net.spi.InetAddressResolverProvider  # T022 review
 boundrail-context-test/build.gradle.kts                                                              # T020, T020a
 boundrail-context-test/src/main/java/io/github/boundrail/context/test/TestInboundTrustVerifier.java   # T020
 boundrail-context-test/src/test/java/io/github/boundrail/context/test/TestInboundTrustVerifierTest.java

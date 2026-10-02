@@ -110,6 +110,12 @@ values are ignored and reported, and never fail the request.
 - The remote address is a bracketed IPv6 literal, such as `[2001:db8::1]` after Spring's forwarded-header processing: IN-08 (the one pair of
   brackets is removed and the address inside is checked). Any other use of brackets, such as `[[2001:db8::1]]` or `[2001:db8::1`, or a
   bracketed entry in `trusted-cidrs`: IN-08 (the remote address is `UNTRUSTED`; the entry fails startup with `inbound.trust=cidr`).
+- The remote address is a bracketed IPv4 literal, such as `[10.0.0.1]`: IN-08 (the one pair of brackets is removed, as for IPv6, and
+  `10.0.0.1` is checked).
+- An entry is IPv4-compatible or IPv4-translated, such as `::10.0.0.1` or `::ffff:0:10.0.0.1`: IN-08 (a valid plain IPv6 entry, `/128` when
+  bare, that never matches an IPv4 remote address; only IPv4-mapped entries are invalid).
+- An IPv4-mapped address is written in hex, such as `::ffff:a00:1`: IN-08 (as a remote address it is matched as the IPv4 address `10.0.0.1`;
+  as an entry it is IPv4-mapped, so it fails startup with `inbound.trust=cidr`; the strict decimal rule applies only to a dotted IPv4 part).
 - An IPv4 octet or a prefix length with a leading zero, a sign or an out-of-range value, such as `010.0.0.1`, `10.0.0.256`,
   `::ffff:10.0.0.01` or `10.0.0.0/08`: IN-08 (as a remote address it is not a literal, so `UNTRUSTED`; as an entry it fails startup with
   `inbound.trust=cidr`).
@@ -319,18 +325,22 @@ for the same key.
 **IN-08** `[M2]` Each entry of `boundrail.context.inbound.trusted-cidrs` SHALL be an IPv4 or IPv6 address literal followed by `/` and a prefix
 length (0 – 32 for IPv4, 0 – 128 for IPv6), or a bare address literal, which means `/32` or `/128`. An IPv4 remote address SHALL match only IPv4
 entries and an IPv6 remote address only IPv6 entries, except that an IPv4-mapped IPv6 remote address (`::ffff:a.b.c.d`) SHALL be matched as the
-IPv4 address `a.b.c.d`. An IPv4 literal SHALL be four decimal octets separated by dots, each 0 – 255 with no leading zeros (`10.0.0.1`, not
-`010.0.0.1` or `10.0.0.256`); this SHALL also apply to the IPv4 part of an IPv6 literal, such as `::ffff:a.b.c.d` or `::a.b.c.d`. A prefix
-length SHALL be plain decimal digits with no sign and no leading zeros (`/8`, not `/08` or `/+8`). Entries are strict: an entry with host
-bits set beyond its prefix length (`10.0.0.1/8`), an IPv4-mapped IPv6 entry (`::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`), an entry with an
-IPv6 zone ID (`fe80::1%eth0`), an entry in square brackets (`[2001:db8::1]`), an entry that breaks the literal or prefix form above and a
-hostname are not valid. WHERE `inbound.trust=cidr`, IF an entry is not valid, THEN the application SHALL fail at startup, even when
-`spring.main.lazy-initialization` is `true`. Entries SHALL be parsed without DNS lookups.
+IPv4 address `a.b.c.d`. An IPv6 literal is IPv4-mapped when its value is in `::ffff:0:0/96`, whether its last 32 bits are written as a dotted
+IPv4 part (`::ffff:10.0.0.1`) or in hex (`::ffff:a00:1`, matched as `10.0.0.1`). IPv4-compatible and IPv4-translated literals, such as
+`::10.0.0.1` and `::ffff:0:10.0.0.1`, are not IPv4-mapped: they are plain IPv6 literals, so as entries they are valid IPv6 entries (`/128` when
+bare) and never match an IPv4 remote address. An IPv4 literal SHALL be four decimal octets separated by dots, each 0 – 255 with no leading zeros
+(`10.0.0.1`, not `010.0.0.1` or `10.0.0.256`); this SHALL also apply to a dotted IPv4 part of an IPv6 literal, such as `::ffff:a.b.c.d` or
+`::a.b.c.d`, and not to hex groups. A prefix length SHALL be plain decimal digits with no sign and no leading zeros (`/8`, not `/08` or `/+8`).
+Entries are strict: an entry with host bits set beyond its prefix length (`10.0.0.1/8`), an IPv4-mapped IPv6 entry in any form
+(`::ffff:10.0.0.0/104`, `::ffff:10.0.0.1`, `::ffff:a00:1`), an entry with an IPv6 zone ID (`fe80::1%eth0`), an entry in square brackets
+(`[2001:db8::1]`), an entry that breaks the literal or prefix form above and a hostname are not valid. WHERE `inbound.trust=cidr`, IF an entry
+is not valid, THEN the application SHALL fail at startup, even when `spring.main.lazy-initialization` is `true`. Entries SHALL be parsed without
+DNS lookups.
 IF the remote address is enclosed in exactly one pair of square brackets, with no other bracket inside, such as `[2001:db8::1]` (Spring's
-forwarded-header processing produces this form), THEN the verifier SHALL remove that pair and check the address inside. IF the remote
-address, after that, is not an IPv4 or IPv6 address literal in the form above, contains a square bracket, or is an IPv6 literal with a zone
-ID (`fe80::1%eth0`), THEN it SHALL match no entry, and the verdict SHALL be `UNTRUSTED`, failing closed. The remote address SHALL also be
-parsed without DNS lookups.
+forwarded-header processing produces this form) or `[10.0.0.1]`, THEN the verifier SHALL remove that pair and check the address inside, whether
+it is IPv4 or IPv6 (`[10.0.0.1]` is checked as `10.0.0.1`). IF the remote address, after that, is not an IPv4 or IPv6 address literal in the
+form above, contains a square bracket, or is an IPv6 literal with a zone ID (`fe80::1%eth0`), THEN it SHALL match no entry, and the verdict
+SHALL be `UNTRUSTED`, failing closed. The remote address SHALL also be parsed without DNS lookups.
 
 ### Outbound HTTP
 

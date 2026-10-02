@@ -13,10 +13,11 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Forty-four guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+- Forty-five guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
   T002, T005, T015, T017, T019 and T020a, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
-  and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and six unit tests in T022 (one of them the cases of a
-  parametrized test that T021's code already rejects).
+  and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and seven unit tests in T022 (two of them parametrized
+  tests counted by their green cases only: the eleven invalid entries T021's code already rejects, and the invalid `inbound.trust` with a
+  verifier bean).
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -736,9 +737,8 @@ authentication through contributors.
       `[2001:db8::1]`, `[2001:db8::]/32`, `010.0.0.1`, `10.0.0.256` and `::ffff:10.0.0.01`, which have no `/` or fail T021's literal check.
       The other eight are red. For those eleven cases this is a guard: show them red with the `CidrInboundTrustVerifier` constructor
       temporarily skipping an entry whose parsing throws `IllegalArgumentException`, then revert ([plan.md](plan.md#guard-tests));
-    - `IN-08 entries are parsed without DNS lookups`: `localhost`, which would resolve, fails startup. This is a guard: T021 rejects an entry
-      without a `/`. Show it red with the textual literal check temporarily skipped for entries, so `localhost` reaches
-      `InetAddress.getByName`, resolves to `127.0.0.1` and is accepted as a bare address, then revert ([plan.md](plan.md#guard-tests));
+    - `IN-08 entries are parsed without DNS lookups`: `localhost`, which would resolve, fails startup. Rewritten in the follow-up below,
+      because this form can't detect a lookup;
     - `IN-08 invalid entries are ignored when inbound.trust is not cidr`: startup succeeds with `trust=none`. This is a guard: T021 creates the
       CIDR verifier only with `cidr`. Show it red with the verifier bean method temporarily building a `CidrInboundTrustVerifier` from
       `trusted-cidrs` before it switches on `trust`, then revert ([plan.md](plan.md#guard-tests));
@@ -760,11 +760,10 @@ authentication through contributors.
       `@ConditionalOnProperty` matches a present empty value, so startup fails;
     - `IN-03 an invalid inbound.trust fails startup with a binding error naming the property`, parametrized: without lazy initialization,
       with it (the T006a setup), and with an application `InboundTrustVerifier` bean. `bogus` fails startup, and a `BindException` in the
-      cause chain names `boundrail.context.inbound.trust`, as in T015a's DIAG-02 test. It is expected to pass on T021's code, because the
-      `@Lazy(false)` reporter and client customizers bind `BoundrailContextProperties` at startup, so it is a guard: show it red with
-      `Inbound.trust` temporarily bound as a `String` and mapped to `NONE` unless it equals `cidr` ignoring case, then revert
-      ([plan.md](plan.md#guard-tests)). If a case is red on T021's code, the test is not a guard: its green is the bean method below, the
-      leader reports it, and the planner removes its Guard Tests row;
+      cause chain names `boundrail.context.inbound.trust`, as in T015a's DIAG-02 test. The cases without and with lazy initialization were
+      red on T021's code; their green is the bean method below. The case with a verifier bean passed on T021's code, so it is a guard: show
+      it red with the `trust` component of `BoundrailContextProperties.Inbound` temporarily a `String`, then revert
+      ([plan.md](plan.md#guard-tests));
     - change T021's `IN-08 an over-long remote address is UNTRUSTED without costly parsing` to use `":".repeat(65535) + "%"`, so its red margin
       holds on faster machines. It passes before this task's code, so it is a guard: show it red with the 45-character cap temporarily removed
       and the IPv6 pattern temporarily the backtracking `[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*`, then revert ([plan.md](plan.md#guard-tests)).
@@ -775,6 +774,24 @@ authentication through contributors.
     - in `BoundrailContextAutoConfiguration`, the two `@ConditionalOnProperty` verifier beans replaced by one `@ConditionalOnMissingBean`,
       `@Lazy(false)` bean method, `boundrailInboundTrustVerifier`, that switches on the bound `Trust`, so the CIDR verifier is built, and its
       entries parsed, at startup under lazy initialization.
+  - Follow-up from the T022 review, no-lookup tests that observe lookups ([plan.md](plan.md#inbound)):
+    - add `springtest/support/RecordingResolverProvider.java`, a `java.net.spi.InetAddressResolverProvider` registered in
+      `boundrail-context-spring/src/test/resources/META-INF/services/java.net.spi.InetAddressResolverProvider`. It delegates every forward and
+      reverse lookup to the built-in resolver unchanged, except names under `boundrail-dns-probe.invalid`, which it records in a thread-safe
+      set and answers with `UnknownHostException` itself;
+    - rewrite `IN-08 entries are parsed without DNS lookups`: a fresh `<random UUID>.boundrail-dns-probe.invalid` entry fails startup with
+      `IllegalArgumentException` as the root cause, and the name is not recorded. Then the positive control: `InetAddress.getByName` of the
+      same name throws `UnknownHostException` and the name is now recorded. This is a guard: T022's literal check rejects the name before
+      `getByName`. Show it red with entries temporarily passed straight to `InetAddress.getByName`, then revert
+      ([plan.md](plan.md#guard-tests));
+    - rewrite T021's `IN-08 the remote address is parsed without DNS lookups` the same way: `127.0.0.1` against `127.0.0.0/8` stays
+      `TRUSTED_INTERNAL`, a fresh probe name as the remote address is `UNTRUSTED` and not recorded, and the same positive control follows.
+      This is a guard: the literal check rejects the name before `getByName`. Show it red with `verify` temporarily passing the remote
+      address straight to `InetAddress.getByName`, then revert ([plan.md](plan.md#guard-tests));
+    - if a positive control fails because the JDK chose its resolver before the provider was visible, stop and report it
+      (`systematic-debugging`); don't weaken the test.
+  - Refactor, with `CidrInboundTrustVerifierTest` green before and after: in `CidrInboundTrustVerifier`, parse the prefix once into a local
+    after it matches the prefix pattern, then range-check and use that local, instead of calling `Integer.parseInt` twice.
   - Completes: IN-03 (relaxed, blank and invalid `inbound.trust`, also under lazy initialization and with a verifier bean); IN-08 (entries,
     square brackets, decimal form, startup failure, also under lazy initialization).
   - Verify: Unit `CidrInboundTrustVerifierTest`.
