@@ -548,7 +548,7 @@ authentication through contributors.
   - Completes: IN-01; IN-02 (trusted binding); IN-03 (default verifier, bean replaces); WIRE-01 (inbound); WIRE-06 (inbound); CORE-13 (default
     verifier).
   - Verify: Unit `ContextInboundFilterTest` and `InboundTrustVerifierTest`.
-- [ ] T017 [US2] Built-in keys inbound, the filter order and the T016 review follow-ups.
+- [x] T017 [US2] Built-in keys inbound, the filter order and the T016 review follow-ups.
   - Red, in `ContextInboundFilterTest`:
     - `WIRE-02 a trusted Boundrail-Initiator header binds the initiator with that value`;
     - `IN-02 a trusted request binds no deadline and no authority from headers`: with `Boundrail-Initiator`, `Boundrail-Deadline-Ms` and

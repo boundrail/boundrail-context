@@ -1,17 +1,18 @@
 package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Boundary;
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextCodec;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.Initiator;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Optional;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -19,10 +20,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 final class ContextInboundFilter extends OncePerRequestFilter {
 
     /**
-     * One before Spring Boot's {@code SecurityFilterProperties.DEFAULT_FILTER_ORDER} ({@code -100}), so the filter runs before Spring Security's
-     * filter chain (IN-01). Copied, because Spring Security is optional.
+     * The default of {@code spring.security.filter.order}, Spring Boot's {@code SecurityFilterProperties.DEFAULT_FILTER_ORDER}; the filter is
+     * ordered one below that property (IN-01). Copied, because Spring Security is optional.
      */
-    static final int ORDER = -101;
+    static final int SECURITY_FILTER_ORDER_DEFAULT = -100;
 
     private final InboundTrustVerifier verifier;
     private final ContextPolicy policy;
@@ -34,9 +35,9 @@ final class ContextInboundFilter extends OncePerRequestFilter {
 
     /**
      * For a {@code TRUSTED_INTERNAL} request, binds each key that propagates to {@code INTERNAL_CALL} and whose wire header is present, decoded
-     * with the key's codec (IN-02, WIRE-01); servlet header names are matched ignoring case (WIRE-06). Keys without a codec, the built-in
-     * keys, are not bound. Then runs the rest of the chain inside
-     * that scope and restores the previous snapshot, rethrowing the chain's exception unchanged (IN-01, CORE-08).
+     * with the key's codec (IN-02, WIRE-01); servlet header names are matched ignoring case (WIRE-06). The initiator is bound from
+     * {@code Boundrail-Initiator} with {@code Initiator.of} (WIRE-02); the deadline and authority are not bound (IN-02). Then runs the rest of
+     * the chain inside that scope and restores the previous snapshot, rethrowing the chain's exception unchanged (IN-01, CORE-08).
      */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -44,7 +45,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
         ContextBinding binding = null;
         if (verifier.verify(request) == InboundTrustVerifier.Trust.TRUSTED_INTERNAL) {
             for (ContextKey<?> key : policy.keys()) {
-                if (policy.propagates(key, Boundary.INTERNAL_CALL)) {
+                if (key != BuiltInKeys.DEADLINE && key != BuiltInKeys.AUTHORITY && policy.propagates(key, Boundary.INTERNAL_CALL)) {
                     binding = bind(binding, key, request);
                 }
             }
@@ -58,21 +59,36 @@ final class ContextInboundFilter extends OncePerRequestFilter {
                 chain.doFilter(request, response);
                 return null;
             });
-        } catch (IOException | ServletException | RuntimeException e) {
-            throw e;
         } catch (Exception e) {
-            throw new UndeclaredThrowableException(e); // unreachable: the chain throws only the exceptions above
+            ContextInboundFilter.<RuntimeException>sneakyThrow(e);
         }
     }
 
-    /** Adds the key's decoded header value, if the key has a wire name and codec and the header is present. */
+    /** Rethrows {@code t} unchanged, checked or not, without declaring it. */
+    @SuppressWarnings("unchecked")
+    static <E extends Throwable> void sneakyThrow(Throwable t) throws E {
+        throw (E) t;
+    }
+
+    /**
+     * Adds the key's decoded header value, if the key has a wire name and the header is present: the initiator with {@code Initiator.of}
+     * (WIRE-02), any other key with its codec, if it has one.
+     */
     private <T> ContextBinding bind(ContextBinding binding, ContextKey<T> key, HttpServletRequest request) {
-        Optional<ContextCodec<T>> codec = policy.codec(key);
         Optional<String> header = policy.wireName(key).map(request::getHeader);
-        if (codec.isEmpty() || header.isEmpty()) {
+        if (header.isEmpty()) {
             return binding;
         }
-        T value = codec.get().decode(header.get());
+        T value;
+        if (key == BuiltInKeys.INITIATOR) {
+            value = key.type().cast(Initiator.of(header.get()));
+        } else {
+            Optional<ContextCodec<T>> codec = policy.codec(key);
+            if (codec.isEmpty()) {
+                return binding;
+            }
+            value = codec.get().decode(header.get());
+        }
         return binding == null ? Context.with(key, value) : binding.with(key, value);
     }
 }

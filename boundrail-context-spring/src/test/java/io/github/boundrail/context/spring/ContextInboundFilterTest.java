@@ -5,10 +5,12 @@ import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.Initiator;
 import jakarta.servlet.Filter;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.mock.web.MockFilterChain;
@@ -57,8 +60,54 @@ class ContextInboundFilterTest {
         runner.run(context -> {
             FilterRegistrationBean<?> registration = inboundRegistration(context);
 
-            assertThat(registration.getOrder()).isLessThan(SecurityFilterProperties.DEFAULT_FILTER_ORDER);
+            assertThat(registration.getOrder()).isEqualTo(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 1);
         });
+    }
+
+    @Test
+    @DisplayName("IN-01 the inbound filter runs before Spring Security at a configured spring.security.filter.order")
+    void theInboundFilterRunsBeforeSpringSecurityAtAConfiguredSpringSecurityFilterOrder() {
+        runner.withPropertyValues("spring.security.filter.order=-200").run(context -> {
+            FilterRegistrationBean<?> registration = inboundRegistration(context);
+
+            assertThat(registration.getOrder()).isEqualTo(-201);
+        });
+    }
+
+    @Test
+    @DisplayName("IN-01 an undeclared checked exception from the chain is rethrown unchanged")
+    void anUndeclaredCheckedExceptionFromTheChainIsRethrownUnchanged() {
+        runner.withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
+            Filter filter = inboundRegistration(context).getFilter();
+            Exception thrown = new Exception("undeclared");
+            HttpServlet sneaky = new HttpServlet() {
+                @Override
+                protected void service(HttpServletRequest req, HttpServletResponse resp) {
+                    ContextInboundFilterTest.<RuntimeException>sneakyThrow(thrown);
+                }
+            };
+            MockHttpServletRequest trusted = new MockHttpServletRequest();
+            trusted.addHeader("Tenant-Id", "acme");
+
+            Throwable fromBound = catchThrowable(() -> new MockFilterChain(sneaky, filter).doFilter(trusted, new MockHttpServletResponse()));
+            Throwable fromUnbound = catchThrowable(() -> new MockFilterChain(sneaky, filter)
+                    .doFilter(new MockHttpServletRequest(), new MockHttpServletResponse()));
+
+            assertThat(fromBound).as("with tenant bound").isSameAs(thrown);
+            assertThat(fromUnbound).as("with nothing bound").isSameAs(thrown);
+        });
+    }
+
+    @Test
+    @DisplayName("IN-01 no inbound filter or verifier is registered outside a servlet web application")
+    void noInboundFilterOrVerifierIsRegisteredOutsideAServletWebApplication() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(FilterRegistrationBean.class);
+                    assertThat(context).doesNotHaveBean(InboundTrustVerifier.class);
+                });
     }
 
     @Test
@@ -134,6 +183,34 @@ class ContextInboundFilterTest {
     }
 
     @Test
+    @DisplayName("WIRE-02 a trusted Boundrail-Initiator header binds the initiator with that value")
+    void aTrustedBoundrailInitiatorHeaderBindsTheInitiatorWithThatValue() {
+        runner.withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
+            Optional<Initiator> initiator = observe(inboundRegistration(context).getFilter(), BuiltInKeys.INITIATOR,
+                    request -> request.addHeader("Boundrail-Initiator", "user:alice"));
+
+            assertThat(initiator).contains(Initiator.of("user:alice"));
+        });
+    }
+
+    @Test
+    @DisplayName("IN-02 a trusted request binds no deadline and no authority from headers")
+    void aTrustedRequestBindsNoDeadlineAndNoAuthorityFromHeaders() {
+        runner.withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
+            Filter filter = inboundRegistration(context).getFilter();
+            Consumer<MockHttpServletRequest> headers = request -> {
+                request.addHeader("Boundrail-Initiator", "service:edge");
+                request.addHeader("Boundrail-Deadline-Ms", "5000");
+                request.addHeader("Authorization", "Bearer token");
+            };
+
+            assertThat(observe(filter, BuiltInKeys.INITIATOR, headers)).contains(Initiator.of("service:edge"));
+            assertThat(observe(filter, BuiltInKeys.DEADLINE, headers)).isEmpty();
+            assertThat(observe(filter, BuiltInKeys.AUTHORITY, headers)).isEmpty();
+        });
+    }
+
+    @Test
     @DisplayName("WIRE-01 inbound values are read from the header named by the wire name")
     void inboundValuesAreReadFromTheHeaderNamedByTheWireName() {
         runner.withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
@@ -182,6 +259,12 @@ class ContextInboundFilterTest {
                 .filter(registration -> registration.getFilter() instanceof ContextInboundFilter)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("no FilterRegistrationBean for ContextInboundFilter"));
+    }
+
+    /** Throws {@code t}, checked or not, without declaring it. */
+    @SuppressWarnings("unchecked")
+    static <E extends Throwable> void sneakyThrow(Throwable t) throws E {
+        throw (E) t;
     }
 
     /** Sends a request with the given headers through the filter to a servlet that records what it observes. */

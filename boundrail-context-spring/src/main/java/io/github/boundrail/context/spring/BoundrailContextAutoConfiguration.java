@@ -21,6 +21,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
@@ -124,9 +125,12 @@ public class BoundrailContextAutoConfiguration {
         }
 
         @Bean
-        FilterRegistrationBean<ContextInboundFilter> boundrailInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy) {
+        FilterRegistrationBean<ContextInboundFilter> boundrailInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy,
+                Environment environment) {
             FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(new ContextInboundFilter(verifier, policy));
-            registration.setOrder(ContextInboundFilter.ORDER);
+            int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
+                    ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
+            registration.setOrder(securityOrder - 1);
             return registration;
         }
     }
