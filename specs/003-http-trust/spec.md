@@ -102,6 +102,10 @@ values are ignored and reported, and never fail the request.
 - Application code sets a forbidden header twice on an external call: WIRE-07 (one `FORBIDDEN_HEADER`).
 - Application code sets a forbidden header name with no values on an external or unknown call: WIRE-07 (removed, no `FORBIDDEN_HEADER`;
   OUT-04 treats the name as unset).
+- A policy uses a standard HTTP header name, such as `Accept`, `Content-Type`, `Cookie`, `Host` or `User-Agent`, as a key's wire name: POL-09
+  (accepted; only `Authorization` and `Boundrail-` names are reserved). If the key does not propagate to `EXTERNAL_CALL`, WIRE-07 removes that
+  header from every external or unknown call and reports one `FORBIDDEN_HEADER` for it, including headers the HTTP client sets itself, such as
+  `Accept` and `Content-Type`.
 - Application code sets a policy wire header whose context value would be oversized or not a valid field value, or whose key's codec
   `encode` would throw: OUT-04 (the value is not encoded, so no `OVERSIZED_VALUE` or `INVALID_VALUE` is reported and no exception is
   thrown; WIRE-04 and WIRE-08 check only values the interceptor writes).
@@ -215,6 +219,9 @@ key that does not propagate to `EXTERNAL_CALL`, even if application code set it.
 header name that has at least one value, however many values application code set under that name (names compared as WIRE-06 defines). IF a
 removed header name has no values, THEN no violation SHALL be reported for it: nothing could leak, and OUT-04 treats such a name as unset. The
 `Authorization` header SHALL NOT be removed. A header set by application code whose key propagates to `EXTERNAL_CALL` is kept unchanged (OUT-04).
+Note: POL-09 does not reserve standard HTTP header names, so a policy may use `Accept` or `Content-Type` as a wire name. If that key does
+not propagate to `EXTERNAL_CALL`, this rule removes that header from every external or unknown call and reports it, including when the HTTP
+client set it.
 
 **WIRE-08** `[M2]` IF a value the adapter is about to write to an HTTP header (WIRE-01, WIRE-02) is not a valid field value as defined here,
 THEN the adapter SHALL NOT write it, SHALL report an `INVALID_VALUE` violation, and the call SHALL continue. A valid field value is empty, or
