@@ -2,6 +2,7 @@ package io.github.boundrail.context.it.topology;
 
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
+import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.it.topology.Topology.Service;
 import io.github.boundrail.context.spring.BoundrailClients;
@@ -77,6 +78,22 @@ public class EdgeApp {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer partner-key")
                 .retrieve().toBodilessEntity();
         return "edge";
+    }
+
+    /**
+     * Binds {@code tenant}, then calls orders inside {@code Context.without(tenant)}; returns the kind of the
+     * {@code ContextViolationException} the call throws, or {@code sent} if it throws none.
+     */
+    @GetMapping("/call-orders/without-tenant")
+    String callOrdersWithoutTenant(@RequestParam("marker") String marker) {
+        return Context.with(AppKeys.TENANT, "acme").call(() -> Context.without(AppKeys.TENANT).call(() -> {
+            try {
+                ping(internalOrders, Service.ORDERS, marker);
+                return "sent";
+            } catch (ContextViolationException e) {
+                return e.violation().kind().name();
+            }
+        }));
     }
 
     private String callOrdersThenPartner(RestClient partner, String marker) {

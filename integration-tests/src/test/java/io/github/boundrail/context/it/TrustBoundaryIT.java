@@ -122,11 +122,21 @@ class TrustBoundaryIT {
     }
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.9 Required key missing on an internal call")
-    void it29RequiredKeyMissingOnAnInternalCall() {
+    void it29RequiredKeyMissingOnAnInternalCall(Topology.Running topology) throws Exception {
         // IT-2.9: Given violation mode `fail`, when edge code runs `Context.without(tenant)` and calls orders, then
         // `ContextViolationException` is thrown and orders receives no request. *(POL-08, DIAG-02)*
+        String marker = UUID.randomUUID().toString();
+        // The topology is shared, so the counts are deltas around this request.
+        double before = topology.violations(Service.EDGE, Violation.Kind.MISSING_REQUIRED);
+        int ordersBefore = topology.observed().of("orders").size();
+
+        HttpResponse<String> response = callEdge(topology, "/call-orders/without-tenant", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).as("the kind of the ContextViolationException edge caught").isEqualTo("MISSING_REQUIRED");
+        assertThat(topology.violations(Service.EDGE, Violation.Kind.MISSING_REQUIRED)).isEqualTo(before + 1);
+        assertThat(topology.observed().of("orders")).hasSize(ordersBefore);
     }
 
     /** Calls an edge endpoint as alice, the public caller. */

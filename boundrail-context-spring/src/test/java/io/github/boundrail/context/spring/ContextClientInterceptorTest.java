@@ -7,6 +7,7 @@ import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.MESSAGE;
 import static io.github.boundrail.context.Violation.Kind.FORBIDDEN_HEADER;
 import static io.github.boundrail.context.Violation.Kind.INVALID_VALUE;
+import static io.github.boundrail.context.Violation.Kind.MISSING_REQUIRED;
 import static io.github.boundrail.context.Violation.Kind.OVERSIZED_VALUE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -20,6 +21,7 @@ import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextCodec;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Deadline;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.Initiator;
@@ -602,6 +604,140 @@ class ContextClientInterceptorTest {
         assertThat(exchange.violations()).isEmpty();
     }
 
+    @Test
+    @DisplayName("POL-08 an unbound required key that propagates to INTERNAL_CALL is a MISSING_REQUIRED violation before sending")
+    void anUnboundRequiredKeyThatPropagatesToInternalCallIsAMissingRequiredViolationBeforeSending() {
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.internal("orders"), Context.with(PRIORITY, 5L), NO_HEADERS);
+
+        assertThat(attempt.violations()).extracting(Violation::kind, Violation::key, Violation::boundary)
+                .containsExactly(tuple(MISSING_REQUIRED, "tenant", INTERNAL_CALL));
+        assertThat(attempt.requests()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DIAG-02 in fail mode the violation is reported, then ContextViolationException is thrown, and the request is not sent")
+    void inFailModeTheViolationIsReportedThenContextViolationExceptionIsThrownAndTheRequestIsNotSent() {
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.internal("orders"), Context.with(PRIORITY, 5L), NO_HEADERS,
+                "boundrail.context.violations.mode=fail");
+
+        Violation expected = new Violation(MISSING_REQUIRED, "tenant", INTERNAL_CALL,
+                Optional.of(new Destination(Destination.Kind.INTERNAL, Optional.of("orders"))), Thread.currentThread().getName(),
+                Optional.empty(), Optional.empty());
+        assertThat(attempt.thrown()).isInstanceOf(ContextViolationException.class);
+        assertThat(((ContextViolationException) attempt.thrown()).violation()).isEqualTo(expected);
+        assertThat(attempt.violations()).as("reported before the exception reached the caller").containsExactly(expected);
+        assertThat(attempt.requests()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DIAG-02 in report mode the violation is reported and the call continues without the key")
+    void inReportModeTheViolationIsReportedAndTheCallContinuesWithoutTheKey() {
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.internal("orders"), Context.with(PRIORITY, 5L), NO_HEADERS,
+                "boundrail.context.violations.mode=report");
+
+        assertThat(attempt.thrown()).isNull();
+        assertThat(attempt.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(MISSING_REQUIRED, "tenant"));
+        assertThat(attempt.requests()).hasSize(1);
+        assertThat(header(attempt.requests().getFirst(), "Tenant-Id")).isEmpty();
+        assertThat(header(attempt.requests().getFirst(), "Priority")).containsExactly("5");
+    }
+
+    @Test
+    @DisplayName("DIAG-02 violations.mode defaults to fail")
+    void violationsModeDefaultsToFail() {
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.internal("orders"), Context.with(PRIORITY, 5L), NO_HEADERS);
+
+        assertThat(attempt.thrown()).isInstanceOf(ContextViolationException.class);
+        assertThat(attempt.requests()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("POL-08 a required key with only a default is MISSING_REQUIRED")
+    void aRequiredKeyWithOnlyADefaultIsMissingRequired() {
+        ContextKey<String> defaulted = ContextKey.of("tenant", String.class, "fallback");
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(defaulted, rules -> rules.codec(Codecs.string()).wireName("Tenant-Id").required().propagateTo(INTERNAL_CALL))
+                .build();
+
+        Attempt attempt = attempt(policy, BoundrailClients.internal("orders"), Context.without(defaulted), NO_HEADERS);
+
+        assertThat(Context.without(defaulted).call(defaulted::get)).as("the default is visible").isEqualTo("fallback");
+        assertThat(attempt.thrown()).isInstanceOf(ContextViolationException.class);
+        assertThat(attempt.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(MISSING_REQUIRED, "tenant"));
+        assertThat(attempt.requests()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("POL-08 a required key is MISSING_REQUIRED even when application code set its wire header")
+    void aRequiredKeyIsMissingRequiredEvenWhenApplicationCodeSetItsWireHeader() {
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.internal("orders"), Context.with(PRIORITY, 5L),
+                headers -> headers.set("Tenant-Id", "mine"));
+
+        assertThat(attempt.thrown()).isInstanceOf(ContextViolationException.class);
+        assertThat(attempt.violations()).extracting(Violation::kind, Violation::key).containsExactly(tuple(MISSING_REQUIRED, "tenant"));
+        assertThat(attempt.requests()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("POL-08 a required key that does not propagate to the call's boundary is not checked")
+    void aRequiredKeyThatDoesNotPropagateToTheCallsBoundaryIsNotChecked() {
+        // The topology's tenant is required and propagates to INTERNAL_CALL, not to EXTERNAL_CALL.
+        Attempt attempt = attempt(TOPOLOGY_POLICY, BoundrailClients.external(), Context.with(PRIORITY, 5L), NO_HEADERS);
+
+        assertThat(attempt.thrown()).isNull();
+        assertThat(attempt.violations()).isEmpty();
+        assertThat(attempt.requests()).hasSize(1);
+    }
+
+    static Stream<Arguments> externalAndUnknownCalls() {
+        return Stream.of(
+                Arguments.of(Named.of("external", BoundrailClients.external()), Destination.Kind.EXTERNAL),
+                Arguments.of(Named.of("unknown", UNDECLARED), Destination.Kind.UNKNOWN));
+    }
+
+    @ParameterizedTest(name = "[{index}] {0}")
+    @MethodSource("externalAndUnknownCalls")
+    @DisplayName("POL-08 a required key that propagates to EXTERNAL_CALL is checked on an external or unknown call")
+    void aRequiredKeyThatPropagatesToExternalCallIsCheckedOnAnExternalOrUnknownCall(Consumer<RestClient.Builder> declaration,
+            Destination.Kind kind) {
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(CHANNEL, rules -> rules.codec(Codecs.string()).wireName("Channel").required().propagateTo(EXTERNAL_CALL))
+                .build();
+
+        Attempt attempt = attempt(policy, declaration, Context.without(CHANNEL), NO_HEADERS);
+
+        assertThat(attempt.thrown()).isInstanceOf(ContextViolationException.class);
+        assertThat(attempt.violations())
+                .extracting(Violation::kind, Violation::key, Violation::boundary, violation -> violation.destination().orElseThrow().kind())
+                .containsExactly(tuple(MISSING_REQUIRED, "channel", EXTERNAL_CALL, kind));
+        assertThat(attempt.requests()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DIAG-02 several unbound required keys are each reported in ascending key-name order, and the exception carries the first")
+    void severalUnboundRequiredKeysAreEachReportedInAscendingKeyNameOrderAndTheExceptionCarriesTheFirst() {
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("Tenant-Id").required().propagateTo(INTERNAL_CALL))
+                .key(REGION, rules -> rules.codec(Codecs.string()).wireName("Region").required().propagateTo(INTERNAL_CALL))
+                .build();
+
+        Attempt failed = attempt(policy, BoundrailClients.internal("orders"), Context.without(TENANT), NO_HEADERS);
+
+        assertThat(failed.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(MISSING_REQUIRED, "region"), tuple(MISSING_REQUIRED, "tenant"));
+        assertThat(failed.thrown()).isInstanceOf(ContextViolationException.class);
+        assertThat(((ContextViolationException) failed.thrown()).violation().key()).isEqualTo("region");
+        assertThat(failed.requests()).isEmpty();
+
+        Attempt reported = attempt(policy, BoundrailClients.internal("orders"), Context.without(TENANT), NO_HEADERS,
+                "boundrail.context.violations.mode=report");
+
+        assertThat(reported.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(MISSING_REQUIRED, "region"), tuple(MISSING_REQUIRED, "tenant"));
+        assertThat(reported.thrown()).isNull();
+        assertThat(reported.requests()).hasSize(1);
+    }
+
     /** The request the server received and the violations reported while sending it. */
     private record Exchange(RecordingServer.Request request, List<Violation> violations) {
     }
@@ -625,6 +761,37 @@ class ContextClientInterceptorTest {
                     });
             assertThat(server.requests()).hasSize(1);
             return new Exchange(server.requests().getFirst(), List.copyOf(violations));
+        }
+    }
+
+    /**
+     * The requests the server received, the violations reported before the call returned or threw, and what it threw, or {@code null}.
+     */
+    private record Attempt(List<RecordingServer.Request> requests, List<Violation> violations, Throwable thrown) {
+    }
+
+    /**
+     * Sends one GET like {@link #exchange}, but allows the call to throw and the server to receive nothing. The violations are copied as
+     * soon as the call returns or throws.
+     */
+    private Attempt attempt(ContextPolicy policy, Consumer<RestClient.Builder> declaration, ContextBinding binding,
+            Consumer<HttpHeaders> applicationHeaders, String... properties) {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        List<Violation> reported = new ArrayList<>();
+        Throwable[] thrown = new Throwable[1];
+        try (RecordingServer server = RecordingServer.start("ok")) {
+            runner.withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                    .withPropertyValues(properties)
+                    .withBean(ContextPolicy.class, () -> policy)
+                    .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                    .run(context -> {
+                        RestClient client = context.getBean(RestClient.Builder.class).baseUrl(server.uri()).apply(declaration).build();
+
+                        thrown[0] = catchThrowable(() -> binding.run(
+                                () -> client.get().uri("/").headers(applicationHeaders).retrieve().toBodilessEntity()));
+                        reported.addAll(violations);
+                    });
+            return new Attempt(List.copyOf(server.requests()), List.copyOf(reported), thrown[0]);
         }
     }
 

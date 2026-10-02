@@ -455,7 +455,7 @@ enforces required keys, the length limit and valid field values.
   - Completes: WIRE-07 (including names with no values, and keeping headers of keys that propagate to `EXTERNAL_CALL`); OUT-04 (external);
     DEST-03 (stripping); WIRE-06; IT-2.4.
   - Verify: Unit `ContextClientInterceptorTest`; IT.
-- [ ] T015 [US1] Required keys before a remote call; enable IT-2.9.
+- [x] T015 [US1] Required keys before a remote call; enable IT-2.9.
   - Red:
     - enable IT-2.9: the edge endpoint binds `tenant`, runs `Context.without(tenant)` and calls orders through `internal("orders")`. It catches
       `ContextViolationException` and returns its kind. The response is `MISSING_REQUIRED`, edge's `MISSING_REQUIRED` count rises by exactly 1,

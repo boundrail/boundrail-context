@@ -17,13 +17,22 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
         @DefaultValue Wire wire) {
 
     /**
-     * Violation reporting (DIAG-03).
+     * Violation handling (DIAG-02) and reporting (DIAG-03).
      *
+     * @param mode whether a {@code MISSING_REQUIRED} violation fails the operation or is only reported
      * @param logInterval the rate limit for violation log entries: one per kind, key and boundary per interval; zero logs every
      *     occurrence
      * @throws IllegalArgumentException if {@code logInterval} is negative
      */
-    public record Violations(@DefaultValue("1m") Duration logInterval) {
+    public record Violations(@DefaultValue("fail") Mode mode, @DefaultValue("1m") Duration logInterval) {
+
+        /** What happens on a {@code MISSING_REQUIRED} violation (DIAG-02). */
+        public enum Mode {
+            /** Report the violation, then throw a {@code ContextViolationException} carrying it. */
+            FAIL,
+            /** Report the violation and continue without the key. */
+            REPORT
+        }
 
         public Violations {
             if (logInterval.isNegative()) {

@@ -6,6 +6,7 @@ import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
+import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.OutboundRequest;
@@ -24,18 +25,22 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
     private final DestinationClassifier classifier;
     private final ContextPolicy policy;
     private final ViolationReporter reporter;
+    private final BoundrailContextProperties.Violations.Mode mode;
     private final int maxValueLength;
 
-    ContextClientInterceptor(DestinationClassifier classifier, EffectivePolicy policy, ViolationReporter reporter, int maxValueLength) {
+    ContextClientInterceptor(DestinationClassifier classifier, EffectivePolicy policy, ViolationReporter reporter,
+            BoundrailContextProperties.Violations.Mode mode, int maxValueLength) {
         this.classifier = classifier;
         this.policy = policy.policy();
         this.reporter = reporter;
+        this.mode = mode;
         this.maxValueLength = maxValueLength;
     }
 
     /**
-     * Classifies the request URI and the client's declaration, if any (OUT-02), writes the wire headers of the bound keys that propagate
-     * to the boundary (OUT-04), strips forbidden headers from an external or unknown request (WIRE-07), then executes the request once.
+     * Classifies the request URI and the client's declaration, if any (OUT-02), checks the required keys (POL-08), writes the wire headers
+     * of the bound keys that propagate to the boundary (OUT-04), strips forbidden headers from an external or unknown request (WIRE-07),
+     * then executes the request once.
      */
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
@@ -43,11 +48,31 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         Destination destination = classifier.classify(new OutboundRequest(request.getURI(), declared));
         // DEST-03: UNKNOWN is treated exactly like EXTERNAL.
         Boundary boundary = destination.kind() == Destination.Kind.INTERNAL ? Boundary.INTERNAL_CALL : Boundary.EXTERNAL_CALL;
+        checkRequiredKeys(boundary, destination);
         writeHeaders(request, policy.filter(Context.capture(), boundary), boundary, destination);
         if (boundary == Boundary.EXTERNAL_CALL) {
             stripForbiddenHeaders(request, destination);
         }
         return execution.execute(request, body);
+    }
+
+    /**
+     * Reports one {@code MISSING_REQUIRED} per required key that propagates to the boundary and is not bound, a default not counting, in
+     * ascending order of key name (POL-08, DIAG-02). It reads the context, not the request headers. In {@code FAIL} mode it then throws one
+     * {@code ContextViolationException} carrying the first, so no header is written and the request is not sent.
+     */
+    private void checkRequiredKeys(Boundary boundary, Destination destination) {
+        List<Violation> missing = policy.keys().stream()
+                .filter(key -> policy.isRequired(key) && policy.propagates(key, boundary) && !key.isBound())
+                .map(ContextKey::name)
+                .sorted()
+                .map(name -> new Violation(Violation.Kind.MISSING_REQUIRED, name, boundary, Optional.of(destination),
+                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()))
+                .toList();
+        missing.forEach(reporter::report);
+        if (!missing.isEmpty() && mode == BoundrailContextProperties.Violations.Mode.FAIL) {
+            throw new ContextViolationException(missing.getFirst());
+        }
     }
 
     /**

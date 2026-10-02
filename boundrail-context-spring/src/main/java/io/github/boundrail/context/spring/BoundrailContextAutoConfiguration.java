@@ -87,7 +87,7 @@ public class BoundrailContextAutoConfiguration {
             return builder -> builder.requestInterceptors(interceptors -> {
                 if (interceptors.stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     interceptors.add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.wire().maxValueLength()));
+                            properties.violations().mode(), properties.wire().maxValueLength()));
                 }
             });
         }
@@ -99,7 +99,7 @@ public class BoundrailContextAutoConfiguration {
             return restTemplate -> {
                 if (restTemplate.getInterceptors().stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.wire().maxValueLength()));
+                            properties.violations().mode(), properties.wire().maxValueLength()));
                 }
             };
         }
