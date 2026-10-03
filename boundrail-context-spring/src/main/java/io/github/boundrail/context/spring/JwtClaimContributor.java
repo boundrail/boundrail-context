@@ -11,10 +11,12 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 public final class JwtClaimContributor implements ContextContributor {
 
     private final String claim;
+    private final ContextKey<?> key;
     private final BiConsumer<ContextContributions, String> contribution;
 
-    private JwtClaimContributor(String claim, BiConsumer<ContextContributions, String> contribution) {
+    private JwtClaimContributor(String claim, ContextKey<?> key, BiConsumer<ContextContributions, String> contribution) {
         this.claim = claim;
+        this.key = key;
         this.contribution = contribution;
     }
 
@@ -32,12 +34,23 @@ public final class JwtClaimContributor implements ContextContributor {
         Objects.requireNonNull(claim, "claim");
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(codec, "codec");
-        return new JwtClaimContributor(claim, (contributions, text) -> contributions.put(key, codec.decode(text)));
+        return new JwtClaimContributor(claim, key, (contributions, text) -> {
+            T value;
+            try {
+                value = codec.decode(text);
+            } catch (IllegalArgumentException e) {
+                contributions.invalid(key);
+                return;
+            }
+            contributions.put(key, value);
+        });
     }
 
     /**
      * Contributes the claim of a JWT authentication, decoded with the codec; contributes nothing for a missing claim or an authentication that
-     * is not a JWT authentication (IN-06).
+     * is not a JWT authentication. A claim whose value is not a {@code String}, or whose decoding throws {@code IllegalArgumentException} or a
+     * subclass, is reported through {@code invalid(key)} and not contributed; any other exception from the codec propagates unchanged. No
+     * length limit applies to the claim (IN-06).
      *
      * @throws NullPointerException if an argument is {@code null}
      */
@@ -47,8 +60,10 @@ public final class JwtClaimContributor implements ContextContributor {
         Objects.requireNonNull(contributions, "contributions");
         if (authentication instanceof JwtAuthenticationToken jwt) {
             Object value = jwt.getToken().getClaims().get(claim);
-            if (value != null) {
-                contribution.accept(contributions, (String) value);
+            if (value instanceof String text) {
+                contribution.accept(contributions, text);
+            } else if (value != null) {
+                contributions.invalid(key);
             }
         }
     }

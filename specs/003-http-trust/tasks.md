@@ -927,7 +927,7 @@ authentication through contributors.
       (binds nothing itself and calls orders through `internal("orders")`, for IT-2.1), and `TestJwts.withoutTenant()`.
   - Completes: IN-06 (valid and missing claims); CORE-13 (`JwtClaimContributor`); IT-2.1; IT-2.5; IT-2.6 (IN-02, IN-04, IN-05 end to end).
   - Verify: Unit `JwtClaimContributorTest`; IT.
-- [ ] T028 [US2] Invalid claims.
+- [x] T028 [US2] Invalid claims.
   - Red, in `JwtClaimContributorTest`:
     - `IN-06 a claim whose value is not a String is reported as INVALID_VALUE`, parametrized over a number, a boolean and a list: the key stays
       unbound and `invalid(key)` is called once;
