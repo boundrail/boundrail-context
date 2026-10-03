@@ -54,7 +54,7 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
     @Override
     public void run(Runnable op) {
         Objects.requireNonNull(op, "op");
-        ContextRuntime.SLOT.call(this, () -> {
+        ContextRuntime.enter(this, () -> {
             op.run();
             return null;
         });
@@ -63,7 +63,7 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
     @Override
     public <R, X extends Throwable> R call(ContextCallable<R, X> op) throws X {
         Objects.requireNonNull(op, "op");
-        return ContextRuntime.SLOT.call(this, op);
+        return ContextRuntime.enter(this, op);
     }
 
     @Override

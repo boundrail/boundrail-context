@@ -75,7 +75,7 @@ public final class ContextBinding {
      */
     public void run(Runnable op) {
         Objects.requireNonNull(op, "op");
-        ContextRuntime.SLOT.call(applied(), () -> {
+        ContextRuntime.enter(applied(), () -> {
             op.run();
             return null;
         });
@@ -93,7 +93,7 @@ public final class ContextBinding {
      */
     public <R, X extends Throwable> R call(ContextCallable<R, X> op) throws X {
         Objects.requireNonNull(op, "op");
-        return ContextRuntime.SLOT.call(applied(), op);
+        return ContextRuntime.enter(applied(), op);
     }
 
     /**

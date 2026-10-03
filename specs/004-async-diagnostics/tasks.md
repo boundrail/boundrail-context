@@ -90,7 +90,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 2: Foundational — core runtime hooks (blocks every story)
 
-- [ ] T002 [P] Scope listeners: registration, order and restore.
+- [x] T002 [P] Scope listeners: registration, order and restore.
   - Red, in `coretest/ScopeListenerTest.java`, on the base (ThreadLocal) variant:
     - `RT-07 listeners are entered in registration order after the entered snapshot is current`: two listeners record their name and
       `Context.capture()` in `onEnter`, for `ContextBinding.run` and `call` and `ContextSnapshot.run`, `call` and both `wrap`s;
