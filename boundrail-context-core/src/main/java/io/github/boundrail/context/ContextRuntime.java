@@ -1,5 +1,6 @@
 package io.github.boundrail.context;
 
+import io.github.boundrail.context.internal.CaptureSiteProperties;
 import io.github.boundrail.context.internal.ContextSlot;
 import io.github.boundrail.context.internal.SlotFactory;
 import java.util.ArrayList;
@@ -18,11 +19,28 @@ public final class ContextRuntime {
         SCOPED_VALUE
     }
 
+    /** When snapshots record the site where they were bound (DIAG-05, RT-08). */
+    public enum CaptureSites {
+        /** No capture sites are recorded. */
+        OFF,
+        /** Every binding records its capture site. */
+        ON,
+        /** A sampled fraction of bindings records its capture site. */
+        SAMPLED
+    }
+
     static final ContextSlot SLOT = SlotFactory.create();
 
     private static final CopyOnWriteArrayList<ScopeListener> LISTENERS = new CopyOnWriteArrayList<>();
 
     private static final System.Logger LOGGER = System.getLogger("io.github.boundrail.context");
+
+    /** The capture-site mode and its sample rate, held together so that they always change together (RT-08). */
+    private record CaptureSiteMode(CaptureSites mode, double sampleRate) {
+    }
+
+    private static volatile CaptureSiteMode captureSiteMode =
+            new CaptureSiteMode(CaptureSiteProperties.mode(), CaptureSiteProperties.sampleRate());
 
     /** A restorer kept with the listener that returned it, so a failing restorer can be reported by its listener. */
     private record Entered(ScopeListener listener, ScopeListener.Restorer restorer) {
@@ -34,6 +52,32 @@ public final class ContextRuntime {
     /** {@return the active backend (RT-05)} */
     public static Backend backend() {
         return SLOT.backend();
+    }
+
+    /**
+     * Changes the capture-site mode and its sample rate, JVM-wide (RT-08).
+     *
+     * @param mode the mode
+     * @param sampleRate the fraction of bindings that record their capture site when the mode is {@code SAMPLED}, from 0.0 to 1.0
+     * @throws NullPointerException if the mode is {@code null}
+     * @throws IllegalArgumentException if the sample rate is NaN or outside 0.0 – 1.0; the mode is then unchanged
+     */
+    public static void captureSites(CaptureSites mode, double sampleRate) {
+        Objects.requireNonNull(mode, "mode");
+        if (!(sampleRate >= 0.0 && sampleRate <= 1.0)) {
+            throw new IllegalArgumentException("sampleRate must be from 0.0 to 1.0: " + sampleRate);
+        }
+        captureSiteMode = new CaptureSiteMode(mode, sampleRate);
+    }
+
+    /** {@return the current capture-site mode (RT-08)} */
+    public static CaptureSites captureSites() {
+        return captureSiteMode.mode();
+    }
+
+    /** {@return the current sample rate (RT-08)} */
+    public static double sampleRate() {
+        return captureSiteMode.sampleRate();
     }
 
     /**

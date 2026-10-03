@@ -138,7 +138,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     restorer's `RuntimeException` names that listener (its class name) instead of the restorer's class.
   - Completes: RT-07; CORE-14 (`null` restorer); RC-9.
   - Verify: Unit `ScopeListenerTest`; RC (all three tasks).
-- [ ] T004 [P] Capture-site mode in the runtime.
+- [x] T004 [P] Capture-site mode in the runtime.
   - Red:
     - in `coretest/CaptureSiteModeTest.java`:
       - `RT-08 the mode defaults to off with a sample rate of 0.01`;
@@ -150,6 +150,10 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
       - `RT-08 off, on and sampled are recognised exactly`, and `ON` or `" on"` logs a warning and gives `off`;
       - `RT-08 a sample rate is parsed with Double.parseDouble and accepted from 0.0 to 1.0`: `0`, `1.0`, `0.25`, `" 0.5 "`, `5e-1` and
         `0x1p-1` are recognised; `abc`, `NaN`, `-0.1` and `2` log a warning and give `0.01`.
+      - `RT-08 the mode and sample rate are read from the boundrail.context.diagnostics.capture-sites and sample-rate system properties`:
+        with both set (`sampled`, `0.25`), `CaptureSiteProperties.mode()` returns `SAMPLED` and `sampleRate()` returns `0.25`; the previous
+        property values are restored in `finally`. Added in T004's review; not a guard (the reading code did not exist before T004; its red
+        is shown with a temporary typo in a property-name constant).
   - Green: `ContextRuntime.CaptureSites`, the `volatile` mode pair, `captureSites(...)`, `captureSites()`, `sampleRate()`; `core/internal/
     CaptureSiteProperties.java`, read when `ContextRuntime` initialises.
   - Completes: RT-08; CORE-14 (`captureSites`).
