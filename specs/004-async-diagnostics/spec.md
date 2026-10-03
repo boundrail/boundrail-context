@@ -120,6 +120,9 @@ A handler that returns a `Callable` or a `DeferredResult` sees the same context 
 - Invalid configuration with `spring.main.lazy-initialization=true`: an invalid `executors.modes.<bean-name>`, `diagnostics.capture-sites` or
   `diagnostics.sample-rate` still fails startup (EXE-01, DIAG-05).
 - A `null` argument passed to the M3 contracts: CORE-14.
+- A Spring upgrade renames a private field the library reads: EXE-10 (startup fails, naming the class and the field).
+- A `@Scheduled` method that returns a `Publisher` or is a Kotlin `suspend` function, or an application that registers its own
+  `internalScheduledAnnotationProcessor`: EXE-06 (no system context; in the second case, one startup WARN).
 - A nested `Context.without(tenant)` scope: LOG-01 (`tenant` is removed from the MDC for that scope, and restored when it exits).
 - Code that completes a `DeferredResult` on an application thread: IN-09 (the async dispatch still gets the request's snapshot); the completing
   code itself runs with whatever context its thread has (EXE-04).
@@ -188,15 +191,27 @@ policy declares for its own keys at `ATTACHED` or `DETACHED` are not applied, an
 
 **EXE-06** `[M3]` WHEN the scheduler invokes a `@Scheduled` method, the library SHALL run it in a fresh snapshot containing only
 `INITIATOR = "system:scheduled:<beanName>.<methodName>"`, never a context left over from another task. WHEN application code calls the same
-method directly, it SHALL run in the caller's context, unchanged.
+method directly, it SHALL run in the caller's context, unchanged. This SHALL cover ordinary `@Scheduled` methods only: methods that return a
+reactive `Publisher` and Kotlin `suspend` methods are not covered (EXE-07). The library SHALL provide this by replacing only the bean
+definition of Spring's own scheduled-annotation post-processor, registered by Spring as `internalScheduledAnnotationProcessor`. IF the
+application registered its own definition under that name, THEN the library SHALL leave it, and SHALL log one WARN entry at startup stating
+that `@Scheduled` methods are not given a system context (DESIGN D47).
 
 **EXE-07** `[M3]` The Javadoc of `BoundExecutors` SHALL state that `CompletableFuture.*Async` methods without an explicit executor use the common
-pool and are not covered (DESIGN D45).
+pool and are not covered, and that `@Scheduled` methods returning a reactive `Publisher` and Kotlin `suspend` `@Scheduled` methods are not
+given a system context (EXE-06; DESIGN D45, D47).
 
 **EXE-09** `[M3]` WHERE Spring MVC is present, a `Callable` returned by a handler, or a `WebAsyncTask` with no executor of its own, SHALL run
 inside the request's snapshot, captured when Spring MVC submits it and filtered for `ATTACHED` (POL-04), because the request awaits its result.
 This SHALL hold whatever the mode of the executor Spring MVC submits it to (DESIGN D39). Verified by IT-1.9, and by unit tests for the
 `ATTACHED` filtering.
+
+**EXE-10** `[M3]` Spring offers no getter for the values EXE-03 and EXE-09 must compose with, so the Spring module MAY read them by reflection,
+once per bean: the private `taskDecorator` field of `ThreadPoolTaskExecutor`, `SimpleAsyncTaskExecutor` and `ThreadPoolTaskScheduler`
+(EXE-03), and the private `taskExecutor` field of `RequestMappingHandlerAdapter` (EXE-09). It SHALL read no other private member, and SHALL set
+values only through Spring's public setters. IF such a field is missing at runtime, for example because a Spring upgrade renamed it, THEN
+application startup SHALL fail, with a message naming the class and the field, even when `spring.main.lazy-initialization` is `true` for the
+beans the library processes at startup (DESIGN D47). Verified by unit tests.
 
 ### Spring MVC async processing
 
@@ -308,8 +323,8 @@ compile/api dependencies in the generated POM and Gradle module metadata of `bou
 Properties use the prefix `boundrail.context.`.
 
 Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: an invalid
-`executors.modes.<bean-name>` or two keys for one bean name with different modes (EXE-01), and an invalid `diagnostics.capture-sites` or
-`diagnostics.sample-rate` (DIAG-05).
+`executors.modes.<bean-name>` or two keys for one bean name with different modes (EXE-01), an invalid `diagnostics.capture-sites` or
+`diagnostics.sample-rate` (DIAG-05), and a Spring field that EXE-10 reads missing at runtime (EXE-10).
 
 | Property | Default | Meaning |
 |---|---|---|

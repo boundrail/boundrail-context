@@ -4,11 +4,11 @@
 
 **Input**: Feature specification from `/specs/004-async-diagnostics/spec.md`, contracts
 [contracts/runtime-listeners.md](contracts/runtime-listeners.md) and [contracts/executors-and-test.md](contracts/executors-and-test.md),
-decisions D39 – D45 in [design.md](../../docs/design.md)
+decisions D39 – D47 in [design.md](../../docs/design.md), the T001 spike's outcome
 
-**Status**: Approved by the user (plan, tasks, the TDD exception and the ten guard tests). The spec gaps G2 – G12 are resolved in spec.md and
-design.md D46 (DIAG-12 is new), and their tests are planned below. One spike (T001) must run before the tasks that depend on it, and its
-outcome may need a user decision and a spec change (G1, [Spike](#spike-t001)).
+**Status**: Approved by the user (plan, tasks, both TDD exception rows and the ten guard tests). The spike T001 is done, and its outcome is
+recorded below. Every spec gap is closed: G2 – G14 in spec.md and design.md D46 (DIAG-12 is new), G1 by the user's decision to allow
+reflection, written into spec.md as EXE-10 with amended EXE-06 and EXE-07 (D47). One new guard test (T012) awaits the user's acceptance.
 
 ## Summary
 
@@ -34,10 +34,10 @@ Context survives in-process async boundaries, and when it does not, the failure 
   and `ContextAssertions`; JUnit Jupiter API and AssertJ as `api` dependencies (TEST-02 – TEST-04, D40).
 
 Library code is driven by unit and `ApplicationContextRunner` tests. Each ContextPropagationIT scenario is enabled in the task whose code
-makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and nine unit tests already pass
-before their task; each red is shown against a named temporary change that is then reverted ([Guard Tests](#guard-tests)). The T003 guard
-the user accepted for the `null` restorer is no longer one: with G13 settled, its test also asserts that the operation does not run, which is
-red before T003.
+makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and ten unit tests already pass
+before their task: the nine approved unit guards, and T012's new one, which awaits acceptance. Each red is shown against a named temporary
+change that is then reverted ([Guard Tests](#guard-tests)). The T003 guard the user accepted for the `null` restorer is no longer one: with
+G13 settled, its test also asserts that the operation does not run, which is red before T003.
 
 ## Technical Context
 
@@ -72,7 +72,7 @@ so both backends share it)
 **Project Type**: library (Spring Boot auto-configuration)
 
 **Performance Goals**: with no listener registered and capture sites `off`, a scope entry does no extra work beyond one empty-list check and
-one volatile read (SC-003); no reflection per task or per request (reflection, if the spike chooses it, runs once per bean at startup)
+one volatile read (SC-003); no reflection per task or per request (EXE-10: four private fields, each read once per bean at startup)
 
 **Constraints**:
 
@@ -82,7 +82,7 @@ one volatile read (SC-003); no reflection per task or per request (reflection, i
 - MDC entries restored, never cleared (`boundrail-conventions`).
 - No work from M4 – M6: no deadline enforcement in executors (EXE-08 is M4), no authority, no Kafka.
 
-**Scale/Scope**: 5 contract types plus additions to `ContextRuntime` and `ContextSnapshot`; 26 requirements; RC-9 and 9 scenarios; a spike, 23
+**Scale/Scope**: 5 contract types plus additions to `ContextRuntime` and `ContextSnapshot`; 27 requirements; RC-9 and 9 scenarios; a spike, 23
 red-green tasks (T002 – T024) and a close task (T025)
 
 ## Constitution Check
@@ -96,56 +96,40 @@ red-green tasks (T002 – T024) and a close task (T025)
 | III Secure by default | Pass | `AUTHORITY` never reaches the MDC (LOG-02); an `ASYNC` dispatch re-enters the stored snapshot without trusting any header again (IN-09) |
 | IV Declared, never guessed | Pass | Mode per executor bean, default `DETACHED` (EXE-01); `Callable` work is `ATTACHED` by declaration (EXE-09, D39) |
 | V Evidence only | Pass | Violations carry thread, capture site and executor evidence only as observed (DIAG-04); stack walking only when `on` or `sampled` (SC-003) |
-| VI Interoperate | Pending T001 | EXE-03 composes with Micrometer's and Boot's decorators; how depends on the spike, and one outcome needs a spec change |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the ten guard tests and both Javadoc TDD exceptions are approved |
+| VI Interoperate | Pass | EXE-03 composes with Micrometer's, Boot's and code-set decorators, library outermost, by reading Spring's private `taskDecorator` field once per bean (EXE-10, D47) |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the ten guard tests and both Javadoc TDD exception rows are approved; one more guard (T012) awaits acceptance |
 | VIII Simplicity | Pass | One post-processor, one decorator, one table shared by evidence and audit, one listener per context; no public audit API (D42) |
 | Technical constraints | Pass | Core stays dependency-free (T025); SLF4J and Spring MVC `compileOnly` behind `@ConditionalOnClass` |
 
 ## Spike (T001)
 
-T001 is a time-boxed spike, run before T012, T019 and T021. Its code is thrown away; the leader reports the findings, the planner records the
-chosen mechanism in [Research Notes](#research-notes), and where a finding needs a spec change, the user decides it before the blocked task
-starts. It is not a red-green cycle and is not committed.
+Done; no code kept. Verified on Spring Boot 4.1.1 / Framework 7.0.9, on JDK 21 and JDK 25. The user chose option A for EXE-03 and EXE-09 and
+option B for EXE-06 (G1 closed); spec.md has them as EXE-10 and amended EXE-06 and EXE-07 (D47).
 
-Questions, each answered with a throwaway `ApplicationContextRunner` test on Spring Boot 4.1.1 / Framework 7.0.9:
-
-1. **EXE-03 composition.** `ThreadPoolTaskExecutor`, `SimpleAsyncTaskExecutor` and `ThreadPoolTaskScheduler` have `setTaskDecorator` but no
-   getter. `javap` on 7.0.9 shows each holds it in a private field `taskDecorator` of type `TaskDecorator`. Boot 4.1.1's builders apply the
-   ordered `TaskDecorator` beans, composed in a `CompositeTaskDecorator` when there are several. Options:
-   - **A. Reflection (preferred).** In `postProcessBeforeInitialization`, read the field once per bean with `ReflectionUtils.findField(type,
-     "taskDecorator", TaskDecorator.class)`, and set `library ∘ existing`. Covers decorators from Boot's builders, from
-     `spring.task.execution.propagate-context`, and from application code. Check: field present on all three types; the composed order (the
-     existing decorator runs inside the library's scope); a test that fails loudly if a Spring upgrade renames the field.
-   - **B. Boot-applied decorators only.** The library cannot see a decorator set in code, so its post-processor would either replace it or
-     leave the bean undecorated. A `TaskDecorator` bean of the library cannot carry a per-bean mode (EXE-01), so B still needs the
-     post-processor.
-   - **C. Proxy around the executor bean.** Intercepts `execute`/`submit` before the executor's own decorator, so the existing decorator runs
-     outside the library's scope, contrary to EXE-03.
-
-   **If only B or C is acceptable, EXE-03 as written cannot be met.** The spec would have to say, for example, that the library composes
-   with decorators supplied as `TaskDecorator` beans and replaces (or leaves in place, reported as a gap) a decorator set in code. That is a
-   spec change for the user to decide, not the planner. T011 does not depend on the answer; T012 does.
-2. **EXE-09 Callable hook.** `RequestMappingHandlerAdapter` has `setTaskExecutor` but no getter, and `WebAsyncTask`'s callbacks are held
-   behind a package-private `getInterceptor()`, so a `WebAsyncTask` cannot be rebuilt around a wrapped `Callable` without losing them.
-   `CallableProcessingInterceptor.preProcess`/`postProcess` are set/restore, which the ScopedValue backend cannot do. Options:
-   - **A. Wrap MVC's executor (preferred).** After the adapter is initialised, read its private `taskExecutor` field once and set a wrapper
-     that captures at `submit`, filters for `ATTACHED` and runs the task in that snapshot. Covers `Callable` and `WebAsyncTask` without an
-     executor; a `WebAsyncTask` with its own executor bypasses it, as EXE-09 allows.
-   - **B. Wrap the return value.** Put a handler in front of `CallableMethodReturnValueHandler` (public `getReturnValueHandlers` and
-     `setReturnValueHandlers`) that wraps the `Callable`. No reflection, but it cannot cover `WebAsyncTask` without losing its callbacks.
-
-   If only B is acceptable, EXE-09's `WebAsyncTask` clause needs a spec change.
-3. **EXE-06 hook with the bean name.** `ScheduledMethodRunnable` keeps the target and method but not the bean name. Options:
-   - **A.** A post-processor ordered before `ScheduledAnnotationBeanPostProcessor` that proxies beans with `@Scheduled` methods (ProxyFactory,
-     around advice that knows the bean name). It also intercepts direct calls to those methods, which EXE-06 now says keep the caller's
-     context, so A would have to tell scheduler invocations apart; it also needs class proxies.
-   - **B.** A `BeanDefinitionRegistryPostProcessor` that replaces the class of `internalScheduledAnnotationProcessor` with a subclass overriding
-     the protected `createRunnable(Object, Method, String)`. Precise (scheduler invocations only, as EXE-06 requires), but replaces a
-     framework bean definition.
-   - **C.** A `SchedulingConfigurer` that rewrites the registrar's task lists. It orphans the `ScheduledTask` handles the post-processor
-     keeps for cancellation and misses beans registered after refresh, so it is not recommended.
-4. **EXE-01 map keys.** What key `boundrail.context.executors.modes.rawExecutor=attached` binds from a properties source and from the
-   environment variable `BOUNDRAIL_CONTEXT_EXECUTORS_MODES_RAWEXECUTOR`; EXE-01 matches either against the bean name ignoring case.
+1. **EXE-03: reflection (option A).** Reading the private `taskDecorator` field of `ThreadPoolTaskExecutor`, `SimpleAsyncTaskExecutor` and
+   `ThreadPoolTaskScheduler` once per bean, before initialisation, then `setTaskDecorator(library ∘ existing)`, keeps the existing decorator
+   running inside the library's scope. Verified for Boot's executor with a `TaskDecorator` bean, with `spring.task.execution.propagate-context
+   =true` (Micrometer), with both, with virtual threads, for Boot's `taskScheduler`, and for decorators set in code. A missing field fails
+   startup (user decision).
+2. **EXE-09: wrap MVC's executor (option A).** Reading `RequestMappingHandlerAdapter`'s private `taskExecutor` once in
+   `postProcessAfterInitialization` and calling `setTaskExecutor(wrapper)`: a `Callable` and a `WebAsyncTask` with no executor of its own get
+   the request's snapshot, their `onCompletion` and timeout callbacks still fire, a `WebAsyncTask` with its own executor bypasses the wrapper,
+   and MVC's internal default executor is covered too. A missing field fails startup. MockMvc caveat: fire timeouts through the
+   `MockAsyncContext` listeners, and read the result with `WebAsyncUtils.getAsyncManager(request).getConcurrentResult()`.
+3. **EXE-06: subclass the scheduled-annotation post-processor (option B).** A `BeanDefinitionRegistryPostProcessor` removes Spring's own
+   `org.springframework.context.annotation.internalScheduledAnnotationProcessor` definition (a factory method on `SchedulingConfiguration`) and
+   re-registers it with a subclass. Correction to the first draft: the third argument of `createRunnable(Object, Method, String)` is the
+   scheduler qualifier, not the bean name, so the subclass keeps the bean name in an instance `ThreadLocal` set around
+   `super.postProcessAfterInitialization(bean, beanName)`. It returns a `ScheduledMethodRunnable` subclass, so the task's description is kept.
+   If the definition is not Spring's own, the library leaves it and logs a WARN at startup (user decision). Reactive and Kotlin `suspend`
+   `@Scheduled` methods are excluded, and the `BoundExecutors` Javadoc says so (user decision). Boot's scheduler threads are `scheduling-N`,
+   its executor threads `task-N`.
+4. **EXE-01: map keys.** Properties-file keys keep their case; environment-variable keys are lowercase, with `_` read as `.`. Boot drops blank
+   values from a `Map<String, Mode>`, and merges keys that differ only in case unless they are bracketed. So the modes are bound as
+   `Map<String, String>` and converted with `ApplicationConversionService.getSharedInstance()` (lenient; `bogus` gives
+   `ConversionFailedException`), which keeps blank-means-detached and the conflict check of G14 possible; the conflict test uses bracketed keys
+   (`modes[rawExecutor]=attached` with `modes[RAWEXECUTOR]=detached`).
+5. **Dependency.** `io.micrometer:context-propagation`, managed by the Boot BOM.
 
 ## Research Notes
 
@@ -219,16 +203,21 @@ Questions, each answered with a throwaway `ApplicationContextRunner` test on Spr
 - **Decoration (EXE-02, EXE-03).** A `static` `@Bean` `BeanPostProcessor`, so the configuration class is not created early. It takes
   `ObjectProvider<EffectivePolicy>` and the `Environment`, and resolves both on first use, so no application `ContextPolicy` bean is created
   during post-processor registration. In `postProcessBeforeInitialization` of a `ThreadPoolTaskExecutor`, `SimpleAsyncTaskExecutor` or
-  `ThreadPoolTaskScheduler` (and only those, EXE-04), unless `executors.auto-decorate=false`, it sets the library's `TaskDecorator` for the
-  bean's mode, composed per the spike. The decorator runs on the submitting thread (Spring calls `decorate` in `execute`/`submit`), captures,
+  `ThreadPoolTaskScheduler` (and only those, EXE-04), unless `executors.auto-decorate=false`, it reads the bean's private `taskDecorator`
+  field and sets `library ∘ existing` for the bean's mode (T001). The field is looked up once per type with `ReflectionUtils.findField(type,
+  "taskDecorator", TaskDecorator.class)`; if it is missing, the post-processor throws `IllegalStateException` naming the type and field, which
+  fails startup. If the existing decorator is already the library's (the same instance post-processed twice), it is left as it is, so the
+  library never wraps itself. The decorator runs on the submitting thread (Spring calls `decorate` in `execute`/`submit`), captures,
   filters with the effective policy and returns `filtered.wrap(task)` around the existing decorator's result. It records each decorated bean
   name and mode for the table (T014). A periodic task on the scheduler is decorated once, at scheduling, so every run re-enters the snapshot
   captured then; EXE-06 replaces it for `@Scheduled` methods.
-- **Modes (EXE-01).** `BoundrailContextProperties` gains `Executors(@DefaultValue("true") boolean autoDecorate, @DefaultValue Map<String, Mode>
-  modes)`, with `Mode { ATTACHED, DETACHED }`. Boot's lenient enum conversion gives relaxed matching; a blank value binds to `null`, read as
-  `DETACHED`; an invalid value fails binding. The `@Lazy(false)` reporter already binds the properties at startup, so the failure also occurs
-  under lazy initialization (T013's lazy test uses the T006a setup from 003). The post-processor looks the bean name up among the map's keys
-  ignoring case (`equalsIgnoreCase`), because relaxed binding lowercases keys from environment variables. Modes apply to decorated beans only:
+- **Modes (EXE-01).** `BoundrailContextProperties` gains `Executors(@DefaultValue("true") boolean autoDecorate, @DefaultValue Map<String,
+  String> modes)`, with `Mode { ATTACHED, DETACHED }`. Boot drops blank values from a map of enums, so the raw strings are bound and the
+  compact constructor converts each with `ApplicationConversionService.getSharedInstance()` (Boot's lenient enum conversion, so relaxed
+  matching); a blank value is `DETACHED`, and an invalid one throws `ConversionFailedException`, which fails binding (T001). The `@Lazy(false)`
+  reporter already binds the properties at startup, so the failure also occurs under lazy initialization (T013's lazy test uses the
+  T006a setup from 003). The post-processor looks the bean name up among the map's keys ignoring case (`equalsIgnoreCase`), because
+  relaxed binding lowercases keys from environment variables. Modes apply to decorated beans only:
   a `BoundExecutors` wrapper keeps the mode of the method that created it, and a plain executor has none (EXE-01, D46). The `Executors`
   compact constructor rejects two keys equal ignoring case with different modes (a blank value counts as `DETACHED`) with
   `IllegalArgumentException` naming both keys; the same mode under both is accepted. It runs when the `@Lazy(false)` reporter binds the
@@ -256,9 +245,20 @@ Questions, each answered with a throwaway `ApplicationContextRunner` test on Spr
   effective policy's loggable keys, minus `AUTHORITY` and `DEADLINE` (built-in rules make neither loggable, and POL-06 forbids re-registering
   them, so LOG-02 is also enforced by this exclusion). On entry, for each name: remember `MDC.get`, then `put` the encoded value (codec, or
   `toString()`) if bound in the entered snapshot, else `remove`. The restorer puts back each remembered value or removes the name.
-- **`@Scheduled` (EXE-06).** Per the spike: the scheduled invocation runs as `ContextSnapshot.EMPTY.call(() -> Context.with(INITIATOR,
-  Initiator.of("system:scheduled:" + beanName + "." + methodName)).call(...))`, a binding, so its capture site is recorded under `on` and
-  names the library's frame (DIAG-05, D41).
+- **`@Scheduled` (EXE-06).** A `static` `BeanDefinitionRegistryPostProcessor` checks the definition named
+  `org.springframework.context.annotation.internalScheduledAnnotationProcessor`. When it is Spring's own (factory bean `SchedulingConfiguration`,
+  factory method `scheduledAnnotationProcessor`), it removes it and registers a `RootBeanDefinition` of the package-private subclass
+  `ContextScheduledAnnotationBeanPostProcessor` under the same name, with `ROLE_INFRASTRUCTURE`. When it is anything else, it leaves it and logs
+  a WARN naming the bean; with no such definition (no `@EnableScheduling`) it does nothing. The subclass:
+  - sets an instance `ThreadLocal<String>` to the bean name around `super.postProcessAfterInitialization(bean, beanName)`, cleared in `finally`
+    (startup bookkeeping in one context's bean, not context state, so RT-09 holds);
+  - overrides `createRunnable(Object target, Method method, String qualifier)` to return a `ScheduledMethodRunnable` subclass with the same
+    target, method and qualifier, whose `run()` is `ContextSnapshot.EMPTY.call(() -> Context.with(INITIATOR, Initiator.of("system:scheduled:"
+    + beanName + "." + method.getName())).call(...))` around `super.run()`. That is a binding, so its capture site is recorded under `on` and
+    names the library's frame (DIAG-05, D41).
+
+  Direct calls by application code do not go through the runnable, so they keep the caller's context. Reactive and Kotlin `suspend` methods
+  are scheduled by Spring through another path, and are excluded (Javadoc of `BoundExecutors`).
 - **Spring MVC async (IN-09, EXE-09).**
   - The inbound filter's registration sets `DispatcherType.REQUEST` and `ASYNC` explicitly (today Boot registers a `OncePerRequestFilter` for
     every type). The filter overrides `shouldNotFilterAsyncDispatch()` to `false`.
@@ -267,7 +267,12 @@ Questions, each answered with a throwaway `ApplicationContextRunner` test on Spr
   - On an `ASYNC` dispatch (`isAsyncDispatch(request)`) it runs the rest of the chain inside the stored snapshot with `snapshot.call`, without
     calling the verifier, decoding or reporting; with no stored snapshot, in the current scope. The authentication filter keeps
     `OncePerRequestFilter`'s default, which skips async dispatches.
-  - The `Callable` is wrapped per the spike; the snapshot captured at MVC's submission is filtered with the effective policy for `ATTACHED`.
+  - In a nested `@ConditionalOnClass(RequestMappingHandlerAdapter.class)` configuration, a `static` `BeanPostProcessor`, in
+    `postProcessAfterInitialization` of each `RequestMappingHandlerAdapter`, reads its private `taskExecutor` field once (a missing field fails
+    startup with `IllegalStateException`) and calls `setTaskExecutor` with a package-private `AsyncTaskExecutor` wrapper. The wrapper's
+    `submit`/`execute` capture `Context.capture()` on the request thread, filter it with the effective policy for `ATTACHED`, and pass
+    `filtered.wrap(task)` to the original executor; since the wrap is inside that executor's own decorator, the task sees the `ATTACHED`
+    snapshot whatever the executor's mode. A `WebAsyncTask` with its own executor bypasses it, as EXE-09 allows (T001).
 - **RT-09.** Nothing new in `-spring` is static. The executor table, recorder registration, MDC listener and capture-site application are beans
   of one context. T008 pins that the reporter's rate limiter is per context; T025 checks by inspection that core has no other static mutable
   state than the slot, the listener list and the capture-site pair.
@@ -329,13 +334,11 @@ Every task ends with `./gradlew check`.
 
 ## Spec Gaps
 
-G2 – G14 are resolved in spec.md (RT-07, RT-08, EXE-01, EXE-06, DIAG-05, DIAG-07, DIAG-11, DIAG-12, TEST-02), in 001-foundation's
-Test Topology (`startEdge`) and in design.md D46. Their tests are planned in T003, T004, T008, T013 – T016, T019, T023 and T024. Only G1
-is open:
-
-| ID | Requirement | Gap | Blocks |
-|---|---|---|---|
-| G1 | EXE-03, EXE-09 | Composition and `WebAsyncTask` coverage may only be possible through reflection on private Spring fields ([Spike](#spike-t001)). If the user rejects that, EXE-03 (decorators set in code) and EXE-09 (`WebAsyncTask`) need narrowing | T012, T021 |
+None open. G2 – G14 are resolved in spec.md (RT-07, RT-08, EXE-01, EXE-06, DIAG-05, DIAG-07, DIAG-11, DIAG-12, TEST-02), in
+001-foundation's Test Topology (`startEdge`) and in design.md D46. G1 is closed by the user's decision after T001: reflection on the private
+fields is allowed and a missing field fails startup (EXE-10), EXE-06 covers ordinary `@Scheduled` methods only and replaces only Spring's own
+post-processor definition (else one WARN), and EXE-07's Javadoc also says that reactive and Kotlin `suspend` `@Scheduled` methods get no
+system context (D47). Their tests are planned in T003, T004, T008, T012, T013 – T016, T019, T021, T023 and T024.
 
 The `boundrail-conventions` skill now says `DEADLINE` is never put in the MDC (LOG-02); the fix is done.
 
@@ -354,6 +357,7 @@ no capture site" sits with "a binding records its site").
 |---|---|---|---|
 | T008 | `RT-09 violation log rate limiting belongs to one application context` | Each context already has its own `ViolationReporter` bean | `ViolationReporter.lastLogged` made `static` |
 | T011 | `EXE-04 a plain Executor or ExecutorService bean is not wrapped automatically` | Before T011 nothing touches executor beans, and T011's post-processor matches only the three EXE-03 types | The post-processor replacing every other `ExecutorService` bean with `BoundExecutors.detached(bean)` |
+| T012 | `EXE-03 an executor instance post-processed twice is decorated once` (new after T001; **needs the user's acceptance**) | T011 sets the library's decorator without composing, so a second pass replaces it and the task enters one scope | On T012's finished code, the check that leaves an existing library decorator alone removed, so the second pass composes `library ∘ library` and a counting `ScopeListener` sees two scope entries per task |
 | T014 | IT-1.4 Report mode continues | `report` mode (DIAG-02) and rate-limited logging (DIAG-03) exist since M2; the report-mode edge only needs `rawExecutor` | `ViolationReporter.dueForLog` returning `true` always, so two WARN entries are logged |
 | T015 | `DIAG-06 with audit.enabled=false nothing is audited and executor evidence is still filled` | T014's table does not depend on the audit, and T015's listener is conditional from its first green step | The `audit.enabled` condition removed from the audit listener |
 | T016 | `DIAG-05 a context that sets neither property leaves the JVM-wide mode unchanged` | Before T016 Spring applies nothing; T016 applies only properties that are set | The capture-site bean applying `off` and `0.01` when the properties are unset |
@@ -365,11 +369,12 @@ no capture site" sits with "a binding records its site").
 
 ## TDD Exceptions
 
-Both rows are approved.
+Both rows are approved. EXE-07's Javadoc statement now also covers reactive and Kotlin `suspend` `@Scheduled` methods (amended EXE-07,
+D47); it stays in the first row.
 
 | Task | What | Verified by |
 |---|---|---|
-| T009, T010 | The Javadoc statements EXE-04 (overloads without a policy filter with `BuiltInKeys.defaultPolicy()`, so application rules at `ATTACHED` and `DETACHED` are not applied), EXE-07 (common-pool `CompletableFuture.*Async` not covered) and DIAG-07 (the audit sees only beans, and only those DIAG-12 covers; runtime validation covers executors created in code). They are documentation, with no behaviour a test can fail on. Approved | Review of T009 and T010, and inspection in T025 against each requirement's wording |
+| T009, T010 | The Javadoc statements EXE-04 (overloads without a policy filter with `BuiltInKeys.defaultPolicy()`, so application rules at `ATTACHED` and `DETACHED` are not applied), EXE-07 (common-pool `CompletableFuture.*Async` not covered; reactive and Kotlin `suspend` `@Scheduled` methods get no system context) and DIAG-07 (the audit sees only beans, and only those DIAG-12 covers; runtime validation covers executors created in code). They are documentation, with no behaviour a test can fail on. Approved | Review of T009 and T010, and inspection in T025 against each requirement's wording |
 | T023 | The Javadoc statement of TEST-02 that running `@BoundrailTest` test methods in parallel is not supported | Review of T023, and inspection in T025 |
 
 T001 is a spike, not an exception: no code from it is kept. Every dependency, catalog entry and the `-test` imports file is part of the green
@@ -411,9 +416,9 @@ boundrail-context-spring/src/main/java/io/github/boundrail/context/spring/
 ├── ExecutorTable.java  ExecutorAudit.java (package-private)        # T014, T015
 ├── CaptureSiteSettings.java (package-private)                      # T016
 ├── MdcScopeListener.java (package-private)                         # T017, T018
-├── ScheduledContext*.java (package-private, per spike)             # T019
+├── ScheduledContextRegistrar.java  ContextScheduledAnnotationBeanPostProcessor.java (package-private)   # T019
 ├── ContextInboundFilter.java  ContextAuthenticationFilter.java (ASYNC)   # T020
-└── MvcAsyncContext*.java (package-private, per spike)              # T021
+└── MvcAsyncExecutorPostProcessor.java  AttachedAsyncTaskExecutor.java (package-private)   # T021
 boundrail-context-spring/src/test/java/io/github/boundrail/context/spring/
 ├── ViolationEvidenceTest.java  ViolationListenerTest.java  ExecutorDecorationTest.java  ExecutorModeTest.java
 ├── ExecutorTableTest.java  ExecutorAuditTest.java  CaptureSiteSettingsTest.java  MdcScopeListenerTest.java
@@ -434,7 +439,7 @@ integration-tests/src/test/java/io/github/boundrail/context/it/
 
 **Structure Decision**: Contract types go where the contracts put them. Everything else in `-spring` is package-private. The one public
 non-contract type, `internal.ModeExecutor`, exists so `-spring` can recognise `BoundExecutors` wrappers, as `internal.ContextSlot` already
-crosses packages. Class names marked "per spike" are settled by T001.
+crosses packages.
 
 ## Requirement Coverage
 
@@ -447,12 +452,13 @@ crosses packages. Class names marked "per spike" are settled by T001.
 | IN-09 | T020 |
 | EXE-01 | T013 (decorated beans only, case-insensitive bean names), T015 (a `BoundExecutors` bean keeps its own mode in the audit) |
 | EXE-02 | T009, T010 (`BoundExecutors`), T011 (decorated, effective policy), T013 (`ATTACHED`) |
-| EXE-03 | T011 (installed before initialisation, three types, `auto-decorate`), T012 (composition, library outermost) |
+| EXE-03 | T011 (installed before initialisation, three types, `auto-decorate`), T012 (composition, library outermost, never wraps itself) |
 | EXE-04 | T009, T010, T011 (plain executors not wrapped), T015 (recognised by the audit) |
 | EXE-05 | T011 (IT-1.1), T013 (`@Async` on an attached executor) |
-| EXE-06 | T019 (scheduler invocations; direct calls keep the caller's context) |
-| EXE-07 | T009 (Javadoc, TDD exception) |
-| EXE-09 | T021 |
+| EXE-06 | T019 (scheduler invocations; direct calls keep the caller's context; only Spring's own definition replaced, else WARN; reactive and `suspend` methods excluded) |
+| EXE-07 | T009 (Javadoc, TDD exception; including reactive and `suspend` `@Scheduled` methods) |
+| EXE-09 | T021 (`Callable`, `WebAsyncTask` with callbacks, MVC's default executor) |
+| EXE-10 | T012 (`taskDecorator` on the three executor types: pinned, read once, missing field fails startup, also under lazy initialization), T021 (`RequestMappingHandlerAdapter.taskExecutor`: the same) |
 | DIAG-04 | T007 (thread, capture site, every adapter, WARN), T014 (executor evidence, longest prefix, before start) |
 | DIAG-05 | T005 (`on`, `off`), T006 (`sampled`), T016 (properties) |
 | DIAG-06 | T015 |
@@ -479,10 +485,12 @@ crosses packages. Class names marked "per spike" are settled by T001.
 
 ## Risks
 
-- **Composing with existing decorators** (roadmap M3). Spring exposes no getter; see the spike. IT-1.1 runs with Micrometer's decorator from
-  T011, and T012 proves that decorator still works inside the library's scope.
-- **Reflection on framework internals** (if the spike picks it). A Spring upgrade can rename a private field. Each use has a test that fails
-  loudly when the field is missing, rather than silently skipping composition.
+- **Composing with existing decorators** (roadmap M3). Spring exposes no getter, so the library reads private fields (T001, G1). IT-1.1 runs
+  with Micrometer's decorator from T011, and T012 proves that decorator still works inside the library's scope.
+- **Reflection on framework internals (EXE-10).** A Spring upgrade can rename `taskDecorator` or `taskExecutor`. T012 and T021 pin each field
+  by name and type, and a missing field fails startup rather than silently skipping composition or EXE-09.
+- **Replacing a framework bean definition (EXE-06).** A later Spring version may change how `@EnableScheduling` registers its post-processor.
+  T019 pins the definition's factory bean and method; any other form is left alone with a WARN.
 - **Early bean creation.** A `BeanPostProcessor` that injects beans directly forces them, and the application's `ContextPolicy` beans, to be
   created before post-processing. The post-processor is a `static` bean method with `ObjectProvider`s resolved on first use.
 - **JVM-wide state in a shared test JVM.** Capture-site mode, listeners and the recorder are shared by every suite in an integration test task
@@ -494,4 +502,4 @@ crosses packages. Class names marked "per spike" are settled by T001.
 
 ## Complexity Tracking
 
-No constitution violations to justify. Principle VI is pending the spike's outcome.
+No constitution violations to justify.

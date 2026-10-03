@@ -17,15 +17,16 @@ with the requirement or scenario ID it covers.
   tests, and the second TDD exception for TEST-02's Javadoc statement that parallel test methods are not supported (T023)
   ([plan.md](plan.md#tdd-exceptions)). The `null`-restorer test in T003, first accepted as a guard, is red before T003 now that G13 is
   settled, so it is no longer a guard.
-- T001 is a spike: no code is kept and nothing is committed ([plan.md](plan.md#spike-t001)). T012, T019 and T021 wait for its outcome, and for
-  the user's decision where the outcome needs a spec change.
-- Ten guard tests pass before their task: IT-1.4, one unit test each in T008, T011, T015, T016 and T017, and two unit tests each in T020 and
-  T023.
+- T001, the spike, is done; its outcome and the user's decisions (EXE-10, amended EXE-06 and EXE-07, D47) are in
+  [plan.md](plan.md#spike-t001).
+- Eleven guard tests pass before their task: IT-1.4, one unit test each in T008, T011, T012 (new), T015, T016 and T017, and two unit tests
+  each in T020 and T023.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it.
-- G2 – G14 are resolved in spec.md (D46, DIAG-12). Only G1 is open; it gates T012 and T021 through T001 ([plan.md](plan.md#spec-gaps)).
+- Every spec gap is closed: G2 – G14 (D46, DIAG-12) and G1 (EXE-10, D47) ([plan.md](plan.md#spec-gaps)).
+- One new guard test, in T012, awaits the user's acceptance ([plan.md](plan.md#guard-tests)).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -71,20 +72,12 @@ Tests that change the JVM-wide capture-site mode restore it afterwards; tests th
 
 ## Phase 0: Spike
 
-- [ ] T001 Spike: decorator composition, MVC `Callable` hook, `@Scheduled` hook, mode map keys.
-  - Answer the four questions in [plan.md](plan.md#spike-t001) with throwaway `ApplicationContextRunner` tests on Boot 4.1.1 / Framework 7.0.9:
-    1. EXE-03: can the existing `TaskDecorator` of each of the three types be read once at post-processing (option A, reflection), and does
-       `library ∘ existing` run the existing decorator inside the library's scope, with a Boot-built executor, one with
-       `spring.task.execution.propagate-context=true`, and one whose decorator is set in code?
-    2. EXE-09: option A (wrap `RequestMappingHandlerAdapter`'s executor) or B (wrap the `Callable` return value), with a `Callable` and a
-       `WebAsyncTask` with and without its own executor.
-    3. EXE-06: option A (proxy `@Scheduled` beans) or B (subclass the scheduled-annotation post-processor through a
-       `BeanDefinitionRegistryPostProcessor`); which gives `<beanName>.<methodName>`.
-    4. EXE-01: the key `executors.modes.rawExecutor` from a properties source and from an environment variable.
-  - Output: the leader's report. The planner records the chosen mechanisms in plan.md's Research Notes. If EXE-03 composition or the EXE-09
-    `WebAsyncTask` clause cannot be met without an approach the user rejects, the spec-creator drafts the spec change and the user decides it
-    (G1) before T012 or T021 starts.
-  - Not committed, not a red-green cycle.
+- [x] T001 Spike: decorator composition, MVC `Callable` hook, `@Scheduled` hook, mode map keys.
+  - Done; no code kept, nothing committed. Outcome in [plan.md](plan.md#spike-t001): EXE-03 reads each executor's private `taskDecorator`
+    and composes `library ∘ existing` (option A); EXE-09 reads `RequestMappingHandlerAdapter`'s private `taskExecutor` and wraps it (option A);
+    EXE-06 replaces Spring's own `internalScheduledAnnotationProcessor` definition with a subclass (option B), keeping the bean name in an
+    instance `ThreadLocal`, since `createRunnable`'s third argument is the scheduler qualifier; `executors.modes` is bound as
+    `Map<String, String>`. The user's decisions are in spec.md as EXE-10 and amended EXE-06 and EXE-07 (D47); G1 is closed.
 
 ---
 
@@ -223,8 +216,10 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
       reaches `detached(executor)` (unregistered keys propagate to both), and does not reach `detached(executor, policy)`;
     - `EXE-02 the worker thread is left with no context after the task`;
     - `CORE-14 BoundExecutors rejects null`: each `Executor` overload with a `null` delegate or policy.
-  - Green: `core/BoundExecutors.java` with the four `Executor` overloads and a package-private wrapper; Javadoc for EXE-04 (default policy),
-    EXE-07 and DIAG-07 (TDD exception, reviewed).
+  - Green: `core/BoundExecutors.java` with the four `Executor` overloads and a package-private wrapper; Javadoc (TDD exception, reviewed)
+    for EXE-04 (default policy), EXE-07 (common-pool `CompletableFuture.*Async` not covered; reactive and Kotlin `suspend` `@Scheduled`
+    methods get no system context) and DIAG-07 (the audit sees only the beans DIAG-12 covers; runtime validation covers executors created in
+    code).
   - Completes: EXE-02 and EXE-04 (`Executor`); EXE-07; DIAG-07; CORE-14 (`Executor` overloads).
   - Verify: Unit `BoundExecutorsTest`.
 - [ ] T010 [US1] `BoundExecutors` for `ExecutorService`.
@@ -259,18 +254,30 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Completes: EXE-03 (installation, three types, `auto-decorate`); EXE-02 (decorated, effective policy); EXE-04 (not wrapped); EXE-05
     (detached); IT-1.1.
   - Verify: Unit `ExecutorDecorationTest`; IT.
-- [ ] T012 [US1] Composition with an existing decorator. Needs T001's outcome (and the user's decision, if G1 applies).
+- [ ] T012 [US1] Composition with an existing decorator, through the private `taskDecorator` field (EXE-10).
   - Red, in `ExecutorDecorationTest`, for each of the three types:
     - `EXE-03 an existing decorator set in code runs inside the library's scope`: the existing decorator records `Context.capture()` when its
       decorated runnable runs, and sees the submitter's binding;
-    - `EXE-03 a decorator applied by Boot's builder from TaskDecorator beans is kept and runs inside the library's scope`;
+    - `EXE-03 a decorator applied by Boot's builder from TaskDecorator beans is kept and runs inside the library's scope`, also with
+      `spring.task.execution.propagate-context=true`, with both, with virtual threads (`spring.threads.virtual.enabled=true`, so Boot builds
+      a `SimpleAsyncTaskExecutor`), and for Boot's `taskScheduler`;
     - `EXE-03 Micrometer's ContextPropagatingTaskDecorator still propagates its thread locals`: with a registered `ThreadLocalAccessor`, both
       its value and the context reach the task (`micrometer-context-propagation` as `testImplementation` in `-spring`);
-    - if the spike chose reflection: `EXE-03 composition fails loudly if the framework's decorator field is missing`, against a subclass
-      lookup that names a missing field.
-  - Green: compose `library ∘ existing` in the post-processor, per the spike.
-  - Completes: EXE-03 (composition, library outermost); SC-002 (with IT-1.1).
-  - Verify: Unit `ExecutorDecorationTest`; IT (IT-1.1 stays green).
+    - `EXE-03 an executor instance post-processed twice is decorated once`: a counting `ScopeListener` sees one scope entry per task, and
+      the existing decorator runs once. This is a guard (new, awaiting the user's acceptance): T011 replaces rather than composes, so a
+      second pass already leaves one layer. Show it red with the check that leaves an existing library decorator alone temporarily removed
+      from T012's finished code, then revert ([plan.md](plan.md#guard-tests));
+  - Red, in `springtest/ReflectedFieldsTest.java`:
+    - `EXE-10 the private taskDecorator field of ThreadPoolTaskExecutor, SimpleAsyncTaskExecutor and ThreadPoolTaskScheduler is found by
+      name and type`, through the package-private lookup, so a Spring upgrade that renames one fails this test;
+    - `EXE-10 a missing field fails startup naming the class and the field, also with lazy initialization`: the post-processor, built
+      through a package-private constructor with a field name that does not exist, fails startup for a `ThreadPoolTaskExecutor` bean with an
+      `IllegalStateException` whose message names `ThreadPoolTaskExecutor` and the field; and the same with the T006a lazy setup from 003 and
+      the executor bean `@Lazy(false)`, so it is processed at startup.
+  - Green: the field lookup once per type (`ReflectionUtils.findField`, `IllegalStateException` when missing), `library ∘ existing` set
+    through `setTaskDecorator`, and the skip when the existing decorator is the library's ([plan.md](plan.md#spring-wiring)).
+  - Completes: EXE-03 (composition, library outermost); EXE-10 (executor fields); SC-002 (with IT-1.1).
+  - Verify: Unit `ExecutorDecorationTest` and `ReflectedFieldsTest`; IT (IT-1.1 stays green).
 - [ ] T013 [US1] Executor modes.
   - Red, in `springtest/ExecutorModeTest.java`:
     - `EXE-01 executors.modes.<bean-name>=attached makes that executor attached, and others stay detached`: an `ATTACHED`-only key reaches
@@ -280,16 +287,18 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     - `EXE-01 an invalid mode fails startup, also with lazy initialization`: `bogus`, with and without the T006a lazy setup from 003;
     - `EXE-05 an @Async method on an attached executor runs with the attached context`;
     - `EXE-01 the bean name is matched ignoring case`: `executors.modes.rawexecutor=attached` from a `MapPropertySource`, and the
-      environment variable form `BOUNDRAIL_CONTEXT_EXECUTORS_MODES_RAWEXECUTOR=attached` through a `SystemEnvironmentPropertySource`, make
-      the decorated bean `rawExecutor` attached;
+      environment variable form `BOUNDRAIL_CONTEXT_EXECUTORS_MODES_RAWEXECUTOR=attached` through a `SystemEnvironmentPropertySource` (which
+      Boot reads as the lowercase key `rawexecutor`), make the decorated bean `rawExecutor` attached;
     - `EXE-01 executors.modes applies to decorated beans only`: with `attached` set for a decorated bean, a `BoundExecutors.detached` bean and
       a plain `ExecutorService` bean, the decorated bean's task gets the `ATTACHED`-only key, the `BoundExecutors` bean's task does not, and
       the plain bean is still not wrapped;
     - `EXE-01 two modes keys equal ignoring case with different modes fail startup, also with lazy initialization, and the same mode under
-      both is accepted`: `rawExecutor=attached` with `rawexecutor=detached` (through a `MapPropertySource`) fails with and without the T006a
-      lazy setup from 003, naming both keys; `rawExecutor=attached` with `RAWEXECUTOR=Attached` starts, and the bean is attached.
-  - Green: `Executors.modes` in `BoundrailContextProperties`, whose compact constructor rejects keys equal ignoring case with different modes;
-    the post-processor looks up the bean's mode ignoring case.
+      both is accepted`: bracketed keys, because Boot merges unbracketed keys that differ only in case (T001):
+      `modes[rawExecutor]=attached` with `modes[RAWEXECUTOR]=detached` (through a `MapPropertySource`) fails with and without the T006a lazy
+      setup from 003, naming both keys; `modes[rawExecutor]=attached` with `modes[RAWEXECUTOR]=Attached` starts, and the bean is attached.
+  - Green: `Executors.modes` bound as `Map<String, String>` in `BoundrailContextProperties`; its compact constructor converts each value with
+    `ApplicationConversionService.getSharedInstance()` (blank is `DETACHED`) and rejects keys equal ignoring case with different modes; the
+    post-processor looks up the bean's mode ignoring case ([plan.md](plan.md#spring-wiring)).
   - Completes: EXE-01; EXE-02 (`ATTACHED`); EXE-05.
   - Verify: Unit `ExecutorModeTest`.
 
@@ -414,7 +423,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 7: User Story 4 - Scheduled jobs get a system context (Priority: P3)
 
-- [ ] T019 [US4] `@Scheduled` system context; enable IT-1.7. Needs T001's outcome.
+- [ ] T019 [US4] `@Scheduled` system context; enable IT-1.7.
   - Red:
     - in `springtest/ScheduledContextTest.java` (`ApplicationContextRunner` with `@EnableScheduling` and a fast `fixedDelay`):
       - `EXE-06 a @Scheduled method invoked by the scheduler runs with exactly initiator=system:scheduled:<beanName>.<methodName>, and a
@@ -424,8 +433,17 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
         whose decorator captured a binding at scheduling (the task scheduled from inside a binding), and the method still sees only the
         initiator;
       - `DIAG-05 under on the @Scheduled binding records a capture site in the library's scheduled support`;
+      - `EXE-06 only Spring's own scheduled-annotation post-processor definition is replaced, and any other is left with one startup WARN`:
+        with `@EnableScheduling` the definition named `org.springframework.context.annotation.internalScheduledAnnotationProcessor` is the
+        library's subclass and no WARN is logged; with an application's own definition under that name (and no `@EnableScheduling`), it is
+        left as registered, one WARN naming it is logged (`RecordingLog` or `OutputCaptureExtension`), and its scheduled method runs without
+        the system context; with neither, nothing is registered or logged;
+      - `EXE-06 the scheduled task keeps its description`: the `ScheduledTask` of `cleanupJob.run`, read through `ScheduledTaskHolder`, has a
+        runnable whose `toString()` names the target method, as Spring's own does;
     - enable IT-1.7: edge's `cleanupJob.run` records exactly `initiator=system:scheduled:cleanupJob.run` to `ObservedContext` (bounded poll).
-  - Green: the mechanism chosen in T001; topology test code: `@EnableScheduling` and `topology/CleanupJob.java`.
+  - Green: `spring/ScheduledContextRegistrar.java` (a `static` `BeanDefinitionRegistryPostProcessor`) and
+    `spring/ContextScheduledAnnotationBeanPostProcessor.java` with its `ScheduledMethodRunnable` subclass ([plan.md](plan.md#spring-wiring));
+    topology test code: `@EnableScheduling` and `topology/CleanupJob.java` (Boot's scheduler threads are `scheduling-N`).
   - Completes: EXE-06; IT-1.7.
   - Verify: Unit `ScheduledContextTest`; IT.
 
@@ -450,21 +468,29 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     `ContextInboundFilter`; `spring-webmvc` as `testImplementation` (catalog entry).
   - Completes: IN-09.
   - Verify: Unit `AsyncDispatchTest`.
-- [ ] T021 [US5] Handler `Callable`s run in the request's snapshot, filtered for `ATTACHED`; enable IT-1.9. Needs T001's outcome (and the
-  user's decision, if G1 applies).
+- [ ] T021 [US5] Handler `Callable`s run in the request's snapshot, filtered for `ATTACHED`; enable IT-1.9.
   - Red:
     - in `springtest/MvcCallableTest.java` (`MockMvc`):
       - `EXE-09 a Callable returned by a handler runs in the request's snapshot filtered for attached`: an `ATTACHED`-only key is present and a
         key that does not propagate to `ATTACHED` is absent;
       - `EXE-09 this holds whatever the mode of MVC's executor`: MVC's executor is a library-decorated `ThreadPoolTaskExecutor` in `detached`
         mode;
-      - `EXE-09 a WebAsyncTask without its own executor runs in the same snapshot, and keeps its timeout and callbacks`;
+      - `EXE-09 this holds with MVC's internal default executor`, when no executor is configured;
+      - `EXE-09 a WebAsyncTask without its own executor runs in the same snapshot, and its onCompletion and timeout callbacks still fire`:
+        the timeout is fired through the `MockAsyncContext` listeners, and the result read with
+        `WebAsyncUtils.getAsyncManager(request).getConcurrentResult()` (T001);
+    - in `springtest/ReflectedFieldsTest.java`:
+      - `EXE-10 the private taskExecutor field of RequestMappingHandlerAdapter is found by name and type`;
+      - `EXE-10 a missing taskExecutor field fails startup naming the class and the field, also with lazy initialization`: the MVC
+        post-processor, built with a field name that does not exist, fails startup for a `RequestMappingHandlerAdapter` bean, and the same
+        with the T006a lazy setup and the adapter bean `@Lazy(false)`;
     - enable IT-1.9: alice's request to edge's `Callable` endpoint reaches orders with `tenant=acme`; for the `DeferredResult` endpoint, the
       edge `HandlerInterceptor` records `tenant=acme` in `postHandle` of the async dispatch.
-  - Green: the mechanism chosen in T001 (`spring-webmvc` as `compileOnly`, behind `@ConditionalOnClass`); topology test code: the two
-    endpoints and the interceptor.
-  - Completes: EXE-09; IT-1.9 (with IN-09).
-  - Verify: Unit `MvcCallableTest`; IT.
+  - Green: `spring/MvcAsyncExecutorPostProcessor.java` and `spring/AttachedAsyncTaskExecutor.java` in a nested
+    `@ConditionalOnClass(RequestMappingHandlerAdapter.class)` configuration ([plan.md](plan.md#spring-wiring)); `spring-webmvc` as
+    `compileOnly`; topology test code: the two endpoints and the interceptor.
+  - Completes: EXE-09; EXE-10 (MVC field); IT-1.9 (with IN-09).
+  - Verify: Unit `MvcCallableTest` and `ReflectedFieldsTest`; IT.
 
 **Checkpoint**: IT-1.7 and IT-1.9 green on JDK 21 and JDK 25.
 
@@ -533,12 +559,14 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 - [ ] T025 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
-  - Requirements: CORE-14, RT-07 – RT-09, IN-09, EXE-01 – EXE-07, EXE-09, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01, LOG-02 and
+  - Requirements: CORE-14, RT-07 – RT-09, IN-09, EXE-01 – EXE-07, EXE-09, EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01, LOG-02 and
     TEST-02 – TEST-04.
   - SC-001: RuntimeConformanceIT and ContextPropagationIT have no `@Disabled` left; RC-9 passes in all three tasks, IT-1.1 – IT-1.9 in
     `integrationTestJdk21` and `integrationTestJdk25`.
   - SC-002: IT-1.1 runs with Micrometer's decorator configured on `taskExecutor`, and T012's test shows it still works.
   - SC-003: T005's walker test; by inspection, the `OFF` path in `CaptureSiteRecorder` returns before any `StackWalker` call.
+  - By inspection (EXE-10): reflection is used only on the four fields EXE-10 lists, each read once per bean and written only through the
+    public setters.
   - Every requirement has a test whose display name starts with its ID, except the Javadoc statements of the TDD exception: check the Javadoc
     of `BoundExecutors` against EXE-04 (default policy), EXE-07 and DIAG-07 (including DIAG-12's beans), and the Javadoc of `@BoundrailTest`
     against TEST-02 (parallel test methods), word for word in meaning.
@@ -554,7 +582,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Dependencies & Execution Order
 
-- T001 runs first, in parallel with Phase 2. T012, T019 and T021 need its outcome; T012 and T021 also need the user's decision if G1 applies.
+- T001 is done; nothing waits on it any more.
 - Phase 2: T002 → T003. T004 is independent of T002. T005 needs T004; T006 needs T005.
 - Phase 3: T007 needs T005. T008 needs T007.
 - US1: T009 needs nothing from this feature; T010 needs T009. T011 needs T002; T012 needs T001 and T011; T013 needs T011.
@@ -573,11 +601,10 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 - [ ] RC-9 enabled and green on all three JDK tasks
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-1.1 – IT-1.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M3): CORE-14, RT-07 – RT-09, IN-09,
-  EXE-01 – EXE-07, EXE-09, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04; the Javadoc statements of EXE-04,
-  EXE-07, DIAG-07 and TEST-02 (parallel runs) checked by inspection (TDD exceptions)
-- [ ] T001's outcome recorded in plan.md, and any spec change it needed decided by the user and committed
-- [ ] Guard tests (IT-1.4, and the unit guards in T008, T011, T015, T016, T017, T020 (two) and T023 (two)) shown red against their
+  EXE-01 – EXE-07, EXE-09 – EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04; the Javadoc
+  statements of EXE-04, EXE-07, DIAG-07 and TEST-02 (parallel runs) checked by inspection (TDD exceptions)
+- [ ] Guard tests (IT-1.4, and the unit guards in T008, T011, T012, T015, T016, T017, T020 (two) and T023 (two)) shown red against their
   temporary change, and the change reverted
-- [ ] G1 settled by T001 (and, if needed, the user's spec decision), and T012 and T021 written accordingly
+- [x] T001's outcome recorded in plan.md, and G1 settled by the user (EXE-10, D47)
 - [ ] `boundrail-context-core` still has no runtime dependencies; SLF4J and Spring MVC are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green
