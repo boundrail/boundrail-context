@@ -6,9 +6,9 @@
 [contracts/runtime-listeners.md](contracts/runtime-listeners.md) and [contracts/executors-and-test.md](contracts/executors-and-test.md),
 decisions D39 – D47 in [design.md](../../docs/design.md), the T001 spike's outcome
 
-**Status**: Approved by the user (plan, tasks, both TDD exception rows and the ten guard tests). The spike T001 is done, and its outcome is
+**Status**: Approved by the user (plan, tasks, both TDD exception rows and all twelve guard tests). The spike T001 is done, and its outcome is
 recorded below. Every spec gap is closed: G2 – G14 in spec.md and design.md D46 (DIAG-12 is new), G1 by the user's decision to allow
-reflection, written into spec.md as EXE-10 with amended EXE-06 and EXE-07 (D47). One new guard test (T012) awaits the user's acceptance.
+reflection, written into spec.md as EXE-10 with amended EXE-06 and EXE-07 (D47). All twelve guard tests are accepted.
 
 ## Summary
 
@@ -34,8 +34,8 @@ Context survives in-process async boundaries, and when it does not, the failure 
   and `ContextAssertions`; JUnit Jupiter API and AssertJ as `api` dependencies (TEST-02 – TEST-04, D40).
 
 Library code is driven by unit and `ApplicationContextRunner` tests. Each ContextPropagationIT scenario is enabled in the task whose code
-makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and ten unit tests already pass
-before their task: the nine approved unit guards, and T012's new one, which awaits acceptance. Each red is shown against a named temporary
+makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and eleven unit tests already pass
+before their task: the nine first approved, and those added in T003 and T012, all accepted. Each red is shown against a named temporary
 change that is then reverted ([Guard Tests](#guard-tests)). The T003 guard the user accepted for the `null` restorer is no longer one: with
 G13 settled, its test also asserts that the operation does not run, which is red before T003.
 
@@ -97,7 +97,7 @@ red-green tasks (T002 – T024) and a close task (T025)
 | IV Declared, never guessed | Pass | Mode per executor bean, default `DETACHED` (EXE-01); `Callable` work is `ATTACHED` by declaration (EXE-09, D39) |
 | V Evidence only | Pass | Violations carry thread, capture site and executor evidence only as observed (DIAG-04); stack walking only when `on` or `sampled` (SC-003) |
 | VI Interoperate | Pass | EXE-03 composes with Micrometer's, Boot's and code-set decorators, library outermost, by reading Spring's private `taskDecorator` field once per bean (EXE-10, D47) |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the ten guard tests and both Javadoc TDD exception rows are approved; one more guard (T012) awaits acceptance |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the twelve guard tests and both Javadoc TDD exception rows are approved |
 | VIII Simplicity | Pass | One post-processor, one decorator, one table shared by evidence and audit, one listener per context; no public audit API (D42) |
 | Technical constraints | Pass | Core stays dependency-free (T025); SLF4J and Spring MVC `compileOnly` behind `@ConditionalOnClass` |
 
@@ -160,7 +160,10 @@ option B for EXE-06 (G1 closed); spec.md has them as EXE-10 and amended EXE-06 a
   Listeners are held in a `CopyOnWriteArrayList`, so a scope sees the list as it was at entry; `addIfAbsent` keeps a listener added twice
   once, in its original position, and `remove` of an unregistered one does nothing (RT-07, D46). A listener whose `onEnter` throws a
   `RuntimeException` has no restorer; that exception, and any `RuntimeException` from a restorer, is logged at `WARNING` through
-  `System.getLogger("io.github.boundrail.context")` and the next listener or restorer runs. An `Error` is not caught. The operation's result
+  `System.getLogger("io.github.boundrail.context")` and the next listener or restorer runs; the record for a restorer names the listener that
+  returned it (its class name), so each restorer is kept with its listener. An `Error` is not caught: from an `onEnter`, it stops the entry
+  (no later listener, no operation), the restorers already returned run in reverse order, and it propagates; from a restorer, it propagates at
+  once and the remaining restorers are skipped (RT-07, settled during T003's review). The operation's result
   or exception is returned or rethrown unchanged. Tests capture the log by attaching a `java.util.logging.Handler` to that logger name (the
   default `System.LoggerFinder` maps to JUL), so no test seam is needed.
 - **A `null` restorer (RT-07, CORE-14).** When `onEnter` returns `null`, `enter` does not call the operation or the remaining listeners, calls
@@ -357,7 +360,8 @@ no capture site" sits with "a binding records its site").
 |---|---|---|---|
 | T008 | `RT-09 violation log rate limiting belongs to one application context` | Each context already has its own `ViolationReporter` bean | `ViolationReporter.lastLogged` made `static` |
 | T011 | `EXE-04 a plain Executor or ExecutorService bean is not wrapped automatically` | Before T011 nothing touches executor beans, and T011's post-processor matches only the three EXE-03 types | The post-processor replacing every other `ExecutorService` bean with `BoundExecutors.detached(bean)` |
-| T012 | `EXE-03 an executor instance post-processed twice is decorated once` (new after T001; **needs the user's acceptance**) | T011 sets the library's decorator without composing, so a second pass replaces it and the task enters one scope | On T012's finished code, the check that leaves an existing library decorator alone removed, so the second pass composes `library ∘ library` and a counting `ScopeListener` sees two scope entries per task |
+| T003 | `RT-07 an Error from a later onEnter stops the entry: the operation and later listeners do not run, earlier restorers run in reverse order, and the Error propagates` (added during T003's review; accepted) | T003's code already unwinds the restorers already returned on any throwable from `onEnter` | The unwinding limited to the `null`-restorer path, so an `Error` from `onEnter` propagates without calling the earlier restorers |
+| T012 | `EXE-03 an executor instance post-processed twice is decorated once` (new after T001; accepted) | T011 sets the library's decorator without composing, so a second pass replaces it and the task enters one scope | On T012's finished code, the check that leaves an existing library decorator alone removed, so the second pass composes `library ∘ library` and a counting `ScopeListener` sees two scope entries per task |
 | T014 | IT-1.4 Report mode continues | `report` mode (DIAG-02) and rate-limited logging (DIAG-03) exist since M2; the report-mode edge only needs `rawExecutor` | `ViolationReporter.dueForLog` returning `true` always, so two WARN entries are logged |
 | T015 | `DIAG-06 with audit.enabled=false nothing is audited and executor evidence is still filled` | T014's table does not depend on the audit, and T015's listener is conditional from its first green step | The `audit.enabled` condition removed from the audit listener |
 | T016 | `DIAG-05 a context that sets neither property leaves the JVM-wide mode unchanged` | Before T016 Spring applies nothing; T016 applies only properties that are set | The capture-site bean applying `off` and `0.01` when the properties are unset |
@@ -446,7 +450,7 @@ crosses packages.
 | Requirement or scenario | Tasks |
 |---|---|
 | CORE-14 | T002 (listener registration), T003 (`null` restorer), T004 (`captureSites`), T009, T010 (`BoundExecutors`), T022 (`assertThat`, `SnapshotAssert`), T024 (`ViolationsAssert`) |
-| RT-07 | T002 (order, after the snapshot is current, restore on exception), T003 (throwing listeners and restorers, `Error` not caught, `null` restorer, duplicate add, unknown remove) |
+| RT-07 | T002 (order, after the snapshot is current, restore on exception), T003 (throwing listeners and restorers, the restorer's WARNING names its listener, `Error` from `onEnter` or a restorer, `null` restorer, duplicate add, unknown remove) |
 | RT-08 | T004 |
 | RT-09 | T008 (per-context rate limiter), T023 (recorder is the one exception), T025 (inspection) |
 | IN-09 | T020 |
@@ -495,7 +499,8 @@ crosses packages.
   created before post-processing. The post-processor is a `static` bean method with `ObjectProvider`s resolved on first use.
 - **JVM-wide state in a shared test JVM.** Capture-site mode, listeners and the recorder are shared by every suite in an integration test task
   and every test in a module's test JVM. Tests that change the mode restore it; tests that register a listener remove it in `finally`; RC-9
-  asserts only its own listeners' calls, since the topology's MDC listeners are also registered.
+  asserts only its own listeners' calls, and they record only scopes entered on the test's own thread, since the shared topology's
+  services enter scopes on other threads, and register their own MDC listeners, while it runs.
 - **Log assertions.** IT-1.4 counts WARN entries of its own extra edge, and IT-1.6 depends on the console pattern being set by the first
   service started in the JVM. IT-2.8's assertions on log lines must still hold with `tenant=` in the pattern (T017 runs TrustBoundaryIT).
 - **Timing.** IT-1.7 waits for the scheduled job with a bounded poll, not a sleep.

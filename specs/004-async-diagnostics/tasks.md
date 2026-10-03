@@ -13,20 +13,20 @@ description: "Task list for 004-async-diagnostics"
 minimum code that makes it pass, committed and reviewed together. Every task leaves `./gradlew check` green. Every test's display name starts
 with the requirement or scenario ID it covers.
 
-- The user approved the plan, these tasks, the TDD exception for the Javadoc-only statements of EXE-04, EXE-07 and DIAG-07, and the ten guard
+- The user approved the plan, these tasks, the TDD exception for the Javadoc-only statements of EXE-04, EXE-07 and DIAG-07, and the guard
   tests, and the second TDD exception for TEST-02's Javadoc statement that parallel test methods are not supported (T023)
   ([plan.md](plan.md#tdd-exceptions)). The `null`-restorer test in T003, first accepted as a guard, is red before T003 now that G13 is
   settled, so it is no longer a guard.
 - T001, the spike, is done; its outcome and the user's decisions (EXE-10, amended EXE-06 and EXE-07, D47) are in
   [plan.md](plan.md#spike-t001).
-- Eleven guard tests pass before their task: IT-1.4, one unit test each in T008, T011, T012 (new), T015, T016 and T017, and two unit tests
-  each in T020 and T023.
-  Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
+- Twelve guard tests pass before their task: IT-1.4, one unit test each in T003 (new), T008, T011, T012 (new), T015, T016 and T017, and two
+  unit tests each in T020 and T023.
+  Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)).
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it.
 - Every spec gap is closed: G2 – G14 (D46, DIAG-12) and G1 (EXE-10, D47) ([plan.md](plan.md#spec-gaps)).
-- One new guard test, in T012, awaits the user's acceptance ([plan.md](plan.md#guard-tests)).
+- All twelve guard tests, including those added in T003 and T012, are accepted by the user ([plan.md](plan.md#guard-tests)).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -112,17 +112,30 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
         the first listener's `onEnter` throws `IllegalStateException`; the second is still entered and restored; the operation's result,
         and in a second case its exception, come back unchanged; one `WARNING` record with the thrown exception is captured through a JUL
         `Handler` on `io.github.boundrail.context`. A listener throwing `AssertionError` makes the scope entry throw that `Error`;
-      - `RT-07 a restorer that throws a RuntimeException is logged and the remaining restorers still run, and an Error propagates`;
+      - `RT-07 an Error from a later onEnter stops the entry: the operation and later listeners do not run, earlier restorers run in reverse
+        order, and the Error propagates`: listeners A, B, C, D, where C throws `AssertionError`; D's `onEnter` and the operation are not
+        called, B's then A's restorers are, and the scope throws the same `AssertionError` (settled by the user during T003's review). This is
+        a guard (accepted by the user): T003's code already unwinds on any throwable. Show it red with the unwinding of the
+        restorers already returned temporarily limited to the `null`-restorer path, so an `Error` skips it, then revert
+        ([plan.md](plan.md#guard-tests));
+      - `RT-07 a restorer that throws a RuntimeException is logged naming the listener that returned it, and the remaining restorers still
+        run, while an Error from a restorer propagates at once and the remaining restorers are skipped`: listeners A, B, C; B's restorer throws
+        `IllegalStateException`: one `WARNING` record whose message names listener B, not the restorer's class, and A's restorer still runs;
+        in a second case B's restorer throws `AssertionError`: it propagates, and A's restorer is not called. Red before the fix: T003's code
+        names the restorer's class (the `Error` part already holds and sits with that red assertion, so it is not a guard);
       - `RT-07 adding a registered listener keeps it once in its original position, and removing an unregistered listener does nothing`: A,
         B, A again gives the order A, B with one call each; removing C changes nothing;
       - `RT-07 a listener whose onEnter returns null stops the scope entry: the operation does not run, earlier restorers run in reverse
         order, then NullPointerException is thrown`: listeners A, B, C, where B returns `null`; the operation and C's `onEnter` are not
         called, A's restorer is, and the scope throws `NullPointerException` (CORE-14). Red before T003: T002 runs the operation;
     - enable RC-9 in `it/RuntimeConformanceIT.java`: two listeners registered for the test, removed in `finally`; for nested bindings and a
-      `snapshot.call` that throws, their calls (only theirs, as the topology's MDC listeners may be registered) are enter A, enter B, restore
-      B, restore A per scope; a third, throwing listener leaves the result unchanged.
+      `snapshot.call` that throws, their calls are enter A, enter B, restore B, restore A per scope; a third, throwing listener leaves the
+      result unchanged. The listeners record only scopes entered on the test's own thread, because listeners are JVM-wide and the shared
+      topology's services enter scopes on other threads (and register their own MDC listeners) while RC-9 runs.
   - Green: per-listener and per-restorer `try`/`catch (RuntimeException)` with `System.Logger` in `ContextRuntime.enter`; `addIfAbsent`; a
-    `null` restorer stops the entry, unwinds the restorers already returned and throws `NullPointerException`.
+    `null` restorer or an `Error` from `onEnter` stops the entry, unwinds the restorers already returned and rethrows; an `Error` from a
+    restorer propagates at once. Fix from the review: each restorer is kept with the listener that returned it, and the `WARNING` for a
+    restorer's `RuntimeException` names that listener (its class name) instead of the restorer's class.
   - Completes: RT-07; CORE-14 (`null` restorer); RC-9.
   - Verify: Unit `ScopeListenerTest`; RC (all three tasks).
 - [ ] T004 [P] Capture-site mode in the runtime.
@@ -264,7 +277,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     - `EXE-03 Micrometer's ContextPropagatingTaskDecorator still propagates its thread locals`: with a registered `ThreadLocalAccessor`, both
       its value and the context reach the task (`micrometer-context-propagation` as `testImplementation` in `-spring`);
     - `EXE-03 an executor instance post-processed twice is decorated once`: a counting `ScopeListener` sees one scope entry per task, and
-      the existing decorator runs once. This is a guard (new, awaiting the user's acceptance): T011 replaces rather than composes, so a
+      the existing decorator runs once. This is a guard (accepted by the user): T011 replaces rather than composes, so a
       second pass already leaves one layer. Show it red with the check that leaves an existing library decorator alone temporarily removed
       from T012's finished code, then revert ([plan.md](plan.md#guard-tests));
   - Red, in `springtest/ReflectedFieldsTest.java`:
@@ -535,7 +548,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
       `BoundrailTestAutoConfiguration`, and there is no `spring.factories` (red before T023: there is no imports file);
     - enable IT-1.8: `@BoundrailTest` on `ContextPropagationIT`; the `/call-orders/without-tenant` violation's capture site starts with
       `io.github.boundrail.context.it.topology.EdgeApp.`; the IT-1.2 endpoint's violation has no capture site.
-  - Green: `testmod/BoundrailTest.java` (its Javadoc says parallel test methods are not supported: TDD exception awaiting approval),
+  - Green: `testmod/BoundrailTest.java` (its Javadoc says parallel test methods are not supported: approved TDD exception),
     `BoundrailTestExtension.java`, `RecordedViolations.java`, `ViolationRecorder.java`, `BoundrailTestAutoConfiguration.java` and its imports
     file; `compileOnly` on `spring-boot-autoconfigure` in `-test`.
   - Completes: TEST-02; RT-09 (the test module's exception, D40); DIAG-04, DIAG-05 and DIAG-10 end to end; IT-1.8.
@@ -603,7 +616,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M3): CORE-14, RT-07 – RT-09, IN-09,
   EXE-01 – EXE-07, EXE-09 – EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04; the Javadoc
   statements of EXE-04, EXE-07, DIAG-07 and TEST-02 (parallel runs) checked by inspection (TDD exceptions)
-- [ ] Guard tests (IT-1.4, and the unit guards in T008, T011, T012, T015, T016, T017, T020 (two) and T023 (two)) shown red against their
+- [ ] Guard tests (IT-1.4, and the unit guards in T003, T008, T011, T012, T015, T016, T017, T020 (two) and T023 (two)) shown red against their
   temporary change, and the change reverted
 - [x] T001's outcome recorded in plan.md, and G1 settled by the user (EXE-10, D47)
 - [ ] `boundrail-context-core` still has no runtime dependencies; SLF4J and Spring MVC are `compileOnly` in `-spring`

@@ -7,13 +7,18 @@ Package `io.github.boundrail.context`, module `boundrail-context-core`. Extends 
 ```java
 public interface ScopeListener {
     /**
-     * Called on the entering thread after {@code entered} becomes current. Must not return {@code null}: the operation then does not run,
-     * the restorers already returned run in reverse order, and NullPointerException is thrown (RT-07).
+     * Called on the entering thread after {@code entered} becomes current. A RuntimeException is logged, naming this listener, and
+     * ignored. Must not return {@code null}: the operation then does not run, the restorers already returned run in reverse order, and
+     * NullPointerException is thrown. An Error is not caught: the operation and later listeners do not run, the restorers already returned
+     * run in reverse order, and the Error propagates (RT-07).
      */
     Restorer onEnter(ContextSnapshot entered);
 
     interface Restorer {
-        /** Called on the same thread when the scope exits, before the previous snapshot is restored. */
+        /**
+         * Called on the same thread when the scope exits, before the previous snapshot is restored. A RuntimeException is logged, naming
+         * the listener that returned this restorer, and ignored; an Error propagates at once and the remaining restorers are skipped (RT-07).
+         */
         void restore();
     }
 }

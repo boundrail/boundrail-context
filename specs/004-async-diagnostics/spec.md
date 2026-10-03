@@ -143,11 +143,14 @@ tests.
 
 **RT-07** `[M3]` WHEN any scope is entered (`ContextBinding.run`/`call`, `ContextSnapshot.run`/`call`, or a wrapped operation), the runtime SHALL call
 `onEnter` on every registered listener in registration order, and SHALL call the returned restorers in reverse order when the scope exits, whether
-normally or exceptionally. IF a listener or restorer throws a `RuntimeException`, THEN the runtime SHALL log the exception through
-`System.Logger` and continue; the operation's outcome SHALL NOT change. An `Error` SHALL NOT be caught. IF `onEnter` returns `null`, THEN the
-runtime SHALL NOT run the operation, SHALL call the restorers already returned by earlier listeners in reverse order, and SHALL then throw
-`NullPointerException` (CORE-14). Adding a listener that is already registered SHALL leave it registered once, in its
-original position, and removing a listener that is not registered SHALL do nothing.
+normally or exceptionally. IF a listener or restorer throws a `RuntimeException`, THEN the runtime SHALL log a WARNING through
+`System.Logger` that names that listener (for a restorer, the listener that returned it) and carries the exception, and SHALL continue; the
+operation's outcome SHALL NOT change. An `Error` SHALL NOT be caught. IF `onEnter` throws an `Error`, THEN the runtime SHALL NOT run the
+operation or call `onEnter` on later listeners, SHALL call the restorers already returned by earlier listeners in reverse order, and SHALL then
+let the `Error` propagate. IF a restorer throws an `Error`, THEN the `Error` SHALL propagate at once, and the remaining restorers SHALL NOT be
+called. IF `onEnter` returns `null`, THEN the runtime SHALL NOT run the operation, SHALL call the restorers already returned by earlier
+listeners in reverse order, and SHALL then throw `NullPointerException` (CORE-14). Adding a listener that is already registered SHALL leave it
+registered once, in its original position, and removing a listener that is not registered SHALL do nothing.
 
 **RT-08** `[M3]` The capture-site mode (DIAG-05) SHALL be held by the runtime. It SHALL be initialised from the system properties
 `boundrail.context.diagnostics.capture-sites` and `boundrail.context.diagnostics.sample-rate`, and MAY be changed with `ContextRuntime.captureSites`.
