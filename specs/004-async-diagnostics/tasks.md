@@ -175,7 +175,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     applied()` records; `ContextPolicy.filter` keeps ([plan.md](plan.md#core)).
   - Completes: DIAG-10; DIAG-05 (`on`, `off`, core); SC-003.
   - Verify: Unit `CaptureSiteTest` and `CaptureSiteRecorderTest`.
-- [ ] T006 Sampled capture sites.
+- [x] T006 Sampled capture sites.
   - Red, in `CaptureSiteTest`:
     - `DIAG-05 sampled at rate 1.0 records every snapshot and at 0.0 none`;
     - `DIAG-05 sampled at 0.5 records some but not all of 1000 snapshots` (bounds wide enough never to flake: between 300 and 700).

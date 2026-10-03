@@ -36,7 +36,7 @@ public final class ContextRuntime {
     private static final System.Logger LOGGER = System.getLogger("io.github.boundrail.context");
 
     /** The capture-site mode and its sample rate, held together so that they always change together (RT-08). */
-    private record CaptureSiteMode(CaptureSites mode, double sampleRate) {
+    record CaptureSiteMode(CaptureSites mode, double sampleRate) {
     }
 
     private static volatile CaptureSiteMode captureSiteMode =
@@ -78,6 +78,11 @@ public final class ContextRuntime {
     /** {@return the current sample rate (RT-08)} */
     public static double sampleRate() {
         return captureSiteMode.sampleRate();
+    }
+
+    /** {@return the current mode and sample rate, read together} */
+    static CaptureSiteMode captureSiteMode() {
+        return captureSiteMode;
     }
 
     /**

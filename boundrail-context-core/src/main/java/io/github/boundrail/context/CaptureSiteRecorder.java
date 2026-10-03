@@ -1,5 +1,6 @@
 package io.github.boundrail.context;
 
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 
 /**
@@ -21,11 +22,16 @@ final class CaptureSiteRecorder {
     private CaptureSiteRecorder() {
     }
 
-    /** {@return the capture site for a snapshot being created now, or {@code null} if the mode records none} */
+    /**
+     * {@return the capture site for a snapshot being created now, or {@code null} if the mode records none; under {@code SAMPLED} a binding
+     * records with the probability of the sample rate}
+     */
     static String record() {
-        return switch (ContextRuntime.captureSites()) {
+        ContextRuntime.CaptureSiteMode current = ContextRuntime.captureSiteMode();
+        return switch (current.mode()) {
             case ON -> walker.get();
-            case OFF, SAMPLED -> null;
+            case SAMPLED -> ThreadLocalRandom.current().nextDouble() < current.sampleRate() ? walker.get() : null;
+            case OFF -> null;
         };
     }
 

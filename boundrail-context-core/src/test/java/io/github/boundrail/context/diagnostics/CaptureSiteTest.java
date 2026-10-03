@@ -91,4 +91,35 @@ class CaptureSiteTest {
 
         assertThat(bindTenant().captureSite()).as("the same binding under on").isPresent();
     }
+
+    /** {@return how many of n bindings recorded a capture site} */
+    private static long recordedOf(int n) {
+        long recorded = 0;
+        for (int i = 0; i < n; i++) {
+            if (bindTenant().captureSite().isPresent()) {
+                recorded++;
+            }
+        }
+        return recorded;
+    }
+
+    @Test
+    @DisplayName("DIAG-05 sampled at rate 1.0 records every snapshot and at 0.0 none")
+    void sampledAtRate1RecordsEverySnapshotAndAt0None() {
+        ContextRuntime.captureSites(CaptureSites.SAMPLED, 1.0);
+
+        assertThat(recordedOf(100)).as("rate 1.0").isEqualTo(100);
+
+        ContextRuntime.captureSites(CaptureSites.SAMPLED, 0.0);
+
+        assertThat(recordedOf(100)).as("rate 0.0").isZero();
+    }
+
+    @Test
+    @DisplayName("DIAG-05 sampled at 0.5 records some but not all of 1000 snapshots")
+    void sampledAtHalfRecordsSomeButNotAllOf1000Snapshots() {
+        ContextRuntime.captureSites(CaptureSites.SAMPLED, 0.5);
+
+        assertThat(recordedOf(1000)).isBetween(300L, 700L);
+    }
 }
