@@ -87,8 +87,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
     private void reportUntrusted(HttpServletRequest request) {
         for (ContextKey<?> key : policy.keys()) {
             if (policy.wireName(key).filter(name -> request.getHeaders(name).hasMoreElements()).isPresent()) {
-                reporter.report(new Violation(Violation.Kind.UNTRUSTED_HEADER, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+                reporter.report(reporter.violation(Violation.Kind.UNTRUSTED_HEADER, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             }
         }
     }
@@ -115,14 +114,12 @@ final class ContextInboundFilter extends OncePerRequestFilter {
             return binding;
         }
         if (values.size() > 1) {
-            reporter.report(new Violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                    Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             return binding;
         }
         String header = values.getFirst();
         if (header.length() > maxValueLength) {
-            reporter.report(new Violation(Violation.Kind.OVERSIZED_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                    Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            reporter.report(reporter.violation(Violation.Kind.OVERSIZED_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             return binding;
         }
         T value;
@@ -137,8 +134,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
                 value = codec.get().decode(header);
             }
         } catch (IllegalArgumentException e) {
-            reporter.report(new Violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                    Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             return binding;
         }
         return binding == null ? Context.with(key, value) : binding.with(key, value);

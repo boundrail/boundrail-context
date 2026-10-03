@@ -285,4 +285,14 @@ class ViolationReporterTest {
             return now;
         }
     }
+
+    @Test
+    @DisplayName("DIAG-04 the WARN entry includes the capture site after the thread")
+    void theWarnEntryIncludesTheCaptureSiteAfterTheThread() {
+        reporter.report(new Violation(MISSING_REQUIRED, "tenant", INTERNAL_CALL, Optional.empty(), "worker-1",
+                Optional.of("com.example.Orders.place(Orders.java:42)"), Optional.empty()));
+
+        assertThat(warnings()).singleElement().satisfies(entry -> assertThat(entry.message())
+                .endsWith(", thread worker-1, capture site com.example.Orders.place(Orders.java:42)"));
+    }
 }

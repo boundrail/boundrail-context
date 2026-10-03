@@ -1,11 +1,14 @@
 package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Boundary;
+import io.github.boundrail.context.Context;
+import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.Violation;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.logging.Log;
 
@@ -39,6 +42,15 @@ class ViolationReporter {
         this.clock = clock;
     }
 
+    /**
+     * Builds a violation with the observed evidence: the current thread's name and the capture site of the current snapshot, if one was
+     * recorded (DIAG-04). Every adapter builds its violations through this method.
+     */
+    Violation violation(Violation.Kind kind, String key, Boundary boundary, Optional<Destination> destination) {
+        return new Violation(kind, key, boundary, destination, Thread.currentThread().getName(), Context.capture().captureSite(),
+                Optional.empty());
+    }
+
     void report(Violation violation) {
         counter.increment(violation);
         if (dueForLog(new LogKey(violation.kind(), violation.key(), violation.boundary()))) {
@@ -70,6 +82,8 @@ class ViolationReporter {
             message.append(", destination ").append(destination.kind());
             destination.service().ifPresent(service -> message.append(' ').append(service));
         });
-        return message.append(", thread ").append(violation.thread()).toString();
+        message.append(", thread ").append(violation.thread());
+        violation.captureSite().ifPresent(site -> message.append(", capture site ").append(site));
+        return message.toString();
     }
 }

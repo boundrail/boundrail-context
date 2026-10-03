@@ -101,8 +101,7 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
         @Override
         public void invalid(ContextKey<?> key) {
             Objects.requireNonNull(key, "key");
-            reporter.report(new Violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                    Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
         }
     }
 }

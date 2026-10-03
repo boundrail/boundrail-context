@@ -189,7 +189,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 3: Foundational — violation evidence and listeners (blocks US2)
 
-- [ ] T007 Evidence filled by the reporter for every adapter.
+- [x] T007 Evidence filled by the reporter for every adapter.
   - Red, in `springtest/ViolationEvidenceTest.java`, with capture sites `on` for the test (restored after):
     - `DIAG-04 a violation from the client interceptor carries the thread and the capture site of the current snapshot`: inside
       `Context.without(tenant)` in the test, a call through an internal client throws `ContextViolationException` whose violation's thread is

@@ -66,8 +66,7 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
                 .filter(key -> policy.isRequired(key) && policy.propagates(key, boundary) && !key.isBound())
                 .map(ContextKey::name)
                 .sorted()
-                .map(name -> new Violation(Violation.Kind.MISSING_REQUIRED, name, boundary, Optional.of(destination),
-                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()))
+                .map(name -> reporter.violation(Violation.Kind.MISSING_REQUIRED, name, boundary, Optional.of(destination)))
                 .toList();
         missing.forEach(reporter::report);
         if (!missing.isEmpty() && mode == BoundrailContextProperties.Violations.Mode.FAIL) {
@@ -91,8 +90,8 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
             }
             List<String> removed = request.getHeaders().remove(wireName.get());
             if (removed != null && !removed.isEmpty()) {
-                reporter.report(new Violation(Violation.Kind.FORBIDDEN_HEADER, key.name(), Boundary.EXTERNAL_CALL, Optional.of(destination),
-                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+                reporter.report(reporter.violation(Violation.Kind.FORBIDDEN_HEADER, key.name(), Boundary.EXTERNAL_CALL,
+                        Optional.of(destination)));
             }
         }
     }
@@ -115,13 +114,11 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
             }
             String encoded = encode(key, snapshot);
             if (encoded.length() > maxValueLength) {
-                reporter.report(new Violation(Violation.Kind.OVERSIZED_VALUE, key.name(), boundary, Optional.of(destination),
-                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+                reporter.report(reporter.violation(Violation.Kind.OVERSIZED_VALUE, key.name(), boundary, Optional.of(destination)));
                 continue;
             }
             if (!isFieldValue(encoded)) {
-                reporter.report(new Violation(Violation.Kind.INVALID_VALUE, key.name(), boundary, Optional.of(destination),
-                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+                reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, key.name(), boundary, Optional.of(destination)));
                 continue;
             }
             request.getHeaders().set(wireName.get(), encoded);
