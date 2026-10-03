@@ -848,7 +848,7 @@ authentication through contributors.
   - Blocked until spec.md's IN-02 text on a single comma-containing header line is committed ([plan.md](plan.md#spec-gaps)).
   - Completes: WIRE-05 (including a single comma-containing value); WIRE-04 (before decode); DIAG-08; DIAG-09 (decode failures); IT-2.8.
   - Verify: Unit `ContextInboundFilterTest`; IT.
-- [ ] T025 [US2] Authentication filter and contributors.
+- [x] T025 [US2] Authentication filter and contributors.
   - Red, in `springtest/ContextAuthenticationFilterTest.java`:
     - `IN-04 ContextAuthenticationFilter is registered after Spring Security's filter chain when Spring Security is present`: with no
       property its order is `DEFAULT_FILTER_ORDER + 1` (`-99`);

@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
 @AutoConfiguration
@@ -149,6 +150,32 @@ public class BoundrailContextAutoConfiguration {
             }
             registration.setOrder(securityOrder - 1);
             return registration;
+        }
+
+        /** Registers the authentication filter after Spring Security's filter chain, where Spring Security is present (IN-04). */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnClass(SecurityContextHolder.class)
+        static class AuthenticationConfiguration {
+
+            /**
+             * Orders the filter one above the configured {@code spring.security.filter.order}, so it runs inside Spring Security's filter
+             * chain's call to the rest of the chain, once the {@code SecurityContext} is populated; {@code Integer.MAX_VALUE} fails startup,
+             * also under lazy initialization (IN-04).
+             */
+            @Bean
+            @Lazy(false)
+            FilterRegistrationBean<ContextAuthenticationFilter> boundrailAuthenticationFilter(
+                    ObjectProvider<ContextContributor> contributors, Environment environment) {
+                FilterRegistrationBean<ContextAuthenticationFilter> registration =
+                        new FilterRegistrationBean<>(new ContextAuthenticationFilter(contributors));
+                int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
+                        ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
+                if (securityOrder == Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("spring.security.filter.order must be less than Integer.MAX_VALUE");
+                }
+                registration.setOrder(securityOrder + 1);
+                return registration;
+            }
         }
     }
 }

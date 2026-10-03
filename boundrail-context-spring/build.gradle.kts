@@ -19,4 +19,5 @@ dependencies {
     testImplementation(libs.spring.boot.restclient)
     testImplementation(libs.jakarta.servlet.api)
     testImplementation(libs.spring.boot.security)
+    testImplementation(libs.spring.security.web)
 }
