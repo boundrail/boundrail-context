@@ -1,23 +1,47 @@
 package io.github.boundrail.context.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.github.boundrail.context.it.topology.EdgeApp;
+import io.github.boundrail.context.it.topology.ObservedContext;
+import io.github.boundrail.context.it.topology.Topology;
+import io.github.boundrail.context.it.topology.Topology.Service;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Context propagation suite (IT-1): context follows async work and scheduled jobs into calls and logs, and lost context fails loudly.
  * Scenarios come from specs/004-async-diagnostics (IT-1.1 – IT-1.9); each body is written test-first when that feature enables it
  * (BLD-10).
  */
+@ExtendWith(Topology.class)
 class ContextPropagationIT {
 
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+
     @Test
-    @Disabled("Pending: M3")
     @DisplayName("IT-1.1 Decorated executor carries context")
-    void it11DecoratedExecutorCarriesContext() {
+    void it11DecoratedExecutorCarriesContext(Topology.Running topology) throws Exception {
         // IT-1.1: Given a public request authenticated as alice (tenant `acme`), when edge runs work through an `@Async` method on
         // `taskExecutor` (an auto-decorated `ThreadPoolTaskExecutor` in detached mode, with Micrometer's context-propagating decorator also
         // configured) and that work calls orders, then orders observes `tenant=acme`. *(EXE-02, EXE-03, EXE-05, OUT-04)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = callEdge(topology, "/async/call-orders", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).as("the work ran on taskExecutor").startsWith("taskExecutor-");
+        assertThat(observed(topology, "orders", marker)).containsEntry(ObservedContext.TENANT, "acme");
     }
 
     @Test
@@ -89,5 +113,21 @@ class ContextPropagationIT {
         // then orders observes `tenant=acme`. When an edge handler returns a `DeferredResult` that a thread with no context completes, then an
         // edge `HandlerInterceptor` that records the bound `tenant` in `postHandle` of the async dispatch observes `tenant=acme`.
         // *(IN-09, EXE-09)*
+    }
+
+    /** Sends a GET to edge with alice's JWT and the marker. */
+    private static HttpResponse<String> callEdge(Topology.Running topology, String path, String marker) throws Exception {
+        URI uri = topology.uri(Service.EDGE).resolve(path + "?marker=" + marker);
+        return HTTP.send(HttpRequest.newBuilder(uri).header("Authorization", "Bearer " + topology.jwts().alice()).build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** The single request a service observed with this marker. */
+    private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
+        List<Map<String, String>> marked = topology.observed().of(service).stream()
+                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
+                .toList();
+        assertThat(marked).as("%s requests marked %s", service, marker).hasSize(1);
+        return marked.getFirst();
     }
 }

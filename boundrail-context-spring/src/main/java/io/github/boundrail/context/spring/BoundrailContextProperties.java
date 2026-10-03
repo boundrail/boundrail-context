@@ -12,10 +12,11 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param inbound which inbound callers are trusted
  * @param destinations how outbound destinations are classified
  * @param wire limits on wire values
+ * @param executors how Spring's task executors are decorated
  */
 @ConfigurationProperties("boundrail.context")
 public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Inbound inbound,
-        @DefaultValue Destinations destinations, @DefaultValue Wire wire) {
+        @DefaultValue Destinations destinations, @DefaultValue Wire wire, @DefaultValue Executors executors) {
 
     /**
      * Violation handling (DIAG-02) and reporting (DIAG-03).
@@ -66,6 +67,16 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
      * @param externalHosts host patterns classified as external
      */
     public record Destinations(@DefaultValue List<String> internalHosts, @DefaultValue List<String> externalHosts) {
+    }
+
+    /**
+     * Executors (EXE-03). The decorating post-processor runs before this bean exists, so it reads the same property through
+     * {@code Binder}; keep the two in step.
+     *
+     * @param autoDecorate whether every {@code ThreadPoolTaskExecutor}, {@code SimpleAsyncTaskExecutor} and {@code ThreadPoolTaskScheduler}
+     *     bean is decorated so that its tasks run in the submitter's context
+     */
+    public record Executors(@DefaultValue("true") boolean autoDecorate) {
     }
 
     /**

@@ -15,6 +15,7 @@ dependencies {
     testImplementation(libs.spring.boot.test)
     testImplementation(libs.spring.kafka)
     testImplementation(libs.micrometer.core)
+    testImplementation(libs.micrometer.context.propagation)
     testImplementation(libs.testcontainers.kafka)
 }
 

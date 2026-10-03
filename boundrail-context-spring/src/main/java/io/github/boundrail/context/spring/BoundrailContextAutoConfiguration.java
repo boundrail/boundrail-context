@@ -50,6 +50,16 @@ public class BoundrailContextAutoConfiguration {
                 listeners, LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
     }
 
+    /**
+     * Decorates Spring's task executor and scheduler beans (EXE-03). {@code static}, so this configuration class is not created early, and
+     * the effective policy is resolved only when a task is first decorated.
+     */
+    @Bean
+    static ExecutorDecoratingPostProcessor boundrailExecutorDecoratingPostProcessor(ObjectProvider<EffectivePolicy> policy,
+            Environment environment) {
+        return new ExecutorDecoratingPostProcessor(policy, environment);
+    }
+
     /** Classifies destinations by the {@code destinations.*} host patterns; an invalid pattern fails startup (OUT-03, DEST-04). */
     @Bean
     @Lazy(false)

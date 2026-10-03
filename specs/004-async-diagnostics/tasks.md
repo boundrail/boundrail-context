@@ -248,7 +248,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Green: the `ExecutorService` overloads and wrapper.
   - Completes: EXE-02 and EXE-04 (`ExecutorService`); CORE-14 (`ExecutorService` overloads).
   - Verify: Unit `BoundExecutorsTest`.
-- [ ] T011 [US1] Auto-decoration of Spring executors; enable IT-1.1.
+- [x] T011 [US1] Auto-decoration of Spring executors; enable IT-1.1.
   - Red:
     - in `springtest/ExecutorDecorationTest.java` (`ApplicationContextRunner`):
       - `EXE-03 ThreadPoolTaskExecutor, SimpleAsyncTaskExecutor and ThreadPoolTaskScheduler beans are decorated before initialisation, and

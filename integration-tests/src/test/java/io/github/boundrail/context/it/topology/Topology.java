@@ -115,6 +115,9 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     "logging.include-application-name=false"));
             if (service != Service.EDGE) {
                 properties.add("spring.autoconfigure.exclude=" + SECURITY_AUTO_CONFIGURATIONS);
+            } else {
+                // Boot applies Micrometer's context-propagating decorator to edge's taskExecutor (IT-1.1).
+                properties.add("spring.task.execution.propagate-context=true");
             }
             return new SpringApplicationBuilder(service.application)
                     .properties(properties.toArray(String[]::new))

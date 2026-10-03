@@ -9,10 +9,14 @@ import io.github.boundrail.context.it.topology.Topology.Service;
 import io.github.boundrail.context.spring.BoundrailClients;
 import io.github.boundrail.context.spring.JwtClaimContributor;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
+import java.util.concurrent.TimeUnit;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +31,7 @@ import org.springframework.web.client.RestClient;
  */
 @SpringBootConfiguration(proxyBeanMethods = false)
 @EnableAutoConfiguration
+@EnableAsync
 @RestController
 public class EdgeApp {
 
@@ -35,6 +40,7 @@ public class EdgeApp {
 
     private final ObservedContext observed;
     private final Topology.Running topology;
+    private final EdgeAsyncWork asyncWork;
     private final RestClient internalOrders;
     private final RestClient externalPartner;
     private final RestClient undeclaredPartner;
@@ -43,9 +49,10 @@ public class EdgeApp {
      * Every client is built from edge's auto-configured {@code RestClient.Builder}, so it carries the library's interceptor. Only internal
      * clients apply {@code TestInboundTrustVerifier.peer()}, so partner never receives the test peer header.
      */
-    public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients) {
+    public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients, EdgeAsyncWork asyncWork) {
         this.observed = observed;
         this.topology = topology;
+        this.asyncWork = asyncWork;
         this.internalOrders = clients.clone().apply(BoundrailClients.internal("orders")).apply(TestInboundTrustVerifier.peer()).build();
         this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
         this.undeclaredPartner = clients.clone().build();
@@ -55,6 +62,21 @@ public class EdgeApp {
     @Bean
     static JwtDecoder jwtDecoder(TestJwts jwts) {
         return NimbusJwtDecoder.withPublicKey(jwts.publicKey()).build();
+    }
+
+    /**
+     * The executor {@code @Async} methods run on: a {@code ThreadPoolTaskExecutor} built by Boot's builder, so Boot applies Micrometer's
+     * context-propagating decorator ({@code spring.task.execution.propagate-context=true}); the library decorates it (EXE-03). One thread, so
+     * later tasks reuse it.
+     */
+    @Bean
+    static ThreadPoolTaskExecutor taskExecutor(ThreadPoolTaskExecutorBuilder builder) {
+        return builder.corePoolSize(1).maxPoolSize(1).threadNamePrefix("taskExecutor-").build();
+    }
+
+    @Bean
+    static EdgeAsyncWork edgeAsyncWork(Topology.Running topology, RestClient.Builder clients) {
+        return new EdgeAsyncWork(topology, clients);
     }
 
     /** Contributes the JWT's {@code tenant} claim, bound after authentication (IN-04, IN-06). */
@@ -90,6 +112,12 @@ public class EdgeApp {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer partner-key")
                 .retrieve().toBodilessEntity();
         return "edge";
+    }
+
+    /** Runs {@link EdgeAsyncWork#callOrders} and waits for it; returns the name of the thread it ran on. */
+    @GetMapping("/async/call-orders")
+    String asyncCallOrders(@RequestParam("marker") String marker) throws Exception {
+        return asyncWork.callOrders(marker).get(10, TimeUnit.SECONDS);
     }
 
     /** Binds {@code tenant=acme}, then calls orders through an internal client. */
