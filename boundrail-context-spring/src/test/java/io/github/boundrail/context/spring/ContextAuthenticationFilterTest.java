@@ -4,10 +4,13 @@ import static io.github.boundrail.context.Boundary.ATTACHED;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.Violation;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -304,6 +307,76 @@ class ContextAuthenticationFilterTest {
                     assertThat(thrown.get(4)).as("wrong type for a key already contributed").isInstanceOf(ClassCastException.class);
                     assertThat(observed.tenant()).contains("acme");
                 });
+    }
+
+    @Test
+    @DisplayName("IN-07 invalid(key) reports one INVALID_VALUE")
+    void invalidReportsOneInvalidValue() {
+        Recorded recorded = filterRecording((authentication, contributions) -> contributions.invalid(TENANT));
+
+        assertThat(recorded.violations()).singleElement().satisfies(violation -> {
+            assertThat(violation.kind()).isEqualTo(Violation.Kind.INVALID_VALUE);
+            assertThat(violation.key()).isEqualTo("tenant");
+            assertThat(violation.boundary()).isEqualTo(INTERNAL_CALL);
+            assertThat(violation.destination()).isEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("IN-07 invalid(key) binds nothing")
+    void invalidBindsNothing() {
+        Recorded recorded = filterRecording((authentication, contributions) -> contributions.invalid(TENANT));
+
+        assertThat(recorded.observed()).isEqualTo(new Observed(Optional.empty(), Optional.empty()));
+    }
+
+    @Test
+    @DisplayName("IN-07 invalid(key) does not affect contributions for the same key")
+    void invalidDoesNotAffectContributionsForTheSameKey() {
+        Recorded putThenInvalid = filterRecording((authentication, contributions) -> {
+            contributions.put(TENANT, "acme");
+            contributions.invalid(TENANT);
+        });
+        Recorded invalidThenPut = filterRecording((authentication, contributions) -> {
+            contributions.invalid(TENANT);
+            contributions.put(TENANT, "acme");
+        });
+
+        assertThat(putThenInvalid.observed().tenant()).as("put, then invalid").contains("acme");
+        assertThat(invalidThenPut.observed().tenant()).as("invalid, then put").contains("acme");
+        assertThat(putThenInvalid.violations()).as("put, then invalid").extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "tenant"));
+        assertThat(invalidThenPut.violations()).as("invalid, then put").extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "tenant"));
+    }
+
+    @Test
+    @DisplayName("CORE-13 ContextContributions.invalid(null) throws NullPointerException")
+    void invalidNullThrowsNullPointerException() {
+        List<Throwable> thrown = new ArrayList<>();
+        Recorded recorded = filterRecording((authentication, contributions) -> thrown.add(catchThrowable(() -> contributions.invalid(null))));
+
+        assertThat(thrown).singleElement().isInstanceOf(NullPointerException.class);
+        assertThat(recorded.violations()).isEmpty();
+    }
+
+    /** What the servlet at the end of the chain observed, and the violations reported while the request was filtered. */
+    record Recorded(Observed observed, List<Violation> violations) {
+    }
+
+    /**
+     * Sends an authenticated request through the authentication filter of a context in {@code fail} mode with the given contributor, and
+     * records every reported violation. Micrometer is hidden so that the recording counter is the only {@code ViolationReporter.Counter} bean.
+     */
+    private Recorded filterRecording(ContextContributor contributor) {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        AtomicReference<Observed> observed = new AtomicReference<>();
+        runner.withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                .withPropertyValues("boundrail.context.violations.mode=fail")
+                .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                .withBean(ContextContributor.class, () -> contributor)
+                .run(context -> observed.set(filter(context, ALICE)));
+        return new Recorded(observed.get(), List.copyOf(violations));
     }
 
     private static FilterRegistrationBean<?> authenticationRegistration(AssertableWebApplicationContext context) {

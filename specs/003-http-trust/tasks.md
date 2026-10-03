@@ -888,7 +888,7 @@ authentication through contributors.
   - Completes: IN-04 (including the configured security order, `Integer.MAX_VALUE` failing startup, also under lazy initialization, and
     undeclared checked exceptions); IN-05; CORE-13 (`put`).
   - Verify: Unit `ContextAuthenticationFilterTest`.
-- [ ] T026 [US2] Contributions can report invalid values.
+- [x] T026 [US2] Contributions can report invalid values.
   - Red, in `ContextAuthenticationFilterTest`:
     - `IN-07 invalid(key) reports one INVALID_VALUE`, with boundary `INTERNAL_CALL` and no destination (DIAG-08); the chain runs in `fail` mode
       (DIAG-02);

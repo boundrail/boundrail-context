@@ -165,9 +165,9 @@ public class BoundrailContextAutoConfiguration {
             @Bean
             @Lazy(false)
             FilterRegistrationBean<ContextAuthenticationFilter> boundrailAuthenticationFilter(
-                    ObjectProvider<ContextContributor> contributors, Environment environment) {
+                    ObjectProvider<ContextContributor> contributors, ViolationReporter reporter, Environment environment) {
                 FilterRegistrationBean<ContextAuthenticationFilter> registration =
-                        new FilterRegistrationBean<>(new ContextAuthenticationFilter(contributors));
+                        new FilterRegistrationBean<>(new ContextAuthenticationFilter(contributors, reporter));
                 int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
                         ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
                 if (securityOrder == Integer.MAX_VALUE) {
