@@ -128,6 +128,17 @@ class ContextAuthenticationFilterTest {
     }
 
     @Test
+    @DisplayName("IN-04 spring.security.filter.order of Integer.MAX_VALUE starts without Spring Security")
+    void springSecurityFilterOrderOfIntegerMaxValueStartsWithoutSpringSecurity() {
+        runner.withPropertyValues("spring.security.filter.order=2147483647")
+                .withClassLoader(new FilteredClassLoader(SecurityContextHolder.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(ContextInboundFilterTest.inboundRegistration(context).getOrder()).isEqualTo(Integer.MAX_VALUE - 1);
+                });
+    }
+
+    @Test
     @DisplayName("IN-04 an undeclared checked exception from the chain is rethrown unchanged")
     void anUndeclaredCheckedExceptionFromTheChainIsRethrownUnchanged() {
         runner.withBean(ContextContributor.class, () -> (authentication, contributions) -> contributions.put(TENANT, "acme"))

@@ -95,7 +95,7 @@ class TrustBoundaryIT {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(observed(topology, "partner", marker))
                 .containsEntry("authorization", "Bearer partner-key")
-                .doesNotContainKey("tenant-id");
+                .doesNotContainKeys(CONTEXT_HEADERS);
         // The topology is shared, so the count is a delta around this request.
         assertThat(topology.violations(Service.EDGE, Violation.Kind.FORBIDDEN_HEADER)).isEqualTo(before + 1);
     }
