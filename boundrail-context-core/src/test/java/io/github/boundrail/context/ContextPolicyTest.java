@@ -6,10 +6,12 @@ import static io.github.boundrail.context.Boundary.EXTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Boundary.MESSAGE;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.junit.jupiter.api.Named.named;
 
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -183,6 +185,53 @@ class ContextPolicyTest {
         assertThatNullPointerException().isThrownBy(() -> policy.filter(null, ATTACHED));
         // EMPTY, not a non-empty snapshot: propagates would throw for a bound key and hide a missing check in filter
         assertThatNullPointerException().isThrownBy(() -> policy.filter(ContextSnapshot.EMPTY, null));
+    }
+
+    @Test
+    @DisplayName("POL-10 keys() returns the registered and built-in keys")
+    void keysReturnsTheRegisteredAndBuiltInKeys() {
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").propagateTo(INTERNAL_CALL))
+                .key(ORDER, rules -> rules.propagateTo(ATTACHED))
+                .build();
+
+        assertThat(policy.keys()).containsExactlyInAnyOrder(
+                TENANT, ORDER, BuiltInKeys.DEADLINE, BuiltInKeys.AUTHORITY, BuiltInKeys.INITIATOR);
+    }
+
+    @Test
+    @DisplayName("POL-10 the default policy reports the built-in keys")
+    void theDefaultPolicyReportsTheBuiltInKeys() {
+        assertThat(BuiltInKeys.defaultPolicy().keys())
+                .containsExactlyInAnyOrder(BuiltInKeys.DEADLINE, BuiltInKeys.AUTHORITY, BuiltInKeys.INITIATOR);
+    }
+
+    @Test
+    @DisplayName("POL-10 a merged policy reports the union of its keys")
+    void aMergedPolicyReportsTheUnionOfItsKeys() {
+        ContextPolicy first = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").propagateTo(INTERNAL_CALL))
+                .build();
+        ContextPolicy second = ContextPolicy.builder()
+                .key(ORDER, rules -> rules.codec(Codecs.longValue()).wireName("X-Order").propagateTo(EXTERNAL_CALL))
+                .build();
+
+        assertThat(first.merge(second).keys()).containsExactlyInAnyOrder(
+                TENANT, ORDER, BuiltInKeys.DEADLINE, BuiltInKeys.AUTHORITY, BuiltInKeys.INITIATOR);
+    }
+
+    @Test
+    @DisplayName("POL-10 keys() is unmodifiable")
+    void keysIsUnmodifiable() {
+        ContextPolicy policy = ContextPolicy.builder()
+                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("X-Tenant").propagateTo(INTERNAL_CALL))
+                .build();
+        Set<ContextKey<?>> keys = policy.keys();
+
+        assertThatExceptionOfType(UnsupportedOperationException.class).isThrownBy(() -> keys.add(UNREGISTERED));
+        assertThatExceptionOfType(UnsupportedOperationException.class).isThrownBy(() -> keys.remove(TENANT));
+        assertThat(policy.keys()).containsExactlyInAnyOrder(
+                TENANT, BuiltInKeys.DEADLINE, BuiltInKeys.AUTHORITY, BuiltInKeys.INITIATOR);
     }
 
     /** A check that asserts {@code NullPointerException} at a call. */

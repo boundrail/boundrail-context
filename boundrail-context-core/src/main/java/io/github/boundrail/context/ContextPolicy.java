@@ -128,6 +128,15 @@ public final class ContextPolicy {
     }
 
     /**
+     * Returns every key the policy has rules for: the keys registered in it or in a policy merged into it, and the built-in keys (POL-10).
+     *
+     * @return the unmodifiable set of keys
+     */
+    public Set<ContextKey<?>> keys() {
+        return rules.keySet();
+    }
+
+    /**
      * Returns a snapshot with exactly the bindings whose keys propagate to the boundary (POL-04).
      *
      * @param snapshot the snapshot

@@ -214,3 +214,6 @@ Properties use the prefix `boundrail.context.`.
 
 - 003-http-trust is complete (violations, outbound interceptor, required-key checks).
 - `CompletableFuture` default-pool coverage and Reactor are out of scope for v0.1.
+- Open item from M2: with Spring MVC async processing (`DeferredResult`, `Callable`), the async dispatch runs without the inbound context,
+  because `ContextInboundFilter` does not run again on async dispatches ([003-http-trust](../003-http-trust/spec.md) Assumptions, IN-01;
+  DESIGN Q8). This feature decides how async dispatches get the request's context and adds the requirements and scenarios for it.

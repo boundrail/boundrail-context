@@ -6,15 +6,23 @@ spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies"
 
 # Versions below are managed by spring-boot-bom.
 assertj-core = { module = "org.assertj:assertj-core" }
+jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 micrometer-core = { module = "io.micrometer:micrometer-core" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
+spring-boot-restclient = { module = "org.springframework.boot:spring-boot-restclient" }
+spring-boot-security = { module = "org.springframework.boot:spring-boot-security" }
 spring-boot-starter-kafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
+spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boot-starter-restclient" }
 spring-boot-starter-security-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-security-oauth2-resource-server" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-test = { module = "org.springframework.boot:spring-boot-test" }
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
+spring-security-oauth2-jose = { module = "org.springframework.security:spring-security-oauth2-jose" }
+spring-security-oauth2-resource-server = { module = "org.springframework.security:spring-security-oauth2-resource-server" }
 spring-security-web = { module = "org.springframework.security:spring-security-web" }
+spring-web = { module = "org.springframework:spring-web" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
 testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }

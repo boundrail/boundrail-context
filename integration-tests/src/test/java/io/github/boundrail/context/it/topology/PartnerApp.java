@@ -21,7 +21,7 @@ public class PartnerApp {
 
     @GetMapping("/ping")
     String ping(@RequestHeader HttpHeaders headers) {
-        observed.record("partner", ObservedContext.headers(headers));
+        observed.record("partner", ObservedContext.ping(headers));
         return "partner";
     }
 }
