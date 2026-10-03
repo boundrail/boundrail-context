@@ -1,11 +1,13 @@
 package io.github.boundrail.context.it.topology;
 
 import io.github.boundrail.context.BuiltInKeys;
+import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.it.topology.Topology.Service;
 import io.github.boundrail.context.spring.BoundrailClients;
+import io.github.boundrail.context.spring.JwtClaimContributor;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -55,6 +57,12 @@ public class EdgeApp {
         return NimbusJwtDecoder.withPublicKey(jwts.publicKey()).build();
     }
 
+    /** Contributes the JWT's {@code tenant} claim, bound after authentication (IN-04, IN-06). */
+    @Bean
+    static JwtClaimContributor tenantClaimContributor() {
+        return JwtClaimContributor.of("tenant", AppKeys.TENANT, Codecs.string());
+    }
+
     @GetMapping("/ping")
     String ping(@RequestHeader HttpHeaders headers) {
         observed.record("edge", ObservedContext.ping(headers));
@@ -91,6 +99,13 @@ public class EdgeApp {
             ping(internalOrders, Service.ORDERS, marker);
             return "edge";
         });
+    }
+
+    /** Binds nothing itself, then calls orders through an internal client. */
+    @GetMapping("/call-orders/as-caller")
+    String callOrdersAsCaller(@RequestParam("marker") String marker) {
+        ping(internalOrders, Service.ORDERS, marker);
+        return "edge";
     }
 
     /**

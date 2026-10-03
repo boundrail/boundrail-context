@@ -20,6 +20,8 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
 spring-boot-test = { module = "org.springframework.boot:spring-boot-test" }
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
+spring-security-oauth2-jose = { module = "org.springframework.security:spring-security-oauth2-jose" }
+spring-security-oauth2-resource-server = { module = "org.springframework.security:spring-security-oauth2-resource-server" }
 spring-security-web = { module = "org.springframework.security:spring-security-web" }
 spring-web = { module = "org.springframework:spring-web" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }

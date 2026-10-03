@@ -900,7 +900,7 @@ authentication through contributors.
   - Green: `invalid` in `ContextContributions` and its implementation in `ContextAuthenticationFilter`.
   - Completes: IN-07; DIAG-08 (authentication values); CORE-13 (`invalid`).
   - Verify: Unit `ContextAuthenticationFilterTest`.
-- [ ] T027 [US2] JWT claim contributor; enable IT-2.5, IT-2.1 and IT-2.6 (guard).
+- [x] T027 [US2] JWT claim contributor; enable IT-2.5, IT-2.1 and IT-2.6 (guard).
   - Red:
     - enable IT-2.5: a public caller with alice's JWT sends `Tenant-Id: evil` to edge. Edge records `ctx.tenant=acme`, edge's
       `UNTRUSTED_HEADER` count rises by 1, and the status is 200;

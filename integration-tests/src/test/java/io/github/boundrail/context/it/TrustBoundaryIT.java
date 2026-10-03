@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,11 +36,16 @@ class TrustBoundaryIT {
     private static final String[] CONTEXT_HEADERS = {"tenant-id", "priority", "boundrail-initiator", "boundrail-deadline-ms"};
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.1 Internal call carries tenant")
-    void it21InternalCallCarriesTenant() {
+    void it21InternalCallCarriesTenant(Topology.Running topology) throws Exception {
         // IT-2.1: Given a public request authenticated as alice, when edge calls orders through a client declared `internal("orders")`,
         // then orders observes `tenant=acme`. *(IN-04, IN-06, OUT-03, OUT-04, WIRE-01)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = callEdge(topology, "/call-orders/as-caller", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "orders", marker)).containsEntry(ObservedContext.TENANT, "acme");
     }
 
     @Test
@@ -97,20 +101,33 @@ class TrustBoundaryIT {
     }
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.5 Forged tenant from a public caller is ignored")
-    void it25ForgedTenantFromAPublicCallerIsIgnored() {
+    void it25ForgedTenantFromAPublicCallerIsIgnored(Topology.Running topology) throws Exception {
         // IT-2.5: When a public caller authenticated as alice sends `Tenant-Id: evil`, then the edge handler observes `tenant=acme` (from
         // the JWT claim, bound after authentication), one `UNTRUSTED_HEADER` violation is reported, and the request succeeds.
         // *(IN-02, IN-04, IN-05)*
+        String marker = UUID.randomUUID().toString();
+        // The topology is shared, so the count is a delta around this request.
+        double before = topology.violations(Service.EDGE, Violation.Kind.UNTRUSTED_HEADER);
+
+        HttpResponse<String> response = pingEdgeWithForgedTenant(topology, topology.jwts().alice(), marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "edge", marker)).containsEntry(ObservedContext.TENANT, "acme");
+        assertThat(topology.violations(Service.EDGE, Violation.Kind.UNTRUSTED_HEADER)).isEqualTo(before + 1);
     }
 
     @Test
-    @Disabled("Pending: M2")
     @DisplayName("IT-2.6 Forged tenant with no claim")
-    void it26ForgedTenantWithNoClaim() {
+    void it26ForgedTenantWithNoClaim(Topology.Running topology) throws Exception {
         // IT-2.6: When a public caller whose JWT has no `tenant` claim sends `Tenant-Id: evil`, then `tenant` is unbound in the edge
         // handler. *(IN-02, IN-06)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = pingEdgeWithForgedTenant(topology, topology.jwts().withoutTenant(), marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "edge", marker)).doesNotContainKey(ObservedContext.TENANT);
     }
 
     @Test
@@ -192,6 +209,17 @@ class TrustBoundaryIT {
     private static int ping(RestClient orders, String marker, String header, String value) {
         return orders.get().uri("/ping").header(EdgeApp.MARKER, marker).header(header, value)
                 .exchange((request, response) -> response.getStatusCode().value());
+    }
+
+    /** Calls edge's {@code /ping} as a public caller with the given token, the marker and a forged {@code Tenant-Id: evil}. */
+    private static HttpResponse<String> pingEdgeWithForgedTenant(Topology.Running topology, String token, String marker) throws Exception {
+        URI uri = topology.uri(Service.EDGE).resolve("/ping");
+        return HTTP.send(HttpRequest.newBuilder(uri)
+                        .header("Authorization", "Bearer " + token)
+                        .header(EdgeApp.MARKER, marker)
+                        .header("Tenant-Id", "evil")
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     /** Calls an edge endpoint as alice, the public caller. */

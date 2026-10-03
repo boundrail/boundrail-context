@@ -33,15 +33,25 @@ public final class TestJwts {
 
     /** A token for user {@code alice} with the claim {@code tenant=acme}. */
     public String alice() {
+        return encode(claims().claim("tenant", "acme"));
+    }
+
+    /** A token for user {@code alice} with no {@code tenant} claim. */
+    public String withoutTenant() {
+        return encode(claims());
+    }
+
+    private static JwtClaimsSet.Builder claims() {
         Instant now = Instant.now();
-        JwtClaimsSet claims = JwtClaimsSet.builder()
+        return JwtClaimsSet.builder()
                 .subject("alice")
-                .claim("tenant", "acme")
                 .issuedAt(now)
-                .expiresAt(now.plus(Duration.ofHours(1)))
-                .build();
+                .expiresAt(now.plus(Duration.ofHours(1)));
+    }
+
+    private String encode(JwtClaimsSet.Builder claims) {
         JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).build();
-        return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+        return encoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
     }
 
     private static KeyPair generateRsaKeyPair() {
