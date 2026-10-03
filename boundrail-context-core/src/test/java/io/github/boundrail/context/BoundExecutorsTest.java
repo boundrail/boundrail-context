@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -104,5 +107,148 @@ class BoundExecutorsTest {
         assertThatNullPointerException().isThrownBy(() -> BoundExecutors.detached((Executor) null, POLICY));
         assertThatNullPointerException().isThrownBy(() -> BoundExecutors.attached(executor, null));
         assertThatNullPointerException().isThrownBy(() -> BoundExecutors.detached(executor, null));
+    }
+
+    @Test
+    @DisplayName("EXE-02 submit, invokeAll and invokeAny run each task in the snapshot captured at submission")
+    void submitInvokeAllAndInvokeAnyRunEachTaskInTheSnapshotCapturedAtSubmission() throws Exception {
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        try {
+            ExecutorService bound = BoundExecutors.attached(worker, POLICY);
+            ExecutorService boundDetached = BoundExecutors.detached(worker, POLICY);
+            List<String> seen = new CopyOnWriteArrayList<>();
+            Callable<String> callable = BoundExecutorsTest::seen;
+
+            List<Future<?>> submitted = Context.with(TENANT, "t1").with(AUDIT, "a1").call(() -> {
+                bound.execute(() -> {
+                    seen.add("execute " + seen());
+                });
+                Future<?> runnable = bound.submit(() -> {
+                    seen.add("submit(Runnable) " + seen());
+                });
+                Future<String> runnableWithResult = bound.submit(() -> {
+                    seen.add("submit(Runnable, result) " + seen());
+                }, "result");
+                Future<String> submittedCallable = bound.submit(callable);
+                bound.invokeAll(List.of(callable, callable)).forEach(future -> seen.add("invokeAll " + result(future)));
+                bound.invokeAll(List.of(callable), 5, TimeUnit.SECONDS).forEach(future -> seen.add("invokeAll timed " + result(future)));
+                seen.add("invokeAny " + bound.invokeAny(List.of(callable)));
+                seen.add("invokeAny timed " + bound.invokeAny(List.of(callable), 5, TimeUnit.SECONDS));
+                seen.add("detached submit(Callable) " + boundDetached.submit(callable).get(5, TimeUnit.SECONDS));
+                return List.of(runnable, runnableWithResult, submittedCallable);
+            });
+            for (Future<?> future : submitted) {
+                future.get(5, TimeUnit.SECONDS);
+            }
+            seen.add("submit(Callable) " + submitted.get(2).get());
+
+            assertThat(seen).containsExactlyInAnyOrder(
+                    "execute tenant=t1 audit=a1",
+                    "submit(Runnable) tenant=t1 audit=a1",
+                    "submit(Runnable, result) tenant=t1 audit=a1",
+                    "invokeAll tenant=t1 audit=a1",
+                    "invokeAll tenant=t1 audit=a1",
+                    "invokeAll timed tenant=t1 audit=a1",
+                    "invokeAny tenant=t1 audit=a1",
+                    "invokeAny timed tenant=t1 audit=a1",
+                    "submit(Callable) tenant=t1 audit=a1",
+                    "detached submit(Callable) tenant=t1 audit=-");
+        } finally {
+            worker.shutdownNow();
+        }
+    }
+
+    private static String result(Future<String> future) {
+        try {
+            return future.get();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** An executor service that records each lifecycle call and returns fixed results. */
+    private static final class RecordingExecutorService extends AbstractExecutorService {
+
+        final List<String> calls = new ArrayList<>();
+        final List<Runnable> pending = List.of(() -> { });
+
+        @Override
+        public void shutdown() {
+            calls.add("shutdown");
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            calls.add("shutdownNow");
+            return pending;
+        }
+
+        @Override
+        public boolean isShutdown() {
+            calls.add("isShutdown");
+            return true;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            calls.add("isTerminated");
+            return true;
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            calls.add("awaitTermination " + timeout + " " + unit);
+            return true;
+        }
+
+        @Override
+        public void close() {
+            calls.add("close");
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            command.run();
+        }
+    }
+
+    @Test
+    @DisplayName("EXE-04 lifecycle methods delegate")
+    void lifecycleMethodsDelegate() throws InterruptedException {
+        RecordingExecutorService delegate = new RecordingExecutorService();
+        ExecutorService bound = BoundExecutors.detached(delegate);
+
+        bound.shutdown();
+        List<Runnable> pending = bound.shutdownNow();
+        boolean shutDown = bound.isShutdown();
+        boolean terminated = bound.isTerminated();
+        boolean awaited = bound.awaitTermination(7, TimeUnit.SECONDS);
+        bound.close();
+
+        assertThat(delegate.calls).containsExactly("shutdown", "shutdownNow", "isShutdown", "isTerminated", "awaitTermination 7 SECONDS",
+                "close");
+        assertThat(pending).isSameAs(delegate.pending);
+        assertThat(List.of(shutDown, terminated, awaited)).containsOnly(true);
+    }
+
+    @Test
+    @DisplayName("CORE-14 the ExecutorService overloads reject null")
+    void theExecutorServiceOverloadsRejectNull() throws InterruptedException {
+        ExecutorService service = Executors.newSingleThreadExecutor();
+        try {
+            assertThatNullPointerException().isThrownBy(() -> BoundExecutors.attached((ExecutorService) null));
+            assertThatNullPointerException().isThrownBy(() -> BoundExecutors.detached((ExecutorService) null));
+            assertThatNullPointerException().isThrownBy(() -> BoundExecutors.attached((ExecutorService) null, POLICY));
+            assertThatNullPointerException().isThrownBy(() -> BoundExecutors.detached((ExecutorService) null, POLICY));
+            assertThatNullPointerException().isThrownBy(() -> BoundExecutors.attached(service, null));
+            assertThatNullPointerException().isThrownBy(() -> BoundExecutors.detached(service, null));
+
+            ExecutorService bound = BoundExecutors.attached(service);
+            List<Callable<String>> withNull = Arrays.asList(() -> "a", null);
+            assertThatNullPointerException().isThrownBy(() -> bound.invokeAll(withNull));
+            assertThatNullPointerException().isThrownBy(() -> bound.invokeAll(withNull, 5, TimeUnit.SECONDS));
+        } finally {
+            service.shutdownNow();
+        }
     }
 }

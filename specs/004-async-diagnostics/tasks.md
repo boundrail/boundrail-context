@@ -240,7 +240,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     code).
   - Completes: EXE-02 and EXE-04 (`Executor`); EXE-07; DIAG-07; CORE-14 (`Executor` overloads).
   - Verify: Unit `BoundExecutorsTest`.
-- [ ] T010 [US1] `BoundExecutors` for `ExecutorService`.
+- [x] T010 [US1] `BoundExecutors` for `ExecutorService`.
   - Red, in `BoundExecutorsTest`:
     - `EXE-02 submit, invokeAll and invokeAny run each task in the snapshot captured at submission`, for `Runnable` and `Callable`;
     - `EXE-04 lifecycle methods delegate`: `shutdown`, `shutdownNow`, `isShutdown`, `isTerminated`, `awaitTermination`, `close`;

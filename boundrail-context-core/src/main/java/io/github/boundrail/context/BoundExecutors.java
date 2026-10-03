@@ -1,7 +1,7 @@
 package io.github.boundrail.context;
 
-import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Wraps executors so that every task runs in the snapshot current when it was submitted, filtered for the executor's mode: {@link
@@ -77,17 +77,53 @@ public final class BoundExecutors {
         return new BoundExecutor(delegate, policy, Boundary.DETACHED);
     }
 
-    /** Captures the submitter's snapshot, filters it for the mode, and passes the task wrapped in it to the delegate (EXE-02). */
-    private record BoundExecutor(Executor delegate, ContextPolicy policy, Boundary mode) implements Executor {
+    /**
+     * Returns an executor service whose tasks run in the snapshot captured at submission, filtered for {@code ATTACHED} with
+     * {@link BuiltInKeys#defaultPolicy()}; an application policy's rules are not applied (EXE-04). Lifecycle methods delegate.
+     *
+     * @param delegate the executor service that runs the tasks
+     * @return the wrapping executor service
+     * @throws NullPointerException if the delegate is {@code null}
+     */
+    public static ExecutorService attached(ExecutorService delegate) {
+        return attached(delegate, BuiltInKeys.defaultPolicy());
+    }
 
-        BoundExecutor {
-            Objects.requireNonNull(delegate, "delegate");
-            Objects.requireNonNull(policy, "policy");
-        }
+    /**
+     * Returns an executor service whose tasks run in the snapshot captured at submission, filtered for {@code DETACHED} with
+     * {@link BuiltInKeys#defaultPolicy()}; an application policy's rules are not applied (EXE-04). Lifecycle methods delegate.
+     *
+     * @param delegate the executor service that runs the tasks
+     * @return the wrapping executor service
+     * @throws NullPointerException if the delegate is {@code null}
+     */
+    public static ExecutorService detached(ExecutorService delegate) {
+        return detached(delegate, BuiltInKeys.defaultPolicy());
+    }
 
-        @Override
-        public void execute(Runnable task) {
-            delegate.execute(policy.filter(Context.capture(), mode).wrap(task));
-        }
+    /**
+     * Returns an executor service whose tasks run in the snapshot captured at submission, filtered for {@code ATTACHED} with the given
+     * policy. Lifecycle methods delegate.
+     *
+     * @param delegate the executor service that runs the tasks
+     * @param policy the policy to filter with
+     * @return the wrapping executor service
+     * @throws NullPointerException if an argument is {@code null}
+     */
+    public static ExecutorService attached(ExecutorService delegate, ContextPolicy policy) {
+        return new BoundExecutorService(delegate, policy, Boundary.ATTACHED);
+    }
+
+    /**
+     * Returns an executor service whose tasks run in the snapshot captured at submission, filtered for {@code DETACHED} with the given
+     * policy. Lifecycle methods delegate.
+     *
+     * @param delegate the executor service that runs the tasks
+     * @param policy the policy to filter with
+     * @return the wrapping executor service
+     * @throws NullPointerException if an argument is {@code null}
+     */
+    public static ExecutorService detached(ExecutorService delegate, ContextPolicy policy) {
+        return new BoundExecutorService(delegate, policy, Boundary.DETACHED);
     }
 }
