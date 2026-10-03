@@ -951,7 +951,7 @@ authentication through contributors.
 
 ## Phase 6: Close
 
-- [ ] T029 Verify each requirement one by one against the code and its tests, using the coverage table in
+- [x] T029 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-13, POL-07, POL-08, POL-10, DEST-01 – DEST-04, WIRE-01, WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04,
     DIAG-01 – DIAG-03, DIAG-08, DIAG-09 and TEST-01.
@@ -999,12 +999,12 @@ authentication through contributors.
 
 ## Exit Checklist
 
-- [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
-- [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
+- [x] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
+- [x] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019, T020a, T025,
+- [x] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019, T020a, T025,
   T026 and T029 guards (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024, T027 and T028, the three unit
   guards each in T010, T011 and T015a, the four unit guards in T012, and the ten unit guards in T022)
   shown red against their temporary change, and the change reverted
-- [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
-- [ ] `./gradlew check` green
+- [x] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
+- [x] `./gradlew check` green
