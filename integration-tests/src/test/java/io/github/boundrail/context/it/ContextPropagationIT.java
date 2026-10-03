@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Context propagation suite (IT-1): context follows async work and scheduled jobs into calls and logs, and lost context fails loudly.
- * Scenarios come from specs/004-async-diagnostics (IT-1.1 – IT-1.8); each body is written test-first when that feature enables it
+ * Scenarios come from specs/004-async-diagnostics (IT-1.1 – IT-1.9); each body is written test-first when that feature enables it
  * (BLD-10).
  */
 class ContextPropagationIT {
@@ -15,9 +15,9 @@ class ContextPropagationIT {
     @Disabled("Pending: M3")
     @DisplayName("IT-1.1 Decorated executor carries context")
     void it11DecoratedExecutorCarriesContext() {
-        // IT-1.1: Given a public request authenticated as alice (tenant `acme`), when edge runs work on `taskExecutor` (an auto-decorated
-        // `ThreadPoolTaskExecutor` in detached mode, with Micrometer's context-propagating decorator also configured) and that work calls
-        // orders, then orders observes `tenant=acme`. *(EXE-02, EXE-03, OUT-04)*
+        // IT-1.1: Given a public request authenticated as alice (tenant `acme`), when edge runs work through an `@Async` method on
+        // `taskExecutor` (an auto-decorated `ThreadPoolTaskExecutor` in detached mode, with Micrometer's context-propagating decorator also
+        // configured) and that work calls orders, then orders observes `tenant=acme`. *(EXE-02, EXE-03, EXE-05, OUT-04)*
     }
 
     @Test
@@ -34,8 +34,9 @@ class ContextPropagationIT {
     @Disabled("Pending: M3")
     @DisplayName("IT-1.3 Explicit wrapping fixes it")
     void it13ExplicitWrappingFixesIt() {
-        // IT-1.3: Given `rawExecutor` wrapped with `BoundExecutors.detached(...)`, when the same work runs, then orders observes
-        // `tenant=acme` and the audit reports the executor as `COVERED`. *(EXE-04, DIAG-06)*
+        // IT-1.3: Given `boundExecutor`, an edge bean declared as `BoundExecutors.detached(...)` around a plain `ExecutorService`, when the
+        // same work runs on it, then orders observes `tenant=acme` and the audit reports `boundExecutor` as `COVERED (detached)`.
+        // *(EXE-04, DIAG-06)*
     }
 
     @Test
@@ -77,6 +78,16 @@ class ContextPropagationIT {
     void it18CaptureSitesAreRecordedInTestsAndOnlyWhereObserved() {
         // IT-1.8: Under `@BoundrailTest`, a `MISSING_REQUIRED` violation raised after `Context.without(tenant)` in an edge controller
         // carries a capture site in that controller class. The IT-1.2 violation, whose task ran with `EMPTY`, carries no capture site.
-        // *(DIAG-04, DIAG-05, TEST-02)*
+        // *(DIAG-04, DIAG-05, DIAG-10, TEST-02)*
+    }
+
+    @Test
+    @Disabled("Pending: M3")
+    @DisplayName("IT-1.9 Spring MVC async processing keeps the request's context")
+    void it19SpringMvcAsyncProcessingKeepsTheRequestsContext() {
+        // IT-1.9: Given a public request authenticated as alice (tenant `acme`), when an edge handler returns a `Callable` that calls orders,
+        // then orders observes `tenant=acme`. When an edge handler returns a `DeferredResult` that a thread with no context completes, then an
+        // edge `HandlerInterceptor` that records the bound `tenant` in `postHandle` of the async dispatch observes `tenant=acme`.
+        // *(IN-09, EXE-09)*
     }
 }
