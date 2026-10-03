@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Fifty-two guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
-  T002, T005, T015, T017, T019, T020a, T025 and T026, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single
+- Fifty-three guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+  T002, T005, T015, T017, T019, T020a, T025, T026 and T029, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single
   parametrized case), T024, T027 and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and ten unit tests in
   T022 (two of them parametrized tests counted by their green cases only: the eleven invalid entries T021's code already rejects plus the
   two hex-form IPv4-mapped entries added in the e84bb96 follow-up, and the invalid `inbound.trust` with a verifier bean).
@@ -968,6 +968,12 @@ authentication through contributors.
     message (DIAG-09); `Metrics.globalRegistry` is not referenced (DIAG-03); no adapter catches anything wider than `IllegalArgumentException`
     around a codec call (WIRE-05).
 
+  - Feature-close review follow-ups:
+    - IT-2.4 asserts that partner receives none of the context headers, as IT-2.2 and IT-2.3 do (SC-002), not only `Tenant-Id`;
+    - `IN-04 spring.security.filter.order of Integer.MAX_VALUE starts without Spring Security`, in `ContextAuthenticationFilterTest`: the
+      inbound filter is ordered at `Integer.MAX_VALUE - 1`. This is a guard: show it red with `boundrailInboundFilter` temporarily also
+      rejecting `Integer.MAX_VALUE`, then revert ([plan.md](plan.md#guard-tests)).
+
   Run `./gradlew check` fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run. With the CI run green, this closes the feature.
 
 ## Dependencies & Execution Order
@@ -996,8 +1002,8 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019, T020a, T025 and
-  T026 guards (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024, T027 and T028, the three unit
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019, T020a, T025,
+  T026 and T029 guards (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024, T027 and T028, the three unit
   guards each in T010, T011 and T015a, the four unit guards in T012, and the ten unit guards in T022)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`

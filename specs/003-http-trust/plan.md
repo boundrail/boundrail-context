@@ -88,7 +88,7 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; fifty-two guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; fifty-three guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -491,6 +491,7 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T024 | `WIRE-05 any other exception from decode propagates unchanged and no violation is reported` | Before T024 nothing catches an exception from `decode`, so every exception propagates | In `ContextInboundFilter`, the catch widened from `IllegalArgumentException` to `RuntimeException` |
 | T028 | `IN-06 a claim value longer than max-value-length is bound` | No length check exists on the authentication path | In `ContextAuthenticationFilter`'s `Contributions.put`, `String` values longer than 256 (the default `wire.max-value-length`, hard-coded) dropped |
 | T028 | `IN-06 any other exception from the claim's codec propagates unchanged` | T027's `JwtClaimContributor` catches nothing, so every exception propagates | In `JwtClaimContributor`, the catch widened from `IllegalArgumentException` to `RuntimeException` |
+| T029 | `IN-04 spring.security.filter.order of Integer.MAX_VALUE starts without Spring Security` | Added after T025 by the feature-close review; T025 already fails startup only inside the `@ConditionalOnClass` configuration | In `boundrailInboundFilter`, `Integer.MAX_VALUE` rejected as well as `Integer.MIN_VALUE` |
 
 ## TDD Exceptions
 
