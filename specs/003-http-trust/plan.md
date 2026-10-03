@@ -88,7 +88,7 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; forty-eight guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; forty-nine guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -155,14 +155,15 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
   - `ApplicationContextRunner` does not run `SpringApplication`, so the property alone changes nothing in a runner test. T006a's test adds
     `LazyInitializationBeanFactoryPostProcessor` through `withInitializer`, as `SpringApplication` does for that property, and sets the property
     too.
-- **Invalid configuration under lazy initialization (POL-07, DEST-04, IN-08, DIAG-03, IN-01).** Every invalid-configuration startup failure
+- **Invalid configuration under lazy initialization (POL-07, DEST-04, IN-08, DIAG-03, IN-01, IN-04).** Every invalid-configuration startup failure
   also occurs with `spring.main.lazy-initialization=true`. Each bean whose creation validates configuration is `@Lazy(false)`:
   - the effective policy (POL-07, T006a);
   - the `boundrailDestinationClassifier` bean (DEST-04, T009);
   - the `boundrailViolationReporter` bean (DIAG-03, T010);
   - the `RestClientCustomizer` and `RestTemplateCustomizer` beans in `ClientConfiguration` (OUT-03, T010);
   - the built-in verifier bean (IN-03, IN-08, T022);
-  - the `boundrailInboundFilter` registration bean (IN-01, T018).
+  - the `boundrailInboundFilter` registration bean (IN-01, T018);
+  - the `boundrailAuthenticationFilter` registration bean, where Spring Security is on the classpath (IN-04, `Integer.MAX_VALUE`, T025).
 
   An invalid `spring.security.filter.order` fails startup (IN-01, user decision from the T017 review). The registration bean reads it from the
   `Environment` as an `Integer`, so `abc` already fails the conversion (`ConversionFailedException`, root cause `NumberFormatException`), and
@@ -329,8 +330,13 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
   - Matching compares only addresses of the same family.
 - **Authentication filter (IN-04, IN-05, IN-07).** `ContextAuthenticationFilter` is in a nested configuration, `@ConditionalOnClass` on Spring
   Security's `SecurityContextHolder`.
-  - It is registered with order `-99`, after the `springSecurityFilterChain` registration. A servlet filter after the security filter chain runs
-    inside `FilterChainProxy`'s call to the original chain, so the `SecurityContext` is populated there.
+  - It is registered one above `spring.security.filter.order`, read from the `Environment` as for the inbound filter, so `-99` by default and
+    `6` at `5`: after the `springSecurityFilterChain` registration wherever it is configured (D38). A servlet filter after the security filter
+    chain runs inside `FilterChainProxy`'s call to the original chain, so the `SecurityContext` is populated there. A property of
+    `Integer.MAX_VALUE`, at which `securityOrder + 1` would wrap to `Integer.MIN_VALUE` and put the filter first, fails startup with
+    `IllegalArgumentException`; the registration bean is `@Lazy(false)`, so it also fails under lazy initialization (T025, see Spring wiring).
+  - An exception from the rest of the chain propagates unchanged, including an undeclared checked exception: the `catch (Exception e)` around
+    `binding.call` rethrows through a private sneaky-rethrow helper, as in the inbound filter (D38).
   - It reads `SecurityContextHolder.getContext().getAuthentication()`. The request is authenticated when that authentication is not `null`,
     `isAuthenticated()`, and `new AuthenticationTrustResolverImpl().isAuthenticated(authentication)` (not anonymous).
   - It calls each `ContextContributor` bean in `ObjectProvider.orderedStream()` order, with a package-private `ContextContributions`:
@@ -460,6 +466,7 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T022 | `IN-08 a hex-form IPv4-mapped remote address is matched as IPv4` (e84bb96 follow-up) | `getByName` turns `::ffff:a00:1` into an `Inet4Address`, as it does the dotted form, so it matches IPv4 entries | In `CidrInboundTrustVerifier.verify`, only the dotted form `::ffff:a.b.c.d` treated as mapped, e.g. `UNTRUSTED` for a remote address that parses to an `Inet4Address` but whose text isn't dotted |
 | T022 | `IN-08 an invalid entry fails startup`, the hex-form IPv4-mapped cases `::ffff:a00:1` and `0:0:0:0:0:ffff:a00:1` (e84bb96 follow-up) | The mapped-entry check rejects any IPv6-text entry that `getByName` turns into an `Inet4Address`, whatever the form of its last 32 bits | In `CidrInboundTrustVerifier`, the mapped-entry check the textual `text.startsWith("::ffff:")` instead of `address instanceof Inet4Address` |
 | T022 | `IN-08 IPv4-compatible and IPv4-translated entries are plain IPv6 entries` (e84bb96 follow-up) | `getByName` returns an `Inet6Address` for `::10.0.0.1` and `::ffff:0:10.0.0.1`, so they pass the mapped-entry check and match only IPv6 remote addresses | In `CidrInboundTrustVerifier`, any IPv6 entry with a dotted part rejected |
+| T025 | `IN-04 an undeclared checked exception from the chain is rethrown unchanged` | T025's filter already rethrows the exception from `binding.call` through `sneakyThrow`, written before IN-04 named the behaviour (D38) | In `ContextAuthenticationFilter`, the `catch (Exception e)` around `binding.call` throwing `new ServletException(e)` instead |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
 | T011 | `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call` | T010's application-set check already runs on every boundary | In `ContextClientInterceptor`, the application-set check applied only on `INTERNAL_CALL`, so the context value overwrites the header |
 | T011 | `OUT-04 an application-set header's context value is not encoded or checked` (the throwing `encode` and oversized cases) | T010 skips an application-set header before calling `encode`, and has no length check | In `ContextClientInterceptor`, the value encoded and length-checked before the application-set check |

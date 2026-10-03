@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Forty-eight guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
-  T002, T005, T015, T017, T019 and T020a, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
+- Forty-nine guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+  T002, T005, T015, T017, T019, T020a and T025, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
   and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and ten unit tests in T022 (two of them parametrized
   tests counted by their green cases only: the eleven invalid entries T021's code already rejects plus the two hex-form IPv4-mapped entries
   added in the e84bb96 follow-up, and the invalid `inbound.trust` with a verifier bean).
@@ -850,8 +850,18 @@ authentication through contributors.
   - Verify: Unit `ContextInboundFilterTest`; IT.
 - [ ] T025 [US2] Authentication filter and contributors.
   - Red, in `springtest/ContextAuthenticationFilterTest.java`:
-    - `IN-04 ContextAuthenticationFilter is registered after Spring Security's filter chain when Spring Security is present`: its order is
-      higher than `DEFAULT_FILTER_ORDER`;
+    - `IN-04 ContextAuthenticationFilter is registered after Spring Security's filter chain when Spring Security is present`: with no
+      property its order is `DEFAULT_FILTER_ORDER + 1` (`-99`);
+    - `IN-04 the authentication filter runs after Spring Security at a configured spring.security.filter.order`: with
+      `spring.security.filter.order=5`, the registration order is `6`. Red against a fixed `-99` (review of T025, D38);
+    - `IN-04 spring.security.filter.order of Integer.MAX_VALUE fails startup` (D38): `2147483647`, without and with lazy initialization (the
+      T006a setup, as in T018's IN-01 test). Startup fails with an `IllegalArgumentException` as the root cause. Red in both cases against a
+      fixed `-99`, which ignores the property, so startup succeeds;
+    - `IN-04 an undeclared checked exception from the chain is rethrown unchanged` (D38): on an authenticated request with a contributor that
+      binds `tenant`, so the `call` path runs, the chain sneaky-throws a checked exception that is neither `IOException` nor
+      `ServletException`; the same instance comes out of the filter. This is a guard: the filter already rethrows through `sneakyThrow`. Show
+      it red with the `catch (Exception e)` around `binding.call` temporarily throwing `new ServletException(e)`, then revert
+      ([plan.md](plan.md#guard-tests));
     - `IN-04 it is not registered without Spring Security` (`FilteredClassLoader`);
     - `IN-04 for an authenticated request every ContextContributor bean is invoked and the rest of the chain runs with the contributed values`;
     - `IN-04 the contributed values are bound only for the rest of the chain`;
@@ -865,11 +875,18 @@ authentication through contributors.
       that is not an instance of the key's type (through a raw cast) throws `ClassCastException` at `put`.
   - Green:
     - `spring/ContextContributor.java`, `spring/ContextContributions.java` (`put` only), `spring/ContextAuthenticationFilter.java`;
-    - its registration (order `-99`) in a nested `@ConditionalOnClass(SecurityContextHolder.class)` configuration;
+    - its registration in a nested `@ConditionalOnClass(SecurityContextHolder.class)` configuration, `@Lazy(false)`, with order
+      `securityOrder + 1`, where `securityOrder` is `spring.security.filter.order` read from the `Environment` as an `Integer` with the
+      default `ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT` (`-100`), as `boundrailInboundFilter` reads it; the bean throws
+      `IllegalArgumentException` when `securityOrder` is `Integer.MAX_VALUE`, and its Javadoc says the order is one above the configured
+      property, not its default;
+    - in `ContextAuthenticationFilter`, the `catch (Exception e)` around `binding.call` rethrows unchanged through a private sneaky-rethrow
+      helper, as `ContextInboundFilter` does (already so in the uncommitted T025 code, hence the guard above);
     - `testImplementation` for `spring-security-web`.
 
     The `AUTHORITY` clause of IN-05 is delivered with ID-02 in M5.
-  - Completes: IN-04; IN-05; CORE-13 (`put`).
+  - Completes: IN-04 (including the configured security order, `Integer.MAX_VALUE` failing startup, also under lazy initialization, and
+    undeclared checked exceptions); IN-05; CORE-13 (`put`).
   - Verify: Unit `ContextAuthenticationFilterTest`.
 - [ ] T026 [US2] Contributions can report invalid values.
   - Red, in `ContextAuthenticationFilterTest`:

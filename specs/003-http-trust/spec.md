@@ -72,7 +72,7 @@ values are ignored and reported, and never fail the request.
 - Application code sets a policy wire header name with no values: OUT-04 (unset, so the context value is written). Application code sets it
   to the empty string `""`: OUT-04 (set, so it is left unchanged).
 - `spring.security.filter.order` is set, for example to `5`: IN-01 (`ContextInboundFilter` is ordered at `4`, still before Spring
-  Security's filter chain).
+  Security's filter chain); IN-04 (`ContextAuthenticationFilter` is ordered at `6`, still after Spring Security's filter chain).
 - A request from which `ContextInboundFilter` binds no keys, such as any request under the default verifier: IN-01 (the rest of the chain
   runs in the caller's existing scope; no empty scope is entered).
 - A handler uses Spring MVC async processing (`DeferredResult`, `Callable`): known limitation in M2 (see Assumptions; DESIGN Q8). The async
@@ -141,9 +141,10 @@ values are ignored and reported, and never fail the request.
 - A `null` argument or a value of the wrong type passed to the HTTP contract: CORE-13.
 - Invalid configuration with `spring.main.lazy-initialization=true`: conflicting `ContextPolicy` beans, invalid host patterns, an invalid
   `inbound.trust`, invalid CIDR entries with `inbound.trust=cidr`, an invalid `violations.mode`, a negative `violations.log-interval`, a
-  `wire.max-value-length` less than 1, a `spring.security.filter.order` that is not an integer or is `Integer.MIN_VALUE`, or several
-  `DestinationClassifier` beans with none primary while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-03, IN-08,
-  DIAG-02, DIAG-03, WIRE-04, IN-01, OUT-03).
+  `wire.max-value-length` less than 1, a `spring.security.filter.order` that is not an integer or is `Integer.MIN_VALUE`, a
+  `spring.security.filter.order` of `Integer.MAX_VALUE` while Spring Security is on the classpath, or several `DestinationClassifier` beans
+  with none primary while HTTP client support is active, still fail startup (POL-07, DEST-04, IN-03, IN-08, DIAG-02, DIAG-03, WIRE-04,
+  IN-01, IN-04, OUT-03).
 - More than one `DestinationClassifier` bean: OUT-03 (the `@Primary` one is used; with none primary, startup fails whenever HTTP client support
   is active, that is `spring-web` and `spring-boot-restclient` are present, even with `spring.main.lazy-initialization=true`; without client
   support no classifier is used and startup does not fail).
@@ -301,11 +302,14 @@ description of `inbound.trusted-cidrs` in the Configuration table below SHALL st
 table is all M2 owes; the user-facing configuration reference is built from it by REL-03 `[M7]`.
 
 **IN-04** `[M2]` WHERE Spring Security is on the classpath, the Spring module SHALL register `ContextAuthenticationFilter` after Spring Security's
-authentication filters. WHEN the request is authenticated, it SHALL invoke every `ContextContributor` bean and run the rest of the chain in a nested
-scope that binds the contributed values. The request is authenticated when the `SecurityContext` holds an `Authentication` that is not `null`,
-reports `isAuthenticated()`, and is not anonymous, as Spring Security's `AuthenticationTrustResolver.isAuthenticated` defines it; an
-`AnonymousAuthenticationToken` is therefore not authenticated. Otherwise the filter SHALL invoke no contributor and SHALL run the rest of the chain
-in the current scope.
+authentication filters, at whatever `spring.security.filter.order` is configured: the filter's order SHALL be that property's value plus one,
+so -99 with the property's default of -100. IF `spring.security.filter.order` is `Integer.MAX_VALUE`, at which no order is one above it, THEN
+application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`. WHEN the request is authenticated, it SHALL invoke
+every `ContextContributor` bean and run the rest of the chain in a nested scope that binds the contributed values. The request is
+authenticated when the `SecurityContext` holds an `Authentication` that is not `null`, reports `isAuthenticated()`, and is not anonymous, as
+Spring Security's `AuthenticationTrustResolver.isAuthenticated` defines it; an `AnonymousAuthenticationToken` is therefore not authenticated.
+Otherwise the filter SHALL invoke no contributor and SHALL run the rest of the chain in the current scope. An exception thrown by the rest of
+the chain SHALL propagate from the filter unchanged, including a checked exception the filter does not declare.
 
 **IN-05** `[M2]` Contributed values SHALL bind only keys that are not already bound (trusted headers take precedence, DESIGN D27). The exception for
 `AUTHORITY`, which is always bound from the authentication, is delivered with ID-02 `[M5]`. The same rule applies between contributions: IF more
@@ -436,7 +440,8 @@ Every startup failure caused by invalid configuration also occurs when `spring.m
 beans (POL-07), invalid host patterns (DEST-04), an invalid `inbound.trust` (IN-03), invalid CIDR entries with `inbound.trust=cidr` (IN-08),
 an invalid `violations.mode` (DIAG-02), a negative
 `violations.log-interval` (DIAG-03), a `wire.max-value-length` less than 1 (WIRE-04), a `spring.security.filter.order` that is not an
-integer or is `Integer.MIN_VALUE` (IN-01), and, while HTTP client support is active (`spring-web` and `spring-boot-restclient` are
+integer or is `Integer.MIN_VALUE` (IN-01), a `spring.security.filter.order` of `Integer.MAX_VALUE` while Spring Security is on the classpath
+(IN-04), and, while HTTP client support is active (`spring-web` and `spring-boot-restclient` are
 present), several `DestinationClassifier` beans with none primary (OUT-03).
 
 | Property | Default | Meaning |
