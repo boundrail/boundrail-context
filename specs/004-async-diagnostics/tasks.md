@@ -226,7 +226,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 **Independent Test**: IT-1.1 and IT-1.3 (IT-1.3 also needs US2's audit and is enabled in T015).
 
-- [ ] T009 [P] [US1] `BoundExecutors` for `Executor`.
+- [x] T009 [P] [US1] `BoundExecutors` for `Executor`.
   - Red, in `coretest/BoundExecutorsTest.java`:
     - `EXE-02 a task runs in the snapshot captured at submission, filtered for the mode`: a key that propagates to `ATTACHED` only is present
       under `attached(...)` and absent under `detached(...)`; a binding changed after submission is not seen;
