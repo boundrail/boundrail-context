@@ -57,7 +57,7 @@ M4 and M5, because its scenarios assert that the deadline is absent and the init
 | M0 | 001-foundation | BLD-01 – BLD-12 | build smoke test (BLD-11); all suites written and disabled |
 | M1 | 002-core-runtime | CORE-01 – CORE-12, RT-01 – RT-06, POL-01 – POL-06, POL-09, WIRE-03, DL-01 – DL-02, DL-10 – DL-11, ID-01, ID-07 | RC-1 – RC-8 |
 | M2 | 003-http-trust | CORE-13, POL-07 – POL-08, POL-10, DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01 | IT-2.1 – IT-2.9 |
-| M3 | 004-async-diagnostics | RT-07 – RT-09, EXE-01 – EXE-07, DIAG-04 – DIAG-07, LOG-01 – LOG-02, TEST-02 – TEST-03 | RC-9, IT-1.1 – IT-1.8 |
+| M3 | 004-async-diagnostics | CORE-14, RT-07 – RT-09, IN-09, EXE-01 – EXE-07, EXE-09, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04 | RC-9, IT-1.1 – IT-1.9 |
 | M4 | 005-deadlines | DL-03 – DL-09, EXE-08 | IT-3.1 – IT-3.7 |
 | M5 | 006-identity | ID-02 – ID-06, ID-08 – ID-09 | IT-4.1 – IT-4.8 |
 | M6 | 007-kafka | KAF-01 – KAF-05 | IT-3.8, IT-4.9 |
@@ -162,6 +162,7 @@ M4 and M5, because its scenarios assert that the deadline is absent and the init
 - Capture-site recording (off, on or sampled), evidence-only violation reports, and correlation between thread names and executors.
 - The startup audit, with an optional fail-on-gap setting.
 - The `@BoundrailTest` extension and context assertions.
+- Keeping the inbound context across Spring MVC async processing (`DeferredResult`, `Callable`), the known M2 limitation (DESIGN Q8, D39).
 
 **Exit criteria**
 

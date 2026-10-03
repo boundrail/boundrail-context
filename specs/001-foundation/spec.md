@@ -176,6 +176,10 @@ Every service is configured with `destinations.internal-hosts=[*.svc.test]` and 
 with `BoundrailClients.internal("orders")` or `BoundrailClients.external()`, because only a declaration supplies a service name.
 `partner.example.test` matches no pattern, so an undeclared partner client is `UNKNOWN`.
 
+The shared services start once per test run. A scenario that needs edge with other configuration, or that asserts edge's startup log
+entries, such as IT-1.3 – IT-1.5, starts an extra edge instance with the common properties plus its own through
+`Topology.Running.startEdge(String... properties)`, and closes it when the test ends.
+
 Because the services share one JVM, JVM-wide state (RT-09) is shared too: the capture-site mode applies to all of them. Inbound trust uses
 `TestInboundTrustVerifier` (TEST-01). Internal clients add the test peer header; the test's "public" client does not.
 
@@ -193,7 +197,7 @@ The suites, and the features whose scenarios they contain:
 | Suite | Scenarios | Features |
 |---|---|---|
 | RuntimeConformanceIT | RC-1 – RC-9; runs in all three integration test tasks (BLD-06) | 002, 004 |
-| ContextPropagationIT (IT-1) | IT-1.1 – IT-1.8 | 004 |
+| ContextPropagationIT (IT-1) | IT-1.1 – IT-1.9 | 004 |
 | TrustBoundaryIT (IT-2) | IT-2.1 – IT-2.9 | 003 |
 | DeadlinePropagationIT (IT-3) | IT-3.1 – IT-3.8 | 005, 007 |
 | AuthorityPropagationIT (IT-4) | IT-4.1 – IT-4.9 | 006, 007 |
