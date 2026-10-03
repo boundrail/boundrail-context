@@ -21,3 +21,6 @@ gradle-app.setting
 .classpath
 
 /.idea/
+
+# Kotlin Gradle plugin session data
+.kotlin/
