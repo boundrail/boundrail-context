@@ -13,11 +13,11 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Fifty guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
-  T002, T005, T015, T017, T019, T020a, T025 and T026, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
-  and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and ten unit tests in T022 (two of them parametrized
-  tests counted by their green cases only: the eleven invalid entries T021's code already rejects plus the two hex-form IPv4-mapped entries
-  added in the e84bb96 follow-up, and the invalid `inbound.trust` with a verifier bean).
+- Fifty-two guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+  T002, T005, T015, T017, T019, T020a, T025 and T026, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single
+  parametrized case), T024, T027 and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and ten unit tests in
+  T022 (two of them parametrized tests counted by their green cases only: the eleven invalid entries T021's code already rejects plus the
+  two hex-form IPv4-mapped entries added in the e84bb96 follow-up, and the invalid `inbound.trust` with a verifier bean).
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)). The user is asked to accept them.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
@@ -234,7 +234,7 @@ this feature needs is added in the green step of the first task whose test needs
 **Goal**: The outbound interceptor classifies every call, writes declared context to internal services only, strips forbidden headers, and
 enforces required keys, the length limit and valid field values.
 
-**Independent Test**: IT-2.2, IT-2.3, IT-2.4 and IT-2.9 in the IT command. IT-2.1 also needs US2's inbound path and is enabled in T028.
+**Independent Test**: IT-2.2, IT-2.3, IT-2.4 and IT-2.9 in the IT command. IT-2.1 also needs US2's inbound path and is enabled in T027.
 
 - [x] T008 [US1] Interceptor on every auto-configured client builder.
   - Red, in `springtest/ClientRegistrationTest.java`:
@@ -521,7 +521,7 @@ enforces required keys, the length limit and valid field values.
 **Goal**: Context headers are bound only from trusted callers, and checked for repetition, length and decoding. At the edge, context comes from
 authentication through contributors.
 
-**Independent Test**: IT-2.5 – IT-2.8 in the IT command. IT-2.1 (US1) is enabled here, in T028, because it needs this story's inbound path.
+**Independent Test**: IT-2.5 – IT-2.8 in the IT command. IT-2.1 (US1) is enabled here, in T027, because it needs this story's inbound path.
 
 - [x] T016 [US2] Inbound filter, trusted binding and the default verifier.
   - Red:
@@ -912,14 +912,19 @@ authentication through contributors.
       red with edge's verifier temporarily replaced by one trusting every request, then revert ([plan.md](plan.md#guard-tests));
     - in `springtest/JwtClaimContributorTest.java`:
       - `IN-06 the named claim of a JWT authentication is decoded with the codec and contributed`;
-      - `IN-06 a missing claim leaves the key unbound and reports nothing`;
-      - `IN-06 a non-JWT authentication contributes nothing`;
+      - `IN-06 a missing claim leaves the key unbound and reports nothing`. This is a guard: `JwtClaimContributor` was red only at compile
+        time, and a do-nothing `contribute` passes it. Show it red with the claim temporarily decoded and contributed without the absence
+        check, so the codec throws `NullPointerException`, then revert ([plan.md](plan.md#guard-tests));
+      - `IN-06 a non-JWT authentication contributes nothing`. This is a guard for the same reason. Show it red with the JWT-type check
+        temporarily dropped, so the authentication is cast to `JwtAuthenticationToken` unconditionally and throws `ClassCastException`, then
+        revert ([plan.md](plan.md#guard-tests));
       - `CORE-13 JwtClaimContributor rejects null`: `of` with a `null` argument, and `contribute` with a `null` argument, throw
         `NullPointerException`.
   - Green:
     - `spring/JwtClaimContributor.java`, for valid and missing claims;
     - `compileOnly` and `testImplementation` for `spring-security-oauth2-resource-server` and `spring-security-oauth2-jose`;
-    - topology test code: edge's `JwtClaimContributor.of("tenant", TENANT, Codecs.string())` bean, and `TestJwts.withoutTenant()`.
+    - topology test code: edge's `JwtClaimContributor.of("tenant", TENANT, Codecs.string())` bean, edge's `/call-orders/as-caller` endpoint
+      (binds nothing itself and calls orders through `internal("orders")`, for IT-2.1), and `TestJwts.withoutTenant()`.
   - Completes: IN-06 (valid and missing claims); CORE-13 (`JwtClaimContributor`); IT-2.1; IT-2.5; IT-2.6 (IN-02, IN-04, IN-05 end to end).
   - Verify: Unit `JwtClaimContributorTest`; IT.
 - [ ] T028 [US2] Invalid claims.
@@ -991,9 +996,9 @@ authentication through contributors.
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-2.1, IT-2.2, IT-2.3, IT-2.4, IT-2.5, IT-2.6, IT-2.7, IT-2.8, IT-2.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M2): CORE-13, POL-07 – POL-08, POL-10,
   DEST-01 – DEST-04, WIRE-01 – WIRE-02, WIRE-04 – WIRE-08, IN-01 – IN-08, OUT-01 – OUT-04, DIAG-01 – DIAG-03, DIAG-08 – DIAG-09, TEST-01
-- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019 and T020a guards
-  (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024 and T028, the three unit guards each in T010, T011
-  and T015a, the four unit guards in T012, and the ten unit guards in T022)
+- [ ] Guard tests (IT-2.2, IT-2.3, IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, the T002, T005, T015, T017, T019, T020a, T025 and
+  T026 guards (T020a's in BuildSmokeIT), the two unit guards each in T001, T003, T006a, T007, T018, T024, T027 and T028, the three unit
+  guards each in T010, T011 and T015a, the four unit guards in T012, and the ten unit guards in T022)
   shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; optional libraries are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

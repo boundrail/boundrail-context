@@ -88,7 +88,7 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
 | IV Declared, never guessed | N/A | No deadlines or executors in this feature (OUT-04 writes no `DEADLINE`) |
 | V Evidence only | Pass | `Violation` holds kind, key, boundary, destination and thread only; log entries name key, wire name and boundary, never the value or a codec message (DIAG-09, D35) |
 | VI Interoperate | Pass | Counter only in a unique or primary `MeterRegistry` bean, never the global registry (DIAG-03); decorates Boot's builders through customizers |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; fifty guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; fifty-two guard tests ([Guard Tests](#guard-tests)) need the user's acceptance; every behaviour planned is in spec.md, including the A1 – A8 resolutions |
 | VIII Simplicity | Pass | One auto-configuration class with nested conditional classes, one interceptor, two filters, one reporter, two built-in verifiers; no SPI beyond the contract |
 | Technical constraints | Pass | Core stays dependency-free (checked in T029); optional libraries `compileOnly`; Boot 4.x |
 
@@ -371,7 +371,8 @@ temporary code change that is then reverted ([Guard Tests](#guard-tests)).
     `boundrail.context.violations` with tag `kind` on that service.
   - T020: the `TestInboundTrustVerifier` bean on every service, `peer()` on edge's internal clients only, and `ctx.tenant` and `ctx.priority`
     (the values of `find()`, absent if unbound) recorded by every `/ping`.
-  - T027: edge's `JwtClaimContributor` bean and `TestJwts.withoutTenant()`.
+  - T027: edge's `JwtClaimContributor` bean, edge's `/call-orders/as-caller` endpoint, which binds nothing itself and calls orders through
+    `internal("orders")` (IT-2.1), and `TestJwts.withoutTenant()`.
 - **The `-test` JAR's contents are checked in BuildSmokeIT (T020a).** A check by code source sees the module's resources only in the packaged
   JAR. In `:boundrail-context-test:test`, `TestInboundTrustVerifier`'s code source is `build/classes/java/main`, while resources are in
   `build/resources/main`, so a stray imports file would never be seen there. BuildSmokeIT runs against packaged JARs (BLD-06), finds the JAR
@@ -468,6 +469,8 @@ the initiator" asserts the initiator is bound and the deadline is not.
 | T022 | `IN-08 IPv4-compatible and IPv4-translated entries are plain IPv6 entries` (e84bb96 follow-up) | `getByName` returns an `Inet6Address` for `::10.0.0.1` and `::ffff:0:10.0.0.1`, so they pass the mapped-entry check and match only IPv6 remote addresses | In `CidrInboundTrustVerifier`, any IPv6 entry with a dotted part rejected |
 | T025 | `IN-04 an undeclared checked exception from the chain is rethrown unchanged` | T025's filter already rethrows the exception from `binding.call` through `sneakyThrow`, written before IN-04 named the behaviour (D38) | In `ContextAuthenticationFilter`, the `catch (Exception e)` around `binding.call` throwing `new ServletException(e)` instead |
 | T026 | `IN-07 invalid(key) binds nothing` | `invalid` was red only at compile time, and a do-nothing `invalid` passes it | In `Contributions.invalid`, the key bound as if contributed |
+| T027 | `IN-06 a missing claim leaves the key unbound and reports nothing` | `JwtClaimContributor` was red only at compile time, and a do-nothing `contribute` passes it | In `JwtClaimContributor.contribute`, the claim decoded and contributed without the absence check, so the codec throws `NullPointerException` |
+| T027 | `IN-06 a non-JWT authentication contributes nothing` | The same | In `JwtClaimContributor.contribute`, the JWT-type check dropped, so the authentication is cast to `JwtAuthenticationToken` unconditionally and throws `ClassCastException` |
 | T027 | IT-2.6 Forged tenant with no claim | No code binds `tenant` from an untrusted header, and alice's claim is absent | Edge's verifier bean replaced by one returning `TRUSTED_INTERNAL` for every request |
 | T011 | `OUT-04 an application-set header for a key that propagates to EXTERNAL_CALL is sent unchanged on an external call` | T010's application-set check already runs on every boundary | In `ContextClientInterceptor`, the application-set check applied only on `INTERNAL_CALL`, so the context value overwrites the header |
 | T011 | `OUT-04 an application-set header's context value is not encoded or checked` (the throwing `encode` and oversized cases) | T010 skips an application-set header before calling `encode`, and has no length check | In `ContextClientInterceptor`, the value encoded and length-checked before the application-set check |
