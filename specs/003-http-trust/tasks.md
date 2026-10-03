@@ -13,8 +13,8 @@ minimum code that makes it pass, committed and reviewed together. Every task lea
 with the requirement or scenario ID it covers.
 
 - No TDD exceptions are proposed ([plan.md](plan.md#tdd-exceptions)).
-- Forty-nine guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
-  T002, T005, T015, T017, T019, T020a and T025, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
+- Fifty guard tests pass before their task: IT-2.2, IT-2.3 and IT-2.6, T020a's added IT-2.2 and IT-2.3 assertions, one test each in
+  T002, T005, T015, T017, T019, T020a, T025 and T026, two unit tests each in T001, T003, T006a, T007, T018 (one of them a single parametrized case), T024
   and T028, three unit tests each in T010, T011 and T015a, four unit tests in T012, and ten unit tests in T022 (two of them parametrized
   tests counted by their green cases only: the eleven invalid entries T021's code already rejects plus the two hex-form IPv4-mapped entries
   added in the e84bb96 follow-up, and the invalid `inbound.trust` with a verifier bean).
@@ -892,7 +892,8 @@ authentication through contributors.
   - Red, in `ContextAuthenticationFilterTest`:
     - `IN-07 invalid(key) reports one INVALID_VALUE`, with boundary `INTERNAL_CALL` and no destination (DIAG-08); the chain runs in `fail` mode
       (DIAG-02);
-    - `IN-07 invalid(key) binds nothing`;
+    - `IN-07 invalid(key) binds nothing`. This is a guard: `invalid` was red only at compile time, and a do-nothing `invalid` passes it.
+      Show it red with `Contributions.invalid` temporarily binding the key as if contributed, then revert ([plan.md](plan.md#guard-tests));
     - `IN-07 invalid(key) does not affect contributions for the same key`: `put` then `invalid` binds the value; `invalid` then `put` binds the
       value; in both cases one `INVALID_VALUE` is reported;
     - `CORE-13 ContextContributions.invalid(null) throws NullPointerException`.
