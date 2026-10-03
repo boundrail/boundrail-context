@@ -105,7 +105,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     ([plan.md](plan.md#core)).
   - Completes: RT-07 (ordering and restore); CORE-14 (listener registration).
   - Verify: Unit `ScopeListenerTest` in `:boundrail-context-core`.
-- [ ] T003 Throwing listeners and restorers; enable RC-9.
+- [x] T003 Throwing listeners and restorers; enable RC-9.
   - Red:
     - in `ScopeListenerTest`:
       - `RT-07 a listener that throws a RuntimeException is logged and does not change the operation's outcome, and an Error propagates`:

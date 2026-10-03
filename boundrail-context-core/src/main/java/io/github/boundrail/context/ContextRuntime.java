@@ -20,7 +20,13 @@ public final class ContextRuntime {
 
     static final ContextSlot SLOT = SlotFactory.create();
 
-    private static final List<ScopeListener> LISTENERS = new CopyOnWriteArrayList<>();
+    private static final CopyOnWriteArrayList<ScopeListener> LISTENERS = new CopyOnWriteArrayList<>();
+
+    private static final System.Logger LOGGER = System.getLogger("io.github.boundrail.context");
+
+    /** A restorer kept with the listener that returned it, so a failing restorer can be reported by its listener. */
+    private record Entered(ScopeListener listener, ScopeListener.Restorer restorer) {
+    }
 
     private ContextRuntime() {
     }
@@ -31,18 +37,19 @@ public final class ContextRuntime {
     }
 
     /**
-     * Registers a listener that is called whenever a scope is entered (RT-07).
+     * Registers a listener that is called whenever a scope is entered (RT-07). A listener that is already registered stays registered once,
+     * in its original position.
      *
      * @param listener the listener
      * @throws NullPointerException if the listener is {@code null}
      */
     public static void addScopeListener(ScopeListener listener) {
         Objects.requireNonNull(listener, "listener");
-        LISTENERS.add(listener);
+        LISTENERS.addIfAbsent(listener);
     }
 
     /**
-     * Removes a registered listener (RT-07).
+     * Removes a registered listener (RT-07). Removing a listener that is not registered does nothing.
      *
      * @param listener the listener
      * @throws NullPointerException if the listener is {@code null}
@@ -55,22 +62,41 @@ public final class ContextRuntime {
     /**
      * Calls an operation with a snapshot current, the single entry point for every scope (RT-07). Once the snapshot is current, each
      * listener is entered in registration order; when the operation returns or throws, their restorers run in reverse order, before the
-     * previous snapshot is restored.
+     * previous snapshot is restored. A {@code RuntimeException} from a listener or a restorer is logged, naming the listener, and the next
+     * one runs, so the operation's outcome does not change. A {@code null} restorer, or an {@code Error} from a listener, stops the entry: the
+     * operation and later listeners do not run, the restorers already returned run in reverse order, and {@code NullPointerException} is
+     * thrown or the {@code Error} propagates. An {@code Error} from a restorer propagates at once and the remaining restorers are skipped.
      */
     static <R, X extends Throwable> R enter(ContextSnapshot snapshot, ContextCallable<R, X> op) throws X {
         return SLOT.call(snapshot, () -> {
             if (LISTENERS.isEmpty()) {
                 return op.call();
             }
-            List<ScopeListener.Restorer> restorers = new ArrayList<>();
-            for (ScopeListener listener : LISTENERS) {
-                restorers.add(listener.onEnter(snapshot));
-            }
+            List<Entered> entered = new ArrayList<>();
             try {
+                for (ScopeListener listener : LISTENERS) {
+                    ScopeListener.Restorer restorer;
+                    try {
+                        restorer = listener.onEnter(snapshot);
+                    } catch (RuntimeException e) {
+                        LOGGER.log(System.Logger.Level.WARNING, "Scope listener " + listener.getClass().getName() + " failed on entry", e);
+                        continue;
+                    }
+                    if (restorer == null) {
+                        throw new NullPointerException("Scope listener " + listener.getClass().getName() + " returned a null restorer");
+                    }
+                    entered.add(new Entered(listener, restorer));
+                }
                 return op.call();
             } finally {
-                for (int i = restorers.size() - 1; i >= 0; i--) {
-                    restorers.get(i).restore();
+                for (int i = entered.size() - 1; i >= 0; i--) {
+                    Entered scope = entered.get(i);
+                    try {
+                        scope.restorer().restore();
+                    } catch (RuntimeException e) {
+                        LOGGER.log(System.Logger.Level.WARNING,
+                                "Restorer of scope listener " + scope.listener().getClass().getName() + " failed", e);
+                    }
                 }
             }
         });

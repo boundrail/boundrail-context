@@ -13,6 +13,7 @@ import io.github.boundrail.context.ContextRuntime;
 import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.Deadline;
 import io.github.boundrail.context.MissingContextException;
+import io.github.boundrail.context.ScopeListener;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -22,8 +23,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -278,10 +279,55 @@ class RuntimeConformanceIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
     @DisplayName("RC-9 Scope listeners")
     void rc9ScopeListeners() {
         // RC-9: Two registered listeners are entered in registration order and restored in reverse order for every nested scope, including
         // when the operation throws. A listener that throws does not change the operation's result. *(RT-07)*
+        ContextKey<String> tenant = ContextKey.of("rc.tenant", String.class);
+        ContextSnapshot t3 = Context.with(tenant, "t3").call(Context::capture);
+        List<String> calls = new ArrayList<>();
+        // Listeners are JVM-wide and the shared topology may enter scopes on other threads, so record only this test's scopes.
+        Thread testThread = Thread.currentThread();
+        Function<String, ScopeListener> recording = name -> entered -> {
+            if (Thread.currentThread() != testThread) {
+                return () -> { };
+            }
+            calls.add("enter " + name + " " + tenant.find().orElse("-"));
+            return () -> calls.add("restore " + name + " " + tenant.find().orElse("-"));
+        };
+        ScopeListener a = recording.apply("A");
+        ScopeListener b = recording.apply("B");
+        ScopeListener throwing = entered -> {
+            if (Thread.currentThread() != testThread) {
+                return () -> { };
+            }
+            throw new IllegalStateException("RC-9 listener failure");
+        };
+
+        ContextRuntime.addScopeListener(a);
+        ContextRuntime.addScopeListener(b);
+        try {
+            Context.with(tenant, "t1").run(() -> Context.with(tenant, "t2").run(() -> { }));
+            assertThat(calls).as("nested bindings").containsExactly(
+                    "enter A t1", "enter B t1", "enter A t2", "enter B t2", "restore B t2", "restore A t2", "restore B t1", "restore A t1");
+
+            calls.clear();
+            IOException thrown = new IOException("RC-9 operation failure");
+            IOException caught = catchThrowableOfType(IOException.class, () -> t3.call(() -> {
+                throw thrown;
+            }));
+            assertThat(caught).isSameAs(thrown);
+            assertThat(calls).as("snapshot.call that throws").containsExactly("enter A t3", "enter B t3", "restore B t3", "restore A t3");
+
+            calls.clear();
+            ContextRuntime.addScopeListener(throwing);
+            String result = Context.with(tenant, "t4").call(tenant::get);
+            assertThat(result).isEqualTo("t4");
+            assertThat(calls).as("with a throwing listener").containsExactly("enter A t4", "enter B t4", "restore B t4", "restore A t4");
+        } finally {
+            ContextRuntime.removeScopeListener(throwing);
+            ContextRuntime.removeScopeListener(b);
+            ContextRuntime.removeScopeListener(a);
+        }
     }
 }
