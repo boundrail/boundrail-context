@@ -11,10 +11,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.logging.Log;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * Reports violations: a WARN log entry, at most one per (kind, key, boundary) per log interval, and a count of every occurrence (DIAG-03). The
- * entry identifies the value only by key name, wire name and boundary, and never holds a value (DIAG-09).
+ * entry identifies the value only by key name, wire name and boundary, and never holds a value (DIAG-09). Every violation is then passed to
+ * the context's {@link ViolationListener} beans, in bean order (DIAG-11).
  */
 class ViolationReporter {
 
@@ -30,14 +32,17 @@ class ViolationReporter {
     private final EffectivePolicy policy;
     private final Duration logInterval;
     private final Counter counter;
+    private final ObjectProvider<ViolationListener> listeners;
     private final Log log;
     private final Clock clock;
     private final Map<LogKey, Instant> lastLogged = new ConcurrentHashMap<>();
 
-    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, Log log, Clock clock) {
+    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, ObjectProvider<ViolationListener> listeners, Log log,
+            Clock clock) {
         this.policy = policy;
         this.logInterval = logInterval;
         this.counter = counter;
+        this.listeners = listeners;
         this.log = log;
         this.clock = clock;
     }
@@ -55,6 +60,16 @@ class ViolationReporter {
         counter.increment(violation);
         if (dueForLog(new LogKey(violation.kind(), violation.key(), violation.boundary()))) {
             log.warn(message(violation));
+        }
+        listeners.orderedStream().forEach(listener -> notify(listener, violation));
+    }
+
+    /** Passes the violation to one listener; an exception it throws is logged at WARN and the next listener still runs (DIAG-11). */
+    private void notify(ViolationListener listener, Violation violation) {
+        try {
+            listener.onViolation(violation);
+        } catch (RuntimeException e) {
+            log.warn("Violation listener " + listener.getClass().getName() + " failed", e);
         }
     }
 

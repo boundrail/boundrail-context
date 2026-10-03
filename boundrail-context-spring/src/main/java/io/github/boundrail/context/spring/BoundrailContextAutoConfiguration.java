@@ -45,9 +45,9 @@ public class BoundrailContextAutoConfiguration {
     @Bean
     @Lazy(false)
     ViolationReporter boundrailViolationReporter(EffectivePolicy policy, BoundrailContextProperties properties,
-            ObjectProvider<ViolationReporter.Counter> counter) {
+            ObjectProvider<ViolationReporter.Counter> counter, ObjectProvider<ViolationListener> listeners) {
         return new ViolationReporter(policy, properties.violations().logInterval(), counter.getIfAvailable(() -> violation -> { }),
-                LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
+                listeners, LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
     }
 
     /** Classifies destinations by the {@code destinations.*} host patterns; an invalid pattern fails startup (OUT-03, DEST-04). */

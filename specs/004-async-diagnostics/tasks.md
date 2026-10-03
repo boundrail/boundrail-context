@@ -201,7 +201,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     client interceptor build their violations through it; the WARN message appends the capture site ([plan.md](plan.md#spring-wiring)).
   - Completes: DIAG-04 (thread, capture site, every adapter, WARN entry).
   - Verify: Unit `ViolationEvidenceTest` and `ViolationReporterTest` in `:boundrail-context-spring`.
-- [ ] T008 Violation listeners.
+- [x] T008 Violation listeners.
   - Red, in `springtest/ViolationListenerTest.java` (`ApplicationContextRunner`):
     - `DIAG-11 every ViolationListener bean receives each violation in bean order, after it is counted, also when its log entry is
       rate-limited`: two `@Order`ed listeners; two identical violations; both listeners see both, the counter is already incremented when each
