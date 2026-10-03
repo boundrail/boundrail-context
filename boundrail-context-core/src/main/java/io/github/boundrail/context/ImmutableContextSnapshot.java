@@ -13,9 +13,21 @@ import java.util.stream.Collectors;
 final class ImmutableContextSnapshot implements ContextSnapshot {
 
     private final Map<ContextKey<?>, Object> values;
+    private final String captureSite;
 
     ImmutableContextSnapshot(Map<ContextKey<?>, Object> values) {
+        this(values, null);
+    }
+
+    /**
+     * Creates a snapshot.
+     *
+     * @param values the bindings
+     * @param captureSite the capture site (DIAG-10), or {@code null} if none was recorded
+     */
+    ImmutableContextSnapshot(Map<ContextKey<?>, Object> values, String captureSite) {
         this.values = Map.copyOf(values);
+        this.captureSite = captureSite;
     }
 
     /** {@return the snapshot current on this thread} */
@@ -49,6 +61,11 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
                 .sorted(Comparator.comparing(entry -> entry.getKey().name()))
                 .map(entry -> entry.getKey().name() + "=" + entry.getValue())
                 .collect(Collectors.joining(", ", "ContextSnapshot[", "]"));
+    }
+
+    @Override
+    public Optional<String> captureSite() {
+        return Optional.ofNullable(captureSite);
     }
 
     @Override

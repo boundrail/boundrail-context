@@ -98,7 +98,8 @@ public final class ContextBinding {
 
     /**
      * {@return the current snapshot with this binding's changes applied in call order, so the last change for a key wins; a bound
-     * deadline is combined with the current one, so it can only shrink (DL-10)}
+     * deadline is combined with the current one, so it can only shrink (DL-10); its capture site is recorded per the capture-site mode
+     * (DIAG-10)}
      */
     private ImmutableContextSnapshot applied() {
         Map<ContextKey<?>, Object> current = ImmutableContextSnapshot.current().values();
@@ -112,6 +113,6 @@ public final class ContextBinding {
                 values.put(change.key(), change.value());
             }
         }
-        return new ImmutableContextSnapshot(values);
+        return new ImmutableContextSnapshot(values, CaptureSiteRecorder.record());
     }
 }

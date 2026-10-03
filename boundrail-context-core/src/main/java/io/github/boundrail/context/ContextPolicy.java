@@ -137,7 +137,8 @@ public final class ContextPolicy {
     }
 
     /**
-     * Returns a snapshot with exactly the bindings whose keys propagate to the boundary (POL-04).
+     * Returns a snapshot with exactly the bindings whose keys propagate to the boundary (POL-04). It keeps the capture site of the snapshot it
+     * filters (DIAG-10).
      *
      * @param snapshot the snapshot
      * @param boundary the boundary
@@ -153,7 +154,7 @@ public final class ContextPolicy {
                 kept.put(key, snapshot.find(key).orElseThrow());
             }
         }
-        return new ImmutableContextSnapshot(kept);
+        return new ImmutableContextSnapshot(kept, snapshot.captureSite().orElse(null));
     }
 
     /**

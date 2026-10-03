@@ -158,7 +158,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     CaptureSiteProperties.java`, read when `ContextRuntime` initialises.
   - Completes: RT-08; CORE-14 (`captureSites`).
   - Verify: Unit `CaptureSiteModeTest` and `CaptureSitePropertiesTest`.
-- [ ] T005 Capture sites on snapshots: `on`, `off`, and no walking when off.
+- [x] T005 Capture sites on snapshots: `on`, `off`, and no walking when off.
   - Red:
     - in `coretest/diagnostics/CaptureSiteTest.java` (package `io.github.boundrail.context.diagnostics`, outside the excluded packages):
       - `DIAG-10 a binding under on records the first frame outside the library, and EMPTY has none`: the site starts with
@@ -166,7 +166,8 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
         inside a lambda in the test; `ContextSnapshot.EMPTY.captureSite()` is empty;
       - `DIAG-10 filtering, running and wrapping keep the capture site`: `policy.filter` of a recorded snapshot, and the current snapshot inside
         its `run`, `call` and both `wrap`s, have the same site;
-      - `DIAG-05 under off no capture site is recorded`;
+      - `DIAG-05 under off no capture site is recorded`: the same binding then records a site once the mode is `on`, so the off
+        assertion sits with a positive one that is red before this task;
     - in `coretest/CaptureSiteRecorderTest.java` (library package, for the seam):
       - `SC-003 with capture sites off no stack walking happens, and with on one walk per binding`: a counting walker replaces the
         recorder's walker for the test; a binding under `off` counts 0, under `on` counts 1.
