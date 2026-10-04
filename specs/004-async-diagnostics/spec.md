@@ -176,7 +176,8 @@ Boot's relaxed enum binding, as DIAG-02 matches the violation mode, and an empty
 value, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`. IF two `executors.modes` keys match the
 same bean name ignoring case and give different modes, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is
 `true`; the same mode under both is accepted. IF one executor instance is decorated under two bean names whose modes differ, THEN
-application startup SHALL fail, naming both beans; the same mode under both is accepted. Verified by unit tests.
+application startup SHALL fail, naming both beans; the same mode under both is accepted. Where one of those beans is lazy and first created
+after startup, it SHALL fail, naming both beans, when it is created (as EXE-10). Verified by unit tests.
 
 **EXE-02** `[M3]` WHEN a task is submitted to a library-managed executor, the library SHALL capture the current snapshot at submission, filter it with
 the policy for the executor's mode (POL-04), and run the task inside the filtered snapshot. Executors the Spring module decorates (EXE-03) SHALL
@@ -266,7 +267,8 @@ even when `spring.main.lazy-initialization` is `true`.
 assignable to `java.util.concurrent.Executor` that DIAG-12 covers as `COVERED` with its mode, or `GAP`. A bean is covered when it is of an EXE-03 type
 and carries the library's decorator, or was returned by `BoundExecutors` (EXE-04). It SHALL log one entry per bean, in ascending order of bean name:
 at INFO `Executor audit: <bean> COVERED (<mode>)`, with the mode in lowercase, or at WARN `Executor audit: <bean> GAP`; then one INFO entry
-`Executor audit: <n> covered, <m> gaps` (DESIGN D42). WHERE `boundrail.context.audit.fail-on-gap=true` and there is at least one gap, the application
+`Executor audit: <n> covered, <m> gaps` (DESIGN D42). It SHALL also log, at WARN, `Executor audit: executors.modes.<key> matches no decorated
+executor` once for each `boundrail.context.executors.modes` key that matches no bean the library decorated (EXE-01). WHERE `boundrail.context.audit.fail-on-gap=true` and there is at least one gap, the application
 SHALL fail to start with an exception whose message lists the bean name of every gap.
 
 **DIAG-07** `[M3]` The Javadoc of `BoundExecutors` SHALL state that the startup audit only sees Spring beans, and which ones (DIAG-12), and that

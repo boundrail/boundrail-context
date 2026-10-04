@@ -368,6 +368,8 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
       - `DIAG-12 the audit lists only instantiated singleton executor beans of the context itself, and instantiates none`: a lazy executor
         bean not yet requested, a prototype one and a parent context's one are not listed or counted, and their factory methods were never
         called;
+      - `DIAG-06 a modes key that matches no decorated executor is logged at WARN`: `executors.modes.rawExecuter=attached` with no such
+        bean gives `Executor audit: executors.modes.rawExecuter matches no decorated executor`; a key matching a decorated bean gives none;
       - `DIAG-06 with audit.fail-on-gap=true and a gap startup fails with a message listing every gap`; with no gap it starts;
       - `DIAG-06 with audit.enabled=false nothing is audited and executor evidence is still filled`. This is a guard: show it red with the
         `audit.enabled` condition temporarily removed, then revert ([plan.md](plan.md#guard-tests));
