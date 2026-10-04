@@ -4,11 +4,9 @@ import io.github.boundrail.context.Boundary;
 import io.github.boundrail.context.internal.ModeExecutor;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.Executor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ApplicationContext;
@@ -50,7 +48,6 @@ final class ExecutorTable implements ApplicationListener<ContextRefreshedEvent>,
     private ApplicationContext context;
     private volatile List<Entry> entries = List.of();
     private volatile List<Prefix> prefixes = List.of();
-    private volatile Set<String> decorated = Set.of();
 
     @Override
     public void setApplicationContext(ApplicationContext context) {
@@ -69,7 +66,6 @@ final class ExecutorTable implements ApplicationListener<ContextRefreshedEvent>,
         Arrays.sort(beanNames);
         List<Entry> table = new ArrayList<>();
         List<Prefix> tablePrefixes = new ArrayList<>();
-        Set<String> decoratedNames = new HashSet<>();
         for (String beanName : beanNames) {
             // A FactoryBean's singleton is the factory, not the executor it produces, so it is skipped here too.
             if (!beanFactory.containsSingleton(beanName) || !(beanFactory.getSingleton(beanName) instanceof Executor executor)) {
@@ -77,7 +73,6 @@ final class ExecutorTable implements ApplicationListener<ContextRefreshedEvent>,
             }
             Optional<Boundary> decoratedMode = postProcessors.stream()
                     .flatMap(postProcessor -> postProcessor.decoratedMode(beanName).stream()).findFirst();
-            decoratedMode.ifPresent(mode -> decoratedNames.add(beanName));
             Entry entry = new Entry(beanName, executor instanceof ModeExecutor bound ? Optional.of(bound.mode()) : decoratedMode);
             table.add(entry);
             tablePrefixes.add(new Prefix(beanName, entry));
@@ -89,17 +84,11 @@ final class ExecutorTable implements ApplicationListener<ContextRefreshedEvent>,
         }
         entries = List.copyOf(table);
         prefixes = List.copyOf(tablePrefixes);
-        decorated = Set.copyOf(decoratedNames);
     }
 
     /** {@return the executor beans, in ascending order of bean name} */
     List<Entry> entries() {
         return entries;
-    }
-
-    /** {@return the names of the executor beans the library decorated} */
-    Set<String> decorated() {
-        return decorated;
     }
 
     /**

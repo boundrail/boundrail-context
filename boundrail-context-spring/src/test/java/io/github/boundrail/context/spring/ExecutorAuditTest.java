@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import io.github.boundrail.context.BoundExecutors;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -31,6 +33,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Scope;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolExecutorFactoryBean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -261,6 +264,77 @@ class ExecutorAuditTest {
                 "INFO Executor audit: pool COVERED (attached)",
                 "INFO Executor audit: 1 covered, 0 gaps",
                 "WARN Executor audit: executors.modes.rawExecuter matches no decorated executor");
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class LazyAndPrototypePools {
+
+        @Bean
+        @Lazy
+        SimpleAsyncTaskExecutor lazyPool() {
+            CALLED.add("lazyPool");
+            return new SimpleAsyncTaskExecutor();
+        }
+
+        @Bean
+        @Scope("prototype")
+        ThreadPoolTaskExecutor jobPool() {
+            CALLED.add("jobPool");
+            return new ThreadPoolTaskExecutor();
+        }
+    }
+
+    @Test
+    @DisplayName("DIAG-06 a modes key naming a lazy or prototype executor bean definition is not reported as unmatched")
+    void aModesKeyNamingALazyOrPrototypeExecutorBeanDefinitionIsNotReportedAsUnmatched(CapturedOutput output) {
+        runner.withUserConfiguration(LazyAndPrototypePools.class)
+                .withPropertyValues("boundrail.context.executors.modes.lazyPool=attached", "boundrail.context.executors.modes.jobPool=attached",
+                        "boundrail.context.executors.modes.nonePool=attached")
+                .run(context -> {
+                    ready(context);
+
+                    // Checked before the context closes: closing it makes Spring create the prototype pool, an ApplicationListener.
+                    assertThat(CALLED).as("factory methods called").isEmpty();
+                });
+
+        assertThat(auditEntries(output)).containsExactly(
+                "INFO Executor audit: 0 covered, 0 gaps",
+                "WARN Executor audit: executors.modes.nonePool matches no decorated executor");
+    }
+
+    @Test
+    @DisplayName("DIAG-06 the audit flags are bound as Boot booleans")
+    void theAuditFlagsAreBoundAsBootBooleans(CapturedOutput output) {
+        List<String> failedToStart = new ArrayList<>();
+        for (String flag : List.of("enabled", "fail-on-gap")) {
+            for (boolean lazy : List.of(false, true)) {
+                ApplicationContextRunner invalid = runner.withPropertyValues("boundrail.context.audit." + flag + "=maybe");
+                if (lazy) {
+                    invalid = invalid.withPropertyValues("spring.main.lazy-initialization=true").withInitializer(
+                            context -> context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()));
+                }
+                invalid.run(context -> {
+                    if (context.getStartupFailure() != null) {
+                        failedToStart.add(flag + "=maybe, lazy initialization " + lazy);
+                    }
+                });
+            }
+        }
+
+        runner.withUserConfiguration(OnePool.class).withPropertyValues("boundrail.context.audit.enabled=yes").run(ExecutorAuditTest::ready);
+        List<String> withYes = auditEntries(output);
+        runner.withUserConfiguration(OnePool.class).withPropertyValues("boundrail.context.audit.enabled=FALSE").run(ExecutorAuditTest::ready);
+        List<String> withYesThenFalse = auditEntries(output);
+
+        assertThat(withYes).as("audit.enabled=yes").containsExactly(
+                "INFO Executor audit: pool COVERED (detached)",
+                "INFO Executor audit: 1 covered, 0 gaps");
+        assertThat(withYesThenFalse).as("audit.enabled=FALSE adds no entries").isEqualTo(withYes);
+        assertThat(failedToStart).containsExactly(
+                "enabled=maybe, lazy initialization false",
+                "enabled=maybe, lazy initialization true",
+                "fail-on-gap=maybe, lazy initialization false",
+                "fail-on-gap=maybe, lazy initialization true");
     }
 
     @Test

@@ -363,7 +363,7 @@ no capture site" sits with "a binding records its site").
 | T011 | `EXE-04 a plain Executor or ExecutorService bean is not wrapped automatically` | Before T011 nothing touches executor beans, and T011's post-processor matches only the three EXE-03 types | The post-processor replacing every other `ExecutorService` bean with `BoundExecutors.detached(bean)` |
 | T003 | `RT-07 an Error from a later onEnter stops the entry: the operation and later listeners do not run, earlier restorers run in reverse order, and the Error propagates` (added during T003's review; accepted) | T003's code already unwinds the restorers already returned on any throwable from `onEnter` | The unwinding limited to the `null`-restorer path, so an `Error` from `onEnter` propagates without calling the earlier restorers |
 | T014 | IT-1.4 Report mode continues | `report` mode (DIAG-02) and rate-limited logging (DIAG-03) exist since M2; the report-mode edge only needs `rawExecutor` | `ViolationReporter.dueForLog` returning `true` always, so two WARN entries are logged |
-| T015 | `DIAG-06 with audit.enabled=false nothing is audited and executor evidence is still filled` | T014's table does not depend on the audit, and T015's listener is conditional from its first green step | The `audit.enabled` condition removed from the audit listener |
+| T015 | `DIAG-06 with audit.enabled=false nothing is audited and executor evidence is still filled` | T014's table does not depend on the audit, and T015's listener is conditional from its first green step | The `audit.enabled` condition removed from the audit listener (since T015a, the `enabled` check in `ExecutorAudit`) |
 | T016 | `DIAG-05 a context that sets neither property leaves the JVM-wide mode unchanged` | Before T016 Spring applies nothing; T016 applies only properties that are set | The capture-site bean applying `off` and `0.01` when the properties are unset |
 | T017 | `LOG-01 without SLF4J no MDC listener is registered` | The nested configuration is `@ConditionalOnClass(MDC.class)` from its first green step | `@ConditionalOnClass` removed from the MDC configuration |
 | T020 | `IN-09 ContextAuthenticationFilter does not run on ASYNC dispatches` | `OncePerRequestFilter` skips async dispatches by default | `shouldNotFilterAsyncDispatch()` overridden to return `false` in `ContextAuthenticationFilter` |
@@ -465,7 +465,7 @@ crosses packages.
 | EXE-10 | T012 (`taskDecorator` on the three executor types: pinned, read once, missing field fails startup, also under lazy initialization), T021 (`RequestMappingHandlerAdapter.taskExecutor`: the same) |
 | DIAG-04 | T007 (thread, capture site, every adapter, WARN), T014 (executor evidence, longest prefix, before start) |
 | DIAG-05 | T005 (`on`, `off`), T006 (`sampled`), T016 (properties) |
-| DIAG-06 | T015 |
+| DIAG-06 | T015, T015a |
 | DIAG-07 | T009 (Javadoc, TDD exception) |
 | DIAG-10 | T005 |
 | DIAG-11 | T008 |

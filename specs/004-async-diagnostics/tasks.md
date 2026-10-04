@@ -394,7 +394,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Completes: DIAG-06; DIAG-12 (audit); EXE-01 (a `BoundExecutors` bean keeps its own mode); EXE-04 (recognised by the audit); IT-1.3;
     IT-1.5. The Javadoc of `BoundExecutors` gains DIAG-07's mention of which beans the audit sees (DIAG-12), under the approved exception.
   - Verify: Unit `ExecutorAuditTest`; IT.
-- [ ] T015a [US2] Unmatched mode keys by bean definition, and strict audit flags (T015 review follow-up).
+- [x] T015a [US2] Unmatched mode keys by bean definition, and strict audit flags (T015 review follow-up).
   - Red, in `springtest/ExecutorAuditTest.java`:
     - `DIAG-06 a modes key naming a lazy or prototype executor bean definition is not reported as unmatched`: `executors.modes.lazyPool`
       for a `@Lazy` `SimpleAsyncTaskExecutor` not yet requested and `executors.modes.jobPool` for a prototype `ThreadPoolTaskExecutor` give
