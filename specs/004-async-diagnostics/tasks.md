@@ -394,6 +394,18 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Completes: DIAG-06; DIAG-12 (audit); EXE-01 (a `BoundExecutors` bean keeps its own mode); EXE-04 (recognised by the audit); IT-1.3;
     IT-1.5. The Javadoc of `BoundExecutors` gains DIAG-07's mention of which beans the audit sees (DIAG-12), under the approved exception.
   - Verify: Unit `ExecutorAuditTest`; IT.
+- [ ] T015a [US2] Unmatched mode keys by bean definition, and strict audit flags (T015 review follow-up).
+  - Red, in `springtest/ExecutorAuditTest.java`:
+    - `DIAG-06 a modes key naming a lazy or prototype executor bean definition is not reported as unmatched`: `executors.modes.lazyPool`
+      for a `@Lazy` `ThreadPoolTaskExecutor` not yet requested and `executors.modes.jobPool` for a prototype one give no unmatched-key WARN,
+      and neither factory method is called; a key naming no definition still warns;
+    - `DIAG-06 an invalid audit.enabled or audit.fail-on-gap fails startup, also with lazy initialization` (`yes` for each, with and without
+      the T006a lazy setup), and `audit.enabled=FALSE` turns the audit off (relaxed binding).
+  - Green: the unmatched-key check reads the context's bean definitions of the three EXE-03 types
+    (`getBeanNamesForType(type, true, false)`), and the audit is enabled through the bound `Audit` record instead of
+    `@ConditionalOnProperty`.
+  - Completes: DIAG-06 (unmatched keys by definition, audit flag binding).
+  - Verify: Unit `ExecutorAuditTest`.
 - [ ] T016 [P] [US2] Capture-site properties.
   - Red, in `springtest/CaptureSiteSettingsTest.java` (mode restored after each test):
     - `DIAG-05 capture-sites set in the environment is applied and an unset sample-rate keeps the current rate`;
