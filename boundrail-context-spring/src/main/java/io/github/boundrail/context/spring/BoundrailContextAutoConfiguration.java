@@ -13,6 +13,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.restclient.RestClientCustomizer;
 import org.springframework.boot.restclient.RestTemplateCustomizer;
@@ -65,6 +66,15 @@ public class BoundrailContextAutoConfiguration {
     static ExecutorDecoratingPostProcessor boundrailExecutorDecoratingPostProcessor(ObjectProvider<EffectivePolicy> policy,
             Environment environment) {
         return new ExecutorDecoratingPostProcessor(policy, environment);
+    }
+
+    /** Audits the executor beans when the application is ready, unless {@code audit.enabled=false} (DIAG-06). */
+    @Bean
+    @Lazy(false)
+    @ConditionalOnProperty(name = "boundrail.context.audit.enabled", havingValue = "true", matchIfMissing = true)
+    ExecutorAudit boundrailExecutorAudit(ExecutorTable executorTable, BoundrailContextProperties properties) {
+        return new ExecutorAudit(executorTable, properties.executors().modes().keySet(), properties.audit().failOnGap(),
+                LogFactory.getLog(ExecutorAudit.class));
     }
 
     /** Classifies destinations by the {@code destinations.*} host patterns; an invalid pattern fails startup (OUT-03, DEST-04). */

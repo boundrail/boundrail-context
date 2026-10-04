@@ -359,9 +359,10 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     - topology test code: `rawExecutor` and its endpoint; `Topology.Running.startEdge(String...)`.
   - Completes: DIAG-04 (executor evidence, longest prefix, before start, WARN entry); DIAG-12 (table); IT-1.2; IT-1.4.
   - Verify: Unit `ExecutorTableTest`; IT.
-- [ ] T015 [US2] Startup audit and fail-on-gap; enable IT-1.3 and IT-1.5.
+- [x] T015 [US2] Startup audit and fail-on-gap; enable IT-1.3 and IT-1.5.
   - Red:
-    - in `springtest/ExecutorAuditTest.java` (an `ApplicationReadyEvent` published by the test, `RecordingLog`):
+    - in `springtest/ExecutorAuditTest.java` (an `ApplicationReadyEvent` published by the test; the audit logs through
+      `LogFactory`, so its entries are read from Boot's captured output with `CapturedOutput`, level and message):
       - `DIAG-06 every executor bean is logged in bean-name order, then the summary`: `Executor audit: aExecutor COVERED (attached)` at INFO,
         `Executor audit: bExecutor GAP` at WARN, `Executor audit: cExecutor COVERED (detached)` at INFO for a `BoundExecutors.detached` bean
         (with `executors.modes.cExecutor=attached` set, which EXE-01 does not apply to it),

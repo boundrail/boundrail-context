@@ -1,6 +1,7 @@
 package io.github.boundrail.context.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.ObservedContext;
@@ -70,12 +71,21 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
+    @ExtendWith(OutputCaptureExtension.class)
     @DisplayName("IT-1.3 Explicit wrapping fixes it")
-    void it13ExplicitWrappingFixesIt() {
+    void it13ExplicitWrappingFixesIt(Topology.Running topology, CapturedOutput output) throws Exception {
         // IT-1.3: Given `boundExecutor`, an edge bean declared as `BoundExecutors.detached(...)` around a plain `ExecutorService`, when the
         // same work runs on it, then orders observes `tenant=acme` and the audit reports `boundExecutor` as `COVERED (detached)`.
         // *(EXE-04, DIAG-06)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = callEdge(topology, "/bound/call-orders", marker);
+        topology.startEdge().close();
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEqualTo("sent");
+        assertThat(observed(topology, "orders", marker)).containsEntry(ObservedContext.TENANT, "acme");
+        assertThat(output.getOut()).contains("Executor audit: boundExecutor COVERED (detached)");
     }
 
     @Test
@@ -110,11 +120,16 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
+    @ExtendWith(OutputCaptureExtension.class)
     @DisplayName("IT-1.5 Startup audit")
-    void it15StartupAudit() {
+    void it15StartupAudit(Topology.Running topology, CapturedOutput output) {
         // IT-1.5: The startup audit reports `taskExecutor` as `COVERED (detached)` and `rawExecutor` as `GAP`. With
         // `audit.fail-on-gap=true`, the edge context fails to start with an error that lists `rawExecutor`. *(DIAG-06)*
+        topology.startEdge().close();
+        Throwable failOnGap = catchThrowable(() -> topology.startEdge("boundrail.context.audit.fail-on-gap=true").close());
+
+        assertThat(output.getOut()).contains("Executor audit: taskExecutor COVERED (detached)", "Executor audit: rawExecutor GAP");
+        assertThat(failOnGap).as("startup with audit.fail-on-gap=true").isNotNull().hasMessageContaining("rawExecutor");
     }
 
     @Test

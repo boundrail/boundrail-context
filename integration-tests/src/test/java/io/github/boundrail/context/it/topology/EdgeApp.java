@@ -1,5 +1,6 @@
 package io.github.boundrail.context.it.topology;
 
+import io.github.boundrail.context.BoundExecutors;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
@@ -49,6 +50,7 @@ public class EdgeApp {
     private final Topology.Running topology;
     private final EdgeAsyncWork asyncWork;
     private final ExecutorService rawExecutor;
+    private final ExecutorService boundExecutor;
     private final RestClient internalOrders;
     private final RestClient externalPartner;
     private final RestClient undeclaredPartner;
@@ -58,11 +60,12 @@ public class EdgeApp {
      * clients apply {@code TestInboundTrustVerifier.peer()}, so partner never receives the test peer header.
      */
     public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients, EdgeAsyncWork asyncWork,
-            @Qualifier("rawExecutor") ExecutorService rawExecutor) {
+            @Qualifier("rawExecutor") ExecutorService rawExecutor, @Qualifier("boundExecutor") ExecutorService boundExecutor) {
         this.observed = observed;
         this.topology = topology;
         this.asyncWork = asyncWork;
         this.rawExecutor = rawExecutor;
+        this.boundExecutor = boundExecutor;
         this.internalOrders = clients.clone().apply(BoundrailClients.internal("orders")).apply(TestInboundTrustVerifier.peer()).build();
         this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
         this.undeclaredPartner = clients.clone().build();
@@ -89,6 +92,15 @@ public class EdgeApp {
     static ExecutorService rawExecutor() {
         AtomicInteger threads = new AtomicInteger();
         return Executors.newSingleThreadExecutor(task -> new Thread(task, "rawExecutor-" + threads.incrementAndGet()));
+    }
+
+    /** A one-thread {@code ExecutorService} wrapped by {@code BoundExecutors.detached} with the topology policy: covered (EXE-04). */
+    @Bean
+    static ExecutorService boundExecutor() {
+        AtomicInteger threads = new AtomicInteger();
+        return BoundExecutors.detached(
+                Executors.newSingleThreadExecutor(task -> new Thread(task, "boundExecutor-" + threads.incrementAndGet())),
+                TopologyPolicy.policy());
     }
 
     @Bean
@@ -137,14 +149,24 @@ public class EdgeApp {
         return asyncWork.callOrders(marker).get(10, TimeUnit.SECONDS);
     }
 
-    /**
-     * Runs the same work as {@link #asyncCallOrders} on {@code rawExecutor} and waits for it. Returns {@code sent}, or the fields of the
-     * {@code ContextViolationException} it throws: kind, key, boundary, capture site and executor evidence, separated by {@code |}, with
-     * {@code -} for an empty one.
-     */
+    /** Runs the same work as {@link #asyncCallOrders} on {@code rawExecutor} and waits for it; see {@link #callOrdersOn}. */
     @GetMapping("/raw/call-orders")
     String rawCallOrders(@RequestParam("marker") String marker) throws Exception {
-        Future<?> work = rawExecutor.submit(() -> ping(internalOrders, Service.ORDERS, marker));
+        return callOrdersOn(rawExecutor, marker);
+    }
+
+    /** Runs the same work as {@link #asyncCallOrders} on {@code boundExecutor} and waits for it; see {@link #callOrdersOn}. */
+    @GetMapping("/bound/call-orders")
+    String boundCallOrders(@RequestParam("marker") String marker) throws Exception {
+        return callOrdersOn(boundExecutor, marker);
+    }
+
+    /**
+     * Calls orders on the executor and waits. Returns {@code sent}, or the fields of the {@code ContextViolationException} the call throws:
+     * kind, key, boundary, capture site and executor evidence, separated by {@code |}, with {@code -} for an empty one.
+     */
+    private String callOrdersOn(ExecutorService executor, String marker) throws Exception {
+        Future<?> work = executor.submit(() -> ping(internalOrders, Service.ORDERS, marker));
         try {
             work.get(10, TimeUnit.SECONDS);
             return "sent";

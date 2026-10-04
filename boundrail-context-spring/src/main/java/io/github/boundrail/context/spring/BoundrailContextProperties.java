@@ -17,10 +17,11 @@ import org.springframework.boot.convert.ApplicationConversionService;
  * @param destinations how outbound destinations are classified
  * @param wire limits on wire values
  * @param executors how Spring's task executors are decorated
+ * @param audit the startup executor audit
  */
 @ConfigurationProperties("boundrail.context")
 public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Inbound inbound,
-        @DefaultValue Destinations destinations, @DefaultValue Wire wire, @DefaultValue Executors executors) {
+        @DefaultValue Destinations destinations, @DefaultValue Wire wire, @DefaultValue Executors executors, @DefaultValue Audit audit) {
 
     /**
      * Violation handling (DIAG-02) and reporting (DIAG-03).
@@ -116,6 +117,15 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
 
         /** The values of {@code modes}. */
         private enum Mode { ATTACHED, DETACHED }
+    }
+
+    /**
+     * The startup executor audit (DIAG-06). Executor evidence (DIAG-04) does not depend on it.
+     *
+     * @param enabled whether executor beans are audited when the application is ready
+     * @param failOnGap whether startup fails when the audit finds a gap
+     */
+    public record Audit(@DefaultValue("true") boolean enabled, @DefaultValue("false") boolean failOnGap) {
     }
 
     /**

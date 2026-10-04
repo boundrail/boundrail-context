@@ -19,10 +19,10 @@ import java.util.concurrent.ExecutorService;
  * (EXE-06, EXE-07).
  *
  * <p><b>Startup audit.</b> The Spring module's startup audit only sees Spring beans: singleton executor beans defined in the application
- * context itself and instantiated at startup. Lazy beans not yet instantiated, prototype beans and beans of ancestor contexts are not audited
- * (DIAG-12). Executors created in code are not audited either; runtime validation (POL-08) covers them at the next remote crossing: a
- * library adapter, for example an HTTP client with the library's interceptor, reports {@code MISSING_REQUIRED} for a required key the task
- * lost. Calls through clients without a library adapter are not checked (DIAG-07).
+ * context itself and instantiated at startup. Lazy beans not yet instantiated, prototype beans, beans of ancestor contexts and executors
+ * produced by a {@code FactoryBean} are not audited (DIAG-12). Executors created in code are not audited either; runtime validation
+ * (POL-08) covers them at the next remote crossing: a library adapter, for example an HTTP client with the library's interceptor, reports
+ * {@code MISSING_REQUIRED} for a required key the task lost. Calls through clients without a library adapter are not checked (DIAG-07).
  */
 public final class BoundExecutors {
 

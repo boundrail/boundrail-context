@@ -1,5 +1,6 @@
 package io.github.boundrail.context;
 
+import io.github.boundrail.context.internal.ModeExecutor;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -14,7 +15,7 @@ import java.util.concurrent.TimeoutException;
  * An executor service returned by {@link BoundExecutors}: every task submitted through {@code execute}, {@code submit}, {@code invokeAll}
  * or {@code invokeAny} runs in the submitter's snapshot, filtered for the mode (EXE-02). Lifecycle methods delegate.
  */
-final class BoundExecutorService implements ExecutorService {
+final class BoundExecutorService implements ExecutorService, ModeExecutor {
 
     private final ExecutorService delegate;
     private final ContextPolicy policy;
@@ -24,6 +25,11 @@ final class BoundExecutorService implements ExecutorService {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.mode = mode;
+    }
+
+    @Override
+    public Boundary mode() {
+        return mode;
     }
 
     /** {@return the submitter's current snapshot, filtered for the mode} */
