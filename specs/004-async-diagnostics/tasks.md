@@ -370,6 +370,13 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
       - `DIAG-12 the audit lists only instantiated singleton executor beans of the context itself, and instantiates none`: a lazy executor
         bean not yet requested, a prototype one and a parent context's one are not listed or counted, and their factory methods were never
         called;
+      - `DIAG-04 a BoundExecutors bean is covered in executor evidence`: a thread named after a `BoundExecutors.detached` bean gives
+        `<bean> (COVERED detached)`;
+      - `DIAG-04 equally long prefixes go to the first bean name in ascending order, and an empty prefix matches nothing`: two pools with the
+        same thread-name prefix give the alphabetically first bean; a pool with `setThreadNamePrefix("")` gives no evidence for an unrelated
+        thread;
+      - `DIAG-12 an executor produced by a FactoryBean is skipped`: a `ThreadPoolExecutorFactoryBean` bean is neither in the evidence nor in
+        the audit;
       - `DIAG-06 a modes key that matches no decorated executor is logged at WARN`: `executors.modes.rawExecuter=attached` with no such
         bean gives `Executor audit: executors.modes.rawExecuter matches no decorated executor`; a key matching a decorated bean gives none;
       - `DIAG-06 with audit.fail-on-gap=true and a gap startup fails with a message listing every gap`; with no gap it starts;

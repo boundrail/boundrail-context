@@ -240,7 +240,7 @@ Verified by IT-1.9 and unit tests.
 - `executorEvidence`: when the current thread's name starts with the thread-name prefix of an executor bean of an EXE-03 type, or with the bean name
   of any executor bean, in the application context that reports the violation, the string `<bean> (<status>)`, where the status is `GAP` or `COVERED`
   followed by the mode in lowercase, for example `rawExecutor (GAP)` or `taskExecutor (COVERED detached)`. Where several prefixes match, the longest
-  SHALL win. The Spring module SHALL build its table of executor beans (DIAG-12) once the application context has started, whether or not the audit is
+  SHALL win, and between equally long ones the first bean name in ascending order; an empty prefix SHALL match nothing. The Spring module SHALL build its table of executor beans (DIAG-12) once the application context has started, whether or not the audit is
   enabled (DIAG-06); a violation reported before then has no executor evidence.
 
 Every adapter in the Spring module SHALL fill these components when it reports a violation. The WARN log entry (DIAG-03) SHALL include the
@@ -275,8 +275,8 @@ SHALL fail to start with an exception whose message lists the bean name of every
 runtime validation (POL-08) covers executors created in code (DESIGN D45).
 
 **DIAG-12** `[M3]` The executor table (DIAG-04) and the audit (DIAG-06) SHALL cover only singleton executor beans defined in the application
-context itself and instantiated at startup. Lazy beans not yet instantiated, prototype beans and beans of ancestor contexts SHALL be skipped,
-and SHALL NOT be instantiated by the table or the audit. Verified by unit tests.
+context itself and instantiated at startup. Lazy beans not yet instantiated, prototype beans, beans of ancestor contexts and executors produced by a
+`FactoryBean` SHALL be skipped, and SHALL NOT be instantiated by the table or the audit. Verified by unit tests.
 
 **DIAG-10** `[M3]` `ContextSnapshot.captureSite()` SHALL return the capture site recorded when the snapshot was created, or empty if none was
 recorded. A capture site SHALL be the `StackTraceElement.toString()` form of the first stack frame whose declaring class is in neither the
