@@ -5,11 +5,18 @@ import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Initiator;
+import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.it.topology.Topology.Service;
 import io.github.boundrail.context.spring.BoundrailClients;
 import io.github.boundrail.context.spring.JwtClaimContributor;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
@@ -41,6 +48,7 @@ public class EdgeApp {
     private final ObservedContext observed;
     private final Topology.Running topology;
     private final EdgeAsyncWork asyncWork;
+    private final ExecutorService rawExecutor;
     private final RestClient internalOrders;
     private final RestClient externalPartner;
     private final RestClient undeclaredPartner;
@@ -49,10 +57,12 @@ public class EdgeApp {
      * Every client is built from edge's auto-configured {@code RestClient.Builder}, so it carries the library's interceptor. Only internal
      * clients apply {@code TestInboundTrustVerifier.peer()}, so partner never receives the test peer header.
      */
-    public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients, EdgeAsyncWork asyncWork) {
+    public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients, EdgeAsyncWork asyncWork,
+            @Qualifier("rawExecutor") ExecutorService rawExecutor) {
         this.observed = observed;
         this.topology = topology;
         this.asyncWork = asyncWork;
+        this.rawExecutor = rawExecutor;
         this.internalOrders = clients.clone().apply(BoundrailClients.internal("orders")).apply(TestInboundTrustVerifier.peer()).build();
         this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
         this.undeclaredPartner = clients.clone().build();
@@ -72,6 +82,13 @@ public class EdgeApp {
     @Bean
     static ThreadPoolTaskExecutor taskExecutor(ThreadPoolTaskExecutorBuilder builder) {
         return builder.corePoolSize(1).maxPoolSize(1).threadNamePrefix("taskExecutor-").build();
+    }
+
+    /** A plain one-thread {@code ExecutorService} whose threads are named {@code rawExecutor-N}: not decorated (EXE-04), so a gap. */
+    @Bean
+    static ExecutorService rawExecutor() {
+        AtomicInteger threads = new AtomicInteger();
+        return Executors.newSingleThreadExecutor(task -> new Thread(task, "rawExecutor-" + threads.incrementAndGet()));
     }
 
     @Bean
@@ -118,6 +135,27 @@ public class EdgeApp {
     @GetMapping("/async/call-orders")
     String asyncCallOrders(@RequestParam("marker") String marker) throws Exception {
         return asyncWork.callOrders(marker).get(10, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Runs the same work as {@link #asyncCallOrders} on {@code rawExecutor} and waits for it. Returns {@code sent}, or the fields of the
+     * {@code ContextViolationException} it throws: kind, key, boundary, capture site and executor evidence, separated by {@code |}, with
+     * {@code -} for an empty one.
+     */
+    @GetMapping("/raw/call-orders")
+    String rawCallOrders(@RequestParam("marker") String marker) throws Exception {
+        Future<?> work = rawExecutor.submit(() -> ping(internalOrders, Service.ORDERS, marker));
+        try {
+            work.get(10, TimeUnit.SECONDS);
+            return "sent";
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof ContextViolationException violationException) {
+                Violation violation = violationException.violation();
+                return String.join("|", violation.kind().name(), violation.key(), violation.boundary().name(),
+                        violation.captureSite().orElse("-"), violation.executorEvidence().orElse("-"));
+            }
+            throw e;
+        }
     }
 
     /** Binds {@code tenant=acme}, then calls orders through an internal client. */

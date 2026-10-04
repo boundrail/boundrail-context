@@ -5,6 +5,7 @@ import io.github.boundrail.context.spring.BoundrailContextProperties.Executors;
 import java.lang.reflect.Field;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.springframework.beans.factory.ObjectProvider;
@@ -34,6 +35,7 @@ final class ExecutorDecoratingPostProcessor implements BeanPostProcessor {
     private final Environment environment;
     private final String fieldName;
     private final Map<Class<?>, Field> fields = new ConcurrentHashMap<>();
+    private final Map<String, Boundary> decorated = new ConcurrentHashMap<>();
 
     ExecutorDecoratingPostProcessor(ObjectProvider<EffectivePolicy> policy, Environment environment) {
         this(policy, environment, TASK_DECORATOR_FIELD);
@@ -89,7 +91,7 @@ final class ExecutorDecoratingPostProcessor implements BeanPostProcessor {
 
     /**
      * Sets the library's decorator around the existing one, unless the existing one is already the library's (EXE-03): the same instance
-     * post-processed again, under the same or another bean name.
+     * post-processed again, under the same or another bean name. Records the bean name and mode for the executor table (DIAG-04).
      *
      * @throws IllegalStateException if the instance was decorated under another bean name with a different mode (EXE-01)
      */
@@ -102,6 +104,12 @@ final class ExecutorDecoratingPostProcessor implements BeanPostProcessor {
                     + "modes in boundrail.context.executors.modes: " + ours.mode().name().toLowerCase(Locale.ROOT) + " and "
                     + mode.name().toLowerCase(Locale.ROOT));
         }
+        decorated.put(beanName, mode);
+    }
+
+    /** {@return the mode of the bean with this name, if this post-processor decorated it} */
+    Optional<Boundary> decoratedMode(String beanName) {
+        return Optional.ofNullable(decorated.get(beanName));
     }
 
     /** {@return the {@code executors} properties, with relaxed binding and their defaults} */

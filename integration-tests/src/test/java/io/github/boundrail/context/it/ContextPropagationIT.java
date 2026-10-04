@@ -6,6 +6,8 @@ import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.ObservedContext;
 import io.github.boundrail.context.it.topology.Topology;
 import io.github.boundrail.context.it.topology.Topology.Service;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,6 +20,9 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.ConfigurableApplicationContext;
 
 /**
  * Context propagation suite (IT-1): context follows async work and scheduled jobs into calls and logs, and lost context fails loudly.
@@ -45,13 +50,23 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
     @DisplayName("IT-1.2 Undecorated executor fails loudly")
-    void it12UndecoratedExecutorFailsLoudly() {
+    void it12UndecoratedExecutorFailsLoudly(Topology.Running topology) throws Exception {
         // IT-1.2: Given violation mode `fail`, when edge runs the same work on `rawExecutor` (a plain `ExecutorService` bean whose threads
         // are named `rawExecutor-N`), then the work's future completes exceptionally with `ContextViolationException`, whose violation has
         // kind `MISSING_REQUIRED`, key `tenant`, boundary `INTERNAL_CALL`, and an `executorEvidence` that names `rawExecutor` with status
         // `GAP`. Orders receives no request. *(EXE-04, POL-08, DIAG-02, DIAG-04)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = callEdge(topology, "/raw/call-orders", marker);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).as("the violation's kind, key, boundary, capture site and executor evidence").isNotEqualTo("sent");
+        String[] violation = response.body().split("\\|");
+        assertThat(violation).as(response.body()).hasSize(5);
+        assertThat(List.of(violation[0], violation[1], violation[2], violation[4]))
+                .containsExactly("MISSING_REQUIRED", "tenant", "INTERNAL_CALL", "rawExecutor (GAP)");
+        assertThat(marked(topology, "orders", marker)).as("orders requests marked %s", marker).isEmpty();
     }
 
     @Test
@@ -64,12 +79,34 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
+    @ExtendWith(OutputCaptureExtension.class)
     @DisplayName("IT-1.4 Report mode continues")
-    void it14ReportModeContinues() {
+    void it14ReportModeContinues(Topology.Running topology, CapturedOutput output) throws Exception {
         // IT-1.4: Given violation mode `report`, when the IT-1.2 work runs twice in a row, then orders receives both requests without a
         // `Tenant-Id` header, `boundrail.context.violations{kind=missing_required,key=tenant,boundary=internal_call}` increases by two, and
         // exactly one WARN entry is logged. *(DIAG-02, DIAG-03)*
+        String marker = UUID.randomUUID().toString();
+        try (ConfigurableApplicationContext edge = topology.startEdge("boundrail.context.violations.mode=report")) {
+            double before = missingTenantOnInternalCalls(edge);
+
+            HttpResponse<String> first = call(topology, topology.uri(edge), "/raw/call-orders", marker);
+            HttpResponse<String> second = call(topology, topology.uri(edge), "/raw/call-orders", marker);
+
+            assertThat(List.of(first.statusCode(), second.statusCode())).containsExactly(200, 200);
+            assertThat(List.of(first.body(), second.body())).containsExactly("sent", "sent");
+            assertThat(marked(topology, "orders", marker)).hasSize(2).allSatisfy(seen -> assertThat(seen).doesNotContainKey("tenant-id"));
+            assertThat(missingTenantOnInternalCalls(edge)).isEqualTo(before + 2);
+            assertThat(output.getOut().lines().filter(line -> line.contains(" WARN ")
+                    && line.contains("Context violation MISSING_REQUIRED: key tenant, wire name Tenant-Id, boundary INTERNAL_CALL")))
+                    .hasSize(1);
+        }
+    }
+
+    /** The extra edge's {@code boundrail.context.violations{kind=missing_required,key=tenant,boundary=internal_call}} count. */
+    private static double missingTenantOnInternalCalls(ConfigurableApplicationContext edge) {
+        Counter counter = edge.getBean(MeterRegistry.class).find("boundrail.context.violations")
+                .tags("kind", "missing_required", "key", "tenant", "boundary", "internal_call").counter();
+        return counter == null ? 0 : counter.count();
     }
 
     @Test
@@ -115,19 +152,29 @@ class ContextPropagationIT {
         // *(IN-09, EXE-09)*
     }
 
-    /** Sends a GET to edge with alice's JWT and the marker. */
+    /** Sends a GET to the shared edge with alice's JWT and the marker. */
     private static HttpResponse<String> callEdge(Topology.Running topology, String path, String marker) throws Exception {
-        URI uri = topology.uri(Service.EDGE).resolve(path + "?marker=" + marker);
+        return call(topology, topology.uri(Service.EDGE), path, marker);
+    }
+
+    /** Sends a GET to an edge instance with alice's JWT and the marker. */
+    private static HttpResponse<String> call(Topology.Running topology, URI edge, String path, String marker) throws Exception {
+        URI uri = edge.resolve(path + "?marker=" + marker);
         return HTTP.send(HttpRequest.newBuilder(uri).header("Authorization", "Bearer " + topology.jwts().alice()).build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 
     /** The single request a service observed with this marker. */
     private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
-        List<Map<String, String>> marked = topology.observed().of(service).stream()
-                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
-                .toList();
+        List<Map<String, String>> marked = marked(topology, service, marker);
         assertThat(marked).as("%s requests marked %s", service, marker).hasSize(1);
         return marked.getFirst();
+    }
+
+    /** Every request a service observed with this marker. */
+    private static List<Map<String, String>> marked(Topology.Running topology, String service, String marker) {
+        return topology.observed().of(service).stream()
+                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
+                .toList();
     }
 }

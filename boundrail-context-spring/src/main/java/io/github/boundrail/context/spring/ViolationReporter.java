@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import org.apache.commons.logging.Log;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -33,27 +34,34 @@ class ViolationReporter {
     private final Duration logInterval;
     private final Counter counter;
     private final ObjectProvider<ViolationListener> listeners;
+    private final Function<String, Optional<String>> executorEvidence;
     private final Log log;
     private final Clock clock;
     private final Map<LogKey, Instant> lastLogged = new ConcurrentHashMap<>();
 
-    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, ObjectProvider<ViolationListener> listeners, Log log,
-            Clock clock) {
+    /**
+     * Creates a reporter.
+     *
+     * @param executorEvidence the executor evidence for a thread name, from the context's executor table (DIAG-04)
+     */
+    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, ObjectProvider<ViolationListener> listeners,
+            Function<String, Optional<String>> executorEvidence, Log log, Clock clock) {
         this.policy = policy;
         this.logInterval = logInterval;
         this.counter = counter;
         this.listeners = listeners;
+        this.executorEvidence = executorEvidence;
         this.log = log;
         this.clock = clock;
     }
 
     /**
-     * Builds a violation with the observed evidence: the current thread's name and the capture site of the current snapshot, if one was
-     * recorded (DIAG-04). Every adapter builds its violations through this method.
+     * Builds a violation with the observed evidence: the current thread's name, the capture site of the current snapshot, if one was
+     * recorded, and the executor bean the thread belongs to, if any (DIAG-04). Every adapter builds its violations through this method.
      */
     Violation violation(Violation.Kind kind, String key, Boundary boundary, Optional<Destination> destination) {
-        return new Violation(kind, key, boundary, destination, Thread.currentThread().getName(), Context.capture().captureSite(),
-                Optional.empty());
+        String thread = Thread.currentThread().getName();
+        return new Violation(kind, key, boundary, destination, thread, Context.capture().captureSite(), executorEvidence.apply(thread));
     }
 
     void report(Violation violation) {
@@ -99,6 +107,7 @@ class ViolationReporter {
         });
         message.append(", thread ").append(violation.thread());
         violation.captureSite().ifPresent(site -> message.append(", capture site ").append(site));
+        violation.executorEvidence().ifPresent(evidence -> message.append(", executor ").append(evidence));
         return message.toString();
     }
 }

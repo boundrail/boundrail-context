@@ -87,7 +87,8 @@ class ViolationListenerTest {
     /** A reporter wired like the auto-configured one, with the context's listener beans, a recording counter and a recording log. */
     private ViolationReporter reporter(AssertableApplicationContext context) {
         return new ViolationReporter(new EffectivePolicy(BuiltInKeys.defaultPolicy()), Duration.ofMinutes(1), counted::add,
-                context.getBeanProvider(ViolationListener.class), log, Clock.fixed(Instant.parse("2026-10-01T10:00:00Z"), ZoneOffset.UTC));
+                context.getBeanProvider(ViolationListener.class), thread -> Optional.empty(), log,
+                Clock.fixed(Instant.parse("2026-10-01T10:00:00Z"), ZoneOffset.UTC));
     }
 
     private List<Entry> warnings() {

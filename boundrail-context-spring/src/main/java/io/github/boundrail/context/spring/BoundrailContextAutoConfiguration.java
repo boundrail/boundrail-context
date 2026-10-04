@@ -45,9 +45,16 @@ public class BoundrailContextAutoConfiguration {
     @Bean
     @Lazy(false)
     ViolationReporter boundrailViolationReporter(EffectivePolicy policy, BoundrailContextProperties properties,
-            ObjectProvider<ViolationReporter.Counter> counter, ObjectProvider<ViolationListener> listeners) {
+            ObjectProvider<ViolationReporter.Counter> counter, ObjectProvider<ViolationListener> listeners, ExecutorTable executorTable) {
         return new ViolationReporter(policy, properties.violations().logInterval(), counter.getIfAvailable(() -> violation -> { }),
-                listeners, LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
+                listeners, executorTable::evidence, LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
+    }
+
+    /** The context's executor beans by thread-name prefix, built once the context has refreshed, for executor evidence (DIAG-04, DIAG-12). */
+    @Bean
+    @Lazy(false)
+    ExecutorTable boundrailExecutorTable() {
+        return new ExecutorTable();
     }
 
     /**

@@ -58,7 +58,7 @@ class ViolationReporterTest {
     private final RecordingLog log = new RecordingLog();
     private final MutableClock clock = new MutableClock(Instant.parse("2026-10-01T10:00:00Z"));
     private final ViolationReporter reporter = new ViolationReporter(policy, Duration.ofMinutes(1), violation -> { },
-            new DefaultListableBeanFactory().getBeanProvider(ViolationListener.class), log, clock);
+            new DefaultListableBeanFactory().getBeanProvider(ViolationListener.class), thread -> Optional.empty(), log, clock);
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class));

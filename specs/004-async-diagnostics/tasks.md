@@ -331,7 +331,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 **Independent Test**: IT-1.2 – IT-1.5 in the IT command; IT-1.8 is enabled with the test module in T023.
 
-- [ ] T014 [US2] Executor evidence; enable IT-1.2 and IT-1.4 (guard).
+- [x] T014 [US2] Executor evidence; enable IT-1.2 and IT-1.4 (guard).
   - Red:
     - in `springtest/ExecutorTableTest.java`:
       - `DIAG-04 a violation on a thread of an executor bean names the bean and its status`: on a `rawExecutor-1` thread of a plain bean,
@@ -344,6 +344,8 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
       - `DIAG-12 the table covers only instantiated singleton executor beans of the context itself, and instantiates none`: a singleton
         has evidence; a `@Lazy` executor bean not yet requested, a prototype executor bean and an executor bean of a parent context give no
         evidence on threads named after them, and the lazy and prototype factory methods were never called;
+      - `DIAG-04 an executor instance decorated under two bean names is covered under both` (the EXE-01 settlement in d0f8945): one
+        `ThreadPoolTaskExecutor` returned by two bean methods with the same mode gives `<name> (COVERED <mode>)` for each name, not `GAP`;
     - enable IT-1.2: on the shared edge (`fail` mode), the `rawExecutor` endpoint's work completes exceptionally with
       `ContextViolationException`: kind `MISSING_REQUIRED`, key `tenant`, boundary `INTERNAL_CALL`, executor evidence `rawExecutor (GAP)`;
       orders records nothing with the marker;

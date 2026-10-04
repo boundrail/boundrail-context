@@ -104,7 +104,21 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
             }
         }
 
-        private ConfigurableApplicationContext startService(Service service) {
+        /**
+         * Starts an extra edge instance with the common properties plus the given ones, for a scenario that needs other configuration or
+         * asserts edge's startup log entries. The caller closes it.
+         */
+        public ConfigurableApplicationContext startEdge(String... properties) {
+            return startService(Service.EDGE, properties);
+        }
+
+        /** The base URI of an extra edge instance started with {@link #startEdge}. */
+        public URI uri(ConfigurableApplicationContext edge) {
+            int port = edge.getEnvironment().getRequiredProperty("local.server.port", Integer.class);
+            return URI.create("http://" + Service.EDGE.host + ":" + port);
+        }
+
+        private ConfigurableApplicationContext startService(Service service, String... extraProperties) {
             List<String> properties = new ArrayList<>(List.of(
                     "spring.application.name=" + service.serviceName,
                     "server.address=127.0.0.1",
@@ -119,6 +133,7 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                 // Boot applies Micrometer's context-propagating decorator to edge's taskExecutor (IT-1.1).
                 properties.add("spring.task.execution.propagate-context=true");
             }
+            properties.addAll(List.of(extraProperties));
             return new SpringApplicationBuilder(service.application)
                     .properties(properties.toArray(String[]::new))
                     .initializers(context -> {
