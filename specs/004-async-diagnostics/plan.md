@@ -6,9 +6,9 @@
 [contracts/runtime-listeners.md](contracts/runtime-listeners.md) and [contracts/executors-and-test.md](contracts/executors-and-test.md),
 decisions D39 – D47 in [design.md](../../docs/design.md), the T001 spike's outcome
 
-**Status**: Approved by the user (plan, tasks, both TDD exception rows and all twelve guard tests). The spike T001 is done, and its outcome is
+**Status**: Approved by the user (plan, tasks, both TDD exception rows and all eleven guard tests). The spike T001 is done, and its outcome is
 recorded below. Every spec gap is closed: G2 – G14 in spec.md and design.md D46 (DIAG-12 is new), G1 by the user's decision to allow
-reflection, written into spec.md as EXE-10 with amended EXE-06 and EXE-07 (D47). All twelve guard tests are accepted.
+reflection, written into spec.md as EXE-10 with amended EXE-06 and EXE-07 (D47). All eleven guard tests are accepted.
 
 ## Summary
 
@@ -34,8 +34,9 @@ Context survives in-process async boundaries, and when it does not, the failure 
   and `ContextAssertions`; JUnit Jupiter API and AssertJ as `api` dependencies (TEST-02 – TEST-04, D40).
 
 Library code is driven by unit and `ApplicationContextRunner` tests. Each ContextPropagationIT scenario is enabled in the task whose code
-makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and eleven unit tests already pass
-before their task: the nine first approved, and those added in T003 and T012, all accepted. Each red is shown against a named temporary
+makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and ten unit tests already pass
+before their task: the nine first approved and the one added in T003, all accepted. The T012 test accepted as a guard turned out red before
+T012 (T011 replaces the existing decorator), so it is an ordinary test. Each red is shown against a named temporary
 change that is then reverted ([Guard Tests](#guard-tests)). The T003 guard the user accepted for the `null` restorer is no longer one: with
 G13 settled, its test also asserts that the operation does not run, which is red before T003.
 
@@ -97,7 +98,7 @@ red-green tasks (T002 – T024) and a close task (T025)
 | IV Declared, never guessed | Pass | Mode per executor bean, default `DETACHED` (EXE-01); `Callable` work is `ATTACHED` by declaration (EXE-09, D39) |
 | V Evidence only | Pass | Violations carry thread, capture site and executor evidence only as observed (DIAG-04); stack walking only when `on` or `sampled` (SC-003) |
 | VI Interoperate | Pass | EXE-03 composes with Micrometer's, Boot's and code-set decorators, library outermost, by reading Spring's private `taskDecorator` field once per bean (EXE-10, D47) |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the twelve guard tests and both Javadoc TDD exception rows are approved |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the eleven guard tests and both Javadoc TDD exception rows are approved |
 | VIII Simplicity | Pass | One post-processor, one decorator, one table shared by evidence and audit, one listener per context; no public audit API (D42) |
 | Technical constraints | Pass | Core stays dependency-free (T025); SLF4J and Spring MVC `compileOnly` behind `@ConditionalOnClass` |
 
@@ -361,7 +362,6 @@ no capture site" sits with "a binding records its site").
 | T008 | `RT-09 violation log rate limiting belongs to one application context` | Each context already has its own `ViolationReporter` bean | `ViolationReporter.lastLogged` made `static` |
 | T011 | `EXE-04 a plain Executor or ExecutorService bean is not wrapped automatically` | Before T011 nothing touches executor beans, and T011's post-processor matches only the three EXE-03 types | The post-processor replacing every other `ExecutorService` bean with `BoundExecutors.detached(bean)` |
 | T003 | `RT-07 an Error from a later onEnter stops the entry: the operation and later listeners do not run, earlier restorers run in reverse order, and the Error propagates` (added during T003's review; accepted) | T003's code already unwinds the restorers already returned on any throwable from `onEnter` | The unwinding limited to the `null`-restorer path, so an `Error` from `onEnter` propagates without calling the earlier restorers |
-| T012 | `EXE-03 an executor instance post-processed twice is decorated once` (new after T001; accepted) | T011 sets the library's decorator without composing, so a second pass replaces it and the task enters one scope | On T012's finished code, the check that leaves an existing library decorator alone removed, so the second pass composes `library ∘ library` and a counting `ScopeListener` sees two scope entries per task |
 | T014 | IT-1.4 Report mode continues | `report` mode (DIAG-02) and rate-limited logging (DIAG-03) exist since M2; the report-mode edge only needs `rawExecutor` | `ViolationReporter.dueForLog` returning `true` always, so two WARN entries are logged |
 | T015 | `DIAG-06 with audit.enabled=false nothing is audited and executor evidence is still filled` | T014's table does not depend on the audit, and T015's listener is conditional from its first green step | The `audit.enabled` condition removed from the audit listener |
 | T016 | `DIAG-05 a context that sets neither property leaves the JVM-wide mode unchanged` | Before T016 Spring applies nothing; T016 applies only properties that are set | The capture-site bean applying `off` and `0.01` when the properties are unset |

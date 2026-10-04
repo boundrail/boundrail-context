@@ -19,14 +19,14 @@ with the requirement or scenario ID it covers.
   settled, so it is no longer a guard.
 - T001, the spike, is done; its outcome and the user's decisions (EXE-10, amended EXE-06 and EXE-07, D47) are in
   [plan.md](plan.md#spike-t001).
-- Twelve guard tests pass before their task: IT-1.4, one unit test each in T003 (new), T008, T011, T012 (new), T015, T016 and T017, and two
+- Eleven guard tests pass before their task: IT-1.4, one unit test each in T003 (new), T008, T011, T015, T016 and T017, and two
   unit tests each in T020 and T023.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)).
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it.
 - Every spec gap is closed: G2 – G14 (D46, DIAG-12) and G1 (EXE-10, D47) ([plan.md](plan.md#spec-gaps)).
-- All twelve guard tests, including those added in T003 and T012, are accepted by the user ([plan.md](plan.md#guard-tests)).
+- All eleven guard tests, including the one added in T003, are accepted by the user ([plan.md](plan.md#guard-tests)).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -282,9 +282,8 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     - `EXE-03 Micrometer's ContextPropagatingTaskDecorator still propagates its thread locals`: with a registered `ThreadLocalAccessor`, both
       its value and the context reach the task (`micrometer-context-propagation` as `testImplementation` in `-spring`);
     - `EXE-03 an executor instance post-processed twice is decorated once`: a counting `ScopeListener` sees one scope entry per task, and
-      the existing decorator runs once. This is a guard (accepted by the user): T011 replaces rather than composes, so a
-      second pass already leaves one layer. Show it red with the check that leaves an existing library decorator alone temporarily removed
-      from T012's finished code, then revert ([plan.md](plan.md#guard-tests));
+      the existing decorator runs once. Not a guard: the existing decorator's single run is red before T012, because T011 replaces it.
+      The check that leaves an existing library decorator alone was also shown red by removing it temporarily from the finished code;
   - Red, in `springtest/ReflectedFieldsTest.java`:
     - `EXE-10 the private taskDecorator field of ThreadPoolTaskExecutor, SimpleAsyncTaskExecutor and ThreadPoolTaskScheduler is found by
       name and type`, through the package-private lookup, so a Spring upgrade that renames one fails this test;
@@ -314,6 +313,8 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
       both is accepted`: bracketed keys, because Boot merges unbracketed keys that differ only in case (T001):
       `modes[rawExecutor]=attached` with `modes[RAWEXECUTOR]=detached` (through a `MapPropertySource`) fails with and without the T006a lazy
       setup from 003, naming both keys; `modes[rawExecutor]=attached` with `modes[RAWEXECUTOR]=Attached` starts, and the bean is attached.
+    - `EXE-01 one executor instance decorated under two bean names with different modes fails startup naming both beans, and the same mode
+      under both is accepted` (D47): one `ThreadPoolTaskExecutor` instance registered under two bean names.
   - Green: `Executors.modes` bound as `Map<String, String>` in `BoundrailContextProperties`; its compact constructor converts each value with
     `ApplicationConversionService.getSharedInstance()` (blank is `DETACHED`) and rejects keys equal ignoring case with different modes; the
     post-processor looks up the bean's mode ignoring case ([plan.md](plan.md#spring-wiring)).
@@ -621,7 +622,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M3): CORE-14, RT-07 – RT-09, IN-09,
   EXE-01 – EXE-07, EXE-09 – EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04; the Javadoc
   statements of EXE-04, EXE-07, DIAG-07 and TEST-02 (parallel runs) checked by inspection (TDD exceptions)
-- [ ] Guard tests (IT-1.4, and the unit guards in T003, T008, T011, T012, T015, T016, T017, T020 (two) and T023 (two)) shown red against their
+- [ ] Guard tests (IT-1.4, and the unit guards in T003, T008, T011, T015, T016, T017, T020 (two) and T023 (two)) shown red against their
   temporary change, and the change reverted
 - [x] T001's outcome recorded in plan.md, and G1 settled by the user (EXE-10, D47)
 - [ ] `boundrail-context-core` still has no runtime dependencies; SLF4J and Spring MVC are `compileOnly` in `-spring`

@@ -175,7 +175,8 @@ relaxed binding lowercases map keys taken from environment variables. `executors
 Boot's relaxed enum binding, as DIAG-02 matches the violation mode, and an empty or blank value SHALL mean `detached`. IF a mode matches neither
 value, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`. IF two `executors.modes` keys match the
 same bean name ignoring case and give different modes, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is
-`true`; the same mode under both is accepted. Verified by unit tests.
+`true`; the same mode under both is accepted. IF one executor instance is decorated under two bean names whose modes differ, THEN
+application startup SHALL fail, naming both beans; the same mode under both is accepted. Verified by unit tests.
 
 **EXE-02** `[M3]` WHEN a task is submitted to a library-managed executor, the library SHALL capture the current snapshot at submission, filter it with
 the policy for the executor's mode (POL-04), and run the task inside the filtered snapshot. Executors the Spring module decorates (EXE-03) SHALL
@@ -214,7 +215,8 @@ once per bean: the private `taskDecorator` field of `ThreadPoolTaskExecutor`, `S
 (EXE-03), and the private `taskExecutor` field of `RequestMappingHandlerAdapter` (EXE-09). It SHALL read no other private member, and SHALL set
 values only through Spring's public setters. IF such a field is missing at runtime, for example because a Spring upgrade renamed it, THEN
 application startup SHALL fail, with a message naming the class and the field, even when `spring.main.lazy-initialization` is `true` for the
-beans the library processes at startup (DESIGN D47). Verified by unit tests.
+beans the library processes at startup (DESIGN D47). An executor bean first created after startup SHALL fail, with the same message, when it is
+created. Verified by unit tests.
 
 ### Spring MVC async processing
 
