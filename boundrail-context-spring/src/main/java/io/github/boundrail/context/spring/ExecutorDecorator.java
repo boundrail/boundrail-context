@@ -15,6 +15,7 @@ final class ExecutorDecorator implements TaskDecorator {
     private final ObjectProvider<EffectivePolicy> policy;
     private final Boundary mode;
     private final TaskDecorator existing;
+    private final String beanName;
 
     /**
      * Creates a decorator.
@@ -23,11 +24,23 @@ final class ExecutorDecorator implements TaskDecorator {
      *     post-processors are registered
      * @param mode the executor's mode
      * @param existing the decorator the executor already had, run inside the library's scope, or {@code null}
+     * @param beanName the name of the executor bean it was installed for
      */
-    ExecutorDecorator(ObjectProvider<EffectivePolicy> policy, Boundary mode, TaskDecorator existing) {
+    ExecutorDecorator(ObjectProvider<EffectivePolicy> policy, Boundary mode, TaskDecorator existing, String beanName) {
         this.policy = policy;
         this.mode = mode;
         this.existing = existing;
+        this.beanName = beanName;
+    }
+
+    /** {@return the executor's mode} */
+    Boundary mode() {
+        return mode;
+    }
+
+    /** {@return the name of the executor bean it was installed for} */
+    String beanName() {
+        return beanName;
     }
 
     @Override

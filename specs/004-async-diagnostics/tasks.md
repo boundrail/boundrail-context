@@ -295,7 +295,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     through `setTaskDecorator`, and the skip when the existing decorator is the library's ([plan.md](plan.md#spring-wiring)).
   - Completes: EXE-03 (composition, library outermost); EXE-10 (executor fields); SC-002 (with IT-1.1).
   - Verify: Unit `ExecutorDecorationTest` and `ReflectedFieldsTest`; IT (IT-1.1 stays green).
-- [ ] T013 [US1] Executor modes.
+- [x] T013 [US1] Executor modes.
   - Red, in `springtest/ExecutorModeTest.java`:
     - `EXE-01 executors.modes.<bean-name>=attached makes that executor attached, and others stay detached`: an `ATTACHED`-only key reaches
       the attached executor's task and not another's;
