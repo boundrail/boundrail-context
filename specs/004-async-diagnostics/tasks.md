@@ -272,7 +272,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Completes: EXE-03 (installation, three types, `auto-decorate`); EXE-02 (decorated, effective policy); EXE-04 (not wrapped); EXE-05
     (detached); IT-1.1.
   - Verify: Unit `ExecutorDecorationTest`; IT.
-- [ ] T012 [US1] Composition with an existing decorator, through the private `taskDecorator` field (EXE-10).
+- [x] T012 [US1] Composition with an existing decorator, through the private `taskDecorator` field (EXE-10).
   - Red, in `ExecutorDecorationTest`, for each of the three types:
     - `EXE-03 an existing decorator set in code runs inside the library's scope`: the existing decorator records `Context.capture()` when its
       decorated runnable runs, and sees the submitter's binding;

@@ -7,6 +7,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.ContextRuntime;
+import io.github.boundrail.context.ScopeListener;
+import io.micrometer.context.ContextRegistry;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,15 +20,27 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.task.TaskExecutionAutoConfiguration;
+import org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.core.task.TaskDecorator;
+import org.springframework.core.task.support.ContextPropagatingTaskDecorator;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
@@ -40,6 +55,13 @@ class ExecutorDecorationTest {
     /** The plain executor instances the bean methods created, by bean name. */
     private static final Map<String, Object> CREATED = new LinkedHashMap<>();
 
+    /** What the decorated runnables of every {@link RecordingDecorator} saw when they ran. */
+    private static final List<String> RUNS = new CopyOnWriteArrayList<>();
+
+    /** A thread local that Micrometer's {@code ContextPropagatingTaskDecorator} propagates, through a registered accessor. */
+    private static final ThreadLocal<String> LOCAL = new ThreadLocal<>();
+    private static final String LOCAL_ACCESSOR = "boundrail-test.local";
+
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class));
 
@@ -47,6 +69,13 @@ class ExecutorDecorationTest {
     void clear() {
         EVENTS.clear();
         CREATED.clear();
+        RUNS.clear();
+        ContextRegistry.getInstance().registerThreadLocalAccessor(LOCAL_ACCESSOR, LOCAL::get, LOCAL::set, LOCAL::remove);
+    }
+
+    @AfterEach
+    void removeAccessor() {
+        ContextRegistry.getInstance().removeThreadLocalAccessor(LOCAL_ACCESSOR);
     }
 
     /** The bound tenant and audit values, or "-". */
@@ -198,6 +227,230 @@ class ExecutorDecorationTest {
         runner.withUserConfiguration(PoolThenPolicy.class).run(context -> {
             assertThat(EVENTS).containsExactly("executor created", "executor initialised", "policy created");
             assertThat(submittedFromBinding(context.getBean(RecordingPool.class))).as("the pool is decorated").startsWith("tenant=acme");
+        });
+    }
+
+    /** An existing decorator: counts its calls, and records what its decorated runnable sees when it runs. */
+    static final class RecordingDecorator implements TaskDecorator {
+
+        final AtomicInteger decorations = new AtomicInteger();
+
+        @Override
+        public Runnable decorate(Runnable task) {
+            decorations.incrementAndGet();
+            return () -> {
+                RUNS.add(seen());
+                task.run();
+            };
+        }
+    }
+
+    /** The bound tenant and audit values and the thread local's value, or "-". */
+    private static String seenWithLocal() {
+        return seen() + " local=" + (LOCAL.get() == null ? "-" : LOCAL.get());
+    }
+
+    /** Submits a task from inside {@code tenant=acme, audit=a1}, with the thread local set to {@code l1}, and returns what it saw. */
+    private static String submittedFromBindingWithLocal(AsyncTaskExecutor executor) throws Exception {
+        LOCAL.set("l1");
+        try {
+            return Context.with(TENANT, "acme").with(AUDIT, "a1").call(() -> executor.submit(ExecutorDecorationTest::seenWithLocal))
+                    .get(5, TimeUnit.SECONDS);
+        } finally {
+            LOCAL.remove();
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class ExecutorsWithRecordingDecorator {
+
+        @Bean
+        ThreadPoolTaskExecutor pool() {
+            ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+            executor.setTaskDecorator(new RecordingDecorator());
+            return executor;
+        }
+
+        @Bean
+        SimpleAsyncTaskExecutor simple() {
+            SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("simple-");
+            executor.setTaskDecorator(new RecordingDecorator());
+            return executor;
+        }
+
+        @Bean
+        ThreadPoolTaskScheduler scheduler() {
+            ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+            scheduler.setTaskDecorator(new RecordingDecorator());
+            return scheduler;
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"pool", "simple", "scheduler"})
+    @DisplayName("EXE-03 an existing decorator set in code runs inside the library's scope")
+    void anExistingDecoratorSetInCodeRunsInsideTheLibrarysScope(String bean) {
+        runner.withUserConfiguration(ExecutorsWithRecordingDecorator.class).run(context -> {
+            String seen = submittedFromBinding(context.getBean(bean, AsyncTaskExecutor.class));
+
+            assertThat(RUNS).as("what the existing decorator's runnable saw").containsExactly("tenant=acme audit=a1");
+            assertThat(seen).as("what the task saw").isEqualTo("tenant=acme audit=a1");
+        });
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableScheduling
+    static class Scheduling {
+    }
+
+    /** Boot's executors and scheduler, built by Boot's builders, with a {@code TaskDecorator} bean, Micrometer's decorator, or both. */
+    enum BootCase {
+        TASK_DECORATOR_BEAN("applicationTaskExecutor", ThreadPoolTaskExecutor.class, true, false),
+        PROPAGATE_CONTEXT("applicationTaskExecutor", ThreadPoolTaskExecutor.class, false, true),
+        BOTH("applicationTaskExecutor", ThreadPoolTaskExecutor.class, true, true),
+        VIRTUAL_THREADS("applicationTaskExecutor", SimpleAsyncTaskExecutor.class, true, true, "spring.threads.virtual.enabled=true"),
+        TASK_SCHEDULER("taskScheduler", ThreadPoolTaskScheduler.class, true, true);
+
+        final String bean;
+        final Class<?> type;
+        final boolean decoratorBean;
+        final boolean propagateContext;
+        final String[] properties;
+
+        BootCase(String bean, Class<?> type, boolean decoratorBean, boolean propagateContext, String... properties) {
+            this.bean = bean;
+            this.type = type;
+            this.decoratorBean = decoratorBean;
+            this.propagateContext = propagateContext;
+            this.properties = properties;
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(BootCase.class)
+    @DisplayName("EXE-03 a decorator applied by Boot's builder from TaskDecorator beans is kept and runs inside the library's scope")
+    void aDecoratorAppliedByBootsBuilderIsKeptAndRunsInsideTheLibrarysScope(BootCase bootCase) {
+        ApplicationContextRunner boot = runner
+                .withConfiguration(AutoConfigurations.of(TaskExecutionAutoConfiguration.class, TaskSchedulingAutoConfiguration.class))
+                .withUserConfiguration(Scheduling.class)
+                .withPropertyValues(bootCase.properties)
+                .withPropertyValues("spring.task.execution.propagate-context=" + bootCase.propagateContext);
+        if (bootCase.decoratorBean) {
+            boot = boot.withBean("recordingDecorator", TaskDecorator.class, RecordingDecorator::new);
+        }
+
+        boot.run(context -> {
+            AsyncTaskExecutor executor = context.getBean(bootCase.bean, AsyncTaskExecutor.class);
+            assertThat(executor).isExactlyInstanceOf(bootCase.type);
+
+            String seen = submittedFromBindingWithLocal(executor);
+
+            assertThat(seen).as("what the task saw")
+                    .isEqualTo("tenant=acme audit=a1 local=" + (bootCase.propagateContext ? "l1" : "-"));
+            assertThat(RUNS).as("what the TaskDecorator bean's runnable saw")
+                    .isEqualTo(bootCase.decoratorBean ? List.of("tenant=acme audit=a1") : List.of());
+        });
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class ExecutorsWithMicrometerDecorator {
+
+        @Bean
+        ThreadPoolTaskExecutor pool() {
+            ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+            executor.setTaskDecorator(new ContextPropagatingTaskDecorator());
+            return executor;
+        }
+
+        @Bean
+        SimpleAsyncTaskExecutor simple() {
+            SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("simple-");
+            executor.setTaskDecorator(new ContextPropagatingTaskDecorator());
+            return executor;
+        }
+
+        @Bean
+        ThreadPoolTaskScheduler scheduler() {
+            ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+            scheduler.setTaskDecorator(new ContextPropagatingTaskDecorator());
+            return scheduler;
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"pool", "simple", "scheduler"})
+    @DisplayName("EXE-03 Micrometer's ContextPropagatingTaskDecorator still propagates its thread locals")
+    void micrometersContextPropagatingTaskDecoratorStillPropagatesItsThreadLocals(String bean) {
+        runner.withUserConfiguration(ExecutorsWithMicrometerDecorator.class).run(context ->
+                assertThat(submittedFromBindingWithLocal(context.getBean(bean, AsyncTaskExecutor.class)))
+                        .isEqualTo("tenant=acme audit=a1 local=l1"));
+    }
+
+    /** The three EXE-03 types, created outside a context with an existing decorator. */
+    enum ExecutorType {
+        THREAD_POOL_TASK_EXECUTOR {
+            @Override
+            AsyncTaskExecutor create(TaskDecorator decorator) {
+                ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+                executor.setTaskDecorator(decorator);
+                return executor;
+            }
+        },
+        SIMPLE_ASYNC_TASK_EXECUTOR {
+            @Override
+            AsyncTaskExecutor create(TaskDecorator decorator) {
+                SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("twice-");
+                executor.setTaskDecorator(decorator);
+                return executor;
+            }
+        },
+        THREAD_POOL_TASK_SCHEDULER {
+            @Override
+            AsyncTaskExecutor create(TaskDecorator decorator) {
+                ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+                scheduler.setTaskDecorator(decorator);
+                return scheduler;
+            }
+        };
+
+        abstract AsyncTaskExecutor create(TaskDecorator decorator);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(ExecutorType.class)
+    @DisplayName("EXE-03 an executor instance post-processed twice is decorated once")
+    void anExecutorInstancePostProcessedTwiceIsDecoratedOnce(ExecutorType type) {
+        runner.run(context -> {
+            ExecutorDecoratingPostProcessor postProcessor = context.getBean(ExecutorDecoratingPostProcessor.class);
+            RecordingDecorator existing = new RecordingDecorator();
+            AsyncTaskExecutor executor = type.create(existing);
+            Thread submitter = Thread.currentThread();
+            AtomicInteger taskScopeEntries = new AtomicInteger();
+            ScopeListener counting = entered -> {
+                if (Thread.currentThread() != submitter) {
+                    taskScopeEntries.incrementAndGet();
+                }
+                return () -> { };
+            };
+            postProcessor.postProcessBeforeInitialization(executor, "twice");
+            postProcessor.postProcessBeforeInitialization(executor, "twice");
+            if (executor instanceof InitializingBean initializing) {
+                initializing.afterPropertiesSet();
+            }
+            ContextRuntime.addScopeListener(counting);
+            try {
+                String seen = submittedFromBinding(executor);
+
+                assertThat(seen).isEqualTo("tenant=acme audit=a1");
+                assertThat(taskScopeEntries).as("scope entries on the task's thread").hasValue(1);
+                assertThat(existing.decorations).as("calls of the existing decorator").hasValue(1);
+                assertThat(RUNS).as("runs of the existing decorator's runnable").containsExactly("tenant=acme audit=a1");
+            } finally {
+                ContextRuntime.removeScopeListener(counting);
+                if (executor instanceof DisposableBean disposable) {
+                    disposable.destroy();
+                }
+            }
         });
     }
 }

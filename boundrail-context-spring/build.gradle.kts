@@ -17,6 +17,7 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.micrometer.core)
+    testImplementation(libs.micrometer.context.propagation)
     testImplementation(libs.spring.web)
     testImplementation(libs.spring.boot.restclient)
     testImplementation(libs.jakarta.servlet.api)
