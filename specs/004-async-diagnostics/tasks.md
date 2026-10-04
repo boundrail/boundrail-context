@@ -397,10 +397,13 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 - [ ] T015a [US2] Unmatched mode keys by bean definition, and strict audit flags (T015 review follow-up).
   - Red, in `springtest/ExecutorAuditTest.java`:
     - `DIAG-06 a modes key naming a lazy or prototype executor bean definition is not reported as unmatched`: `executors.modes.lazyPool`
-      for a `@Lazy` `ThreadPoolTaskExecutor` not yet requested and `executors.modes.jobPool` for a prototype one give no unmatched-key WARN,
-      and neither factory method is called; a key naming no definition still warns;
-    - `DIAG-06 an invalid audit.enabled or audit.fail-on-gap fails startup, also with lazy initialization` (`yes` for each, with and without
-      the T006a lazy setup), and `audit.enabled=FALSE` turns the audit off (relaxed binding).
+      for a `@Lazy` `SimpleAsyncTaskExecutor` not yet requested and `executors.modes.jobPool` for a prototype `ThreadPoolTaskExecutor` give
+      no unmatched-key WARN, and neither factory method is called; a key naming no definition still warns. (A `@Lazy`
+      `ThreadPoolTaskExecutor` or `ThreadPoolTaskScheduler` is a `SmartLifecycle` bean that Spring creates at refresh, so it is not a lazy
+      case.);
+    - `DIAG-06 the audit flags are bound as Boot booleans`: `audit.enabled=yes` turns the audit on (red before T015a, whose
+      `@ConditionalOnProperty` matches only `true`); `audit.enabled=FALSE` turns it off; `audit.enabled=maybe` and `audit.fail-on-gap=maybe`
+      fail startup, with and without the T006a lazy setup.
   - Green: the unmatched-key check reads the context's bean definitions of the three EXE-03 types
     (`getBeanNamesForType(type, true, false)`), and the audit is enabled through the bound `Audit` record instead of
     `@ConditionalOnProperty`.

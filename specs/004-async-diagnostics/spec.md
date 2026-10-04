@@ -271,8 +271,9 @@ at INFO `Executor audit: <bean> COVERED (<mode>)`, with the mode in lowercase, o
 executor` once for each `boundrail.context.executors.modes` key that, ignoring case, names no bean definition of an EXE-03 type in the
 application context (EXE-01); lazy and prototype definitions count, and none is instantiated for this. WHERE
 `boundrail.context.audit.fail-on-gap=true` and there is at least one gap, the application SHALL fail to start with an exception whose message lists
-the bean name of every gap. `audit.enabled` and `audit.fail-on-gap` SHALL be matched with Spring Boot's relaxed binding; IF either is not a
-boolean, THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true`. Verified by unit tests.
+the bean name of every gap. `audit.enabled` and `audit.fail-on-gap` SHALL be bound as booleans with Spring Boot's binding, which accepts `true`, `on`, `yes` and
+`1` and their opposites in any case; IF either is a value Boot cannot convert to a boolean, THEN application startup SHALL fail, even when
+`spring.main.lazy-initialization` is `true`. Verified by unit tests.
 
 **DIAG-07** `[M3]` The Javadoc of `BoundExecutors` SHALL state that the startup audit only sees Spring beans, and which ones (DIAG-12), and that
 runtime validation (POL-08) covers executors created in code (DESIGN D45).
