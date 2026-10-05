@@ -281,7 +281,8 @@ option B for EXE-06 (G1 closed); spec.md has them as EXE-10 and amended EXE-06 a
     snapshot whatever the executor's mode. A `WebAsyncTask` with its own executor bypasses it, as EXE-09 allows (T001).
 - **RT-09.** Nothing new in `-spring` is static. The executor table, recorder registration, MDC listener and capture-site application are beans
   of one context. T008 pins that the reporter's rate limiter is per context; T025 checks by inspection that core has no other static mutable
-  state than the slot, the listener list and the capture-site pair.
+  state than the slot, the listener list and the capture-site pair, plus `CaptureSiteRecorder.walker`, a package-private test seam that only a
+  core test replaces (SC-003).
 
 ### Test module
 

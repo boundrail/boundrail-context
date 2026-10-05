@@ -622,6 +622,14 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 10: Close
 
+- [ ] T024a Violation listeners of the reporting context only (T025 review follow-up).
+  - Red, in `springtest/ViolationListenerTest.java`: `DIAG-11 a violation reaches only the listeners defined in the reporting context, not
+    its ancestors'`: a parent and a child context each define a recording `ViolationListener`; a violation reported in the child reaches only
+    the child's listener (red: `ObjectProvider.orderedStream()` includes ancestor beans, so the parent's listener sees it too).
+  - Green: the reporter resolves listeners from its own context's bean factory only, in bean order.
+  - Completes: DIAG-11 (own context only); with it, `@BoundrailTest` records each violation once in a context hierarchy that loads the test
+    module in parent and child.
+  - Verify: Unit `ViolationListenerTest`.
 - [ ] T025 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-14, RT-07 – RT-09, IN-09, EXE-01 – EXE-07, EXE-09, EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01, LOG-02 and

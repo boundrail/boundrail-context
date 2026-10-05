@@ -291,10 +291,11 @@ code it is therefore the application's frame; for a snapshot an adapter in anoth
 the adapter's frame (DESIGN D41). `ContextPolicy.filter` (POL-04) SHALL keep the capture site of the snapshot it filters, and running or wrapping
 a snapshot (CORE-10) SHALL NOT change it. `ContextSnapshot.EMPTY` has none. Verified by IT-1.8 and unit tests.
 
-**DIAG-11** `[M3]` WHEN a violation is reported (DIAG-03), the Spring module SHALL also pass it to every `ViolationListener` bean in the application
-context, in bean order, after counting it, whether or not its log entry is rate-limited. IF a listener throws a `RuntimeException`, THEN the
-exception SHALL be logged at WARN, with the exception, the remaining listeners SHALL still be called, and the operation's outcome SHALL NOT change.
-An `Error` from a listener SHALL NOT be caught, as for scope listeners (RT-07). Verified by unit tests.
+**DIAG-11** `[M3]` WHEN a violation is reported (DIAG-03), the Spring module SHALL also pass it to every `ViolationListener` bean defined in the
+application context that reports it, not in its ancestor contexts, in bean order, after counting it, whether or not its log entry is rate-limited.
+IF a listener throws a `RuntimeException`, THEN the exception SHALL be logged at WARN, with the exception, the remaining listeners SHALL still be
+called, and the operation's outcome SHALL NOT change. An `Error` from a listener SHALL NOT be caught, as for scope listeners (RT-07). Verified by
+unit tests.
 
 ### Logging
 
