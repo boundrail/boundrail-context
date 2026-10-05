@@ -12,12 +12,16 @@ dependencies {
     // Consumers of the assertions receive JUnit Jupiter and AssertJ transitively (TEST-04).
     api(libs.junit.jupiter.api)
     api(libs.assertj.core)
+    compileOnly(libs.spring.boot.autoconfigure)
     compileOnly(libs.spring.web)
     compileOnly(libs.jakarta.servlet.api)
 
     testImplementation(libs.spring.web)
     testImplementation(libs.jakarta.servlet.api)
     testImplementation(libs.spring.boot.restclient)
+    testImplementation(libs.spring.boot.autoconfigure)
+    testImplementation(libs.spring.boot.test)
+    testImplementation(libs.junit.platform.testkit)
 }
 
 publishing {

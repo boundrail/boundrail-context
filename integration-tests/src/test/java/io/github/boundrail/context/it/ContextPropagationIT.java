@@ -3,11 +3,14 @@ package io.github.boundrail.context.it;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.it.topology.CleanupJob;
 import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.ObservedContext;
 import io.github.boundrail.context.it.topology.Topology;
 import io.github.boundrail.context.it.topology.Topology.Service;
+import io.github.boundrail.context.test.BoundrailTest;
+import io.github.boundrail.context.test.RecordedViolations;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.net.URI;
@@ -19,7 +22,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +35,7 @@ import org.springframework.context.ConfigurableApplicationContext;
  * (BLD-10).
  */
 @ExtendWith(Topology.class)
+@BoundrailTest
 class ContextPropagationIT {
 
     private static final HttpClient HTTP = HttpClient.newHttpClient();
@@ -175,12 +178,21 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
     @DisplayName("IT-1.8 Capture sites are recorded in tests, and only where observed")
-    void it18CaptureSitesAreRecordedInTestsAndOnlyWhereObserved() {
+    void it18CaptureSitesAreRecordedInTestsAndOnlyWhereObserved(Topology.Running topology, RecordedViolations violations) throws Exception {
         // IT-1.8: Under `@BoundrailTest`, a `MISSING_REQUIRED` violation raised after `Context.without(tenant)` in an edge controller
         // carries a capture site in that controller class. The IT-1.2 violation, whose task ran with `EMPTY`, carries no capture site.
         // *(DIAG-04, DIAG-05, DIAG-10, TEST-02)*
+        HttpResponse<String> withoutTenant = callEdge(topology, "/call-orders/without-tenant", UUID.randomUUID().toString());
+        HttpResponse<String> raw = callEdge(topology, "/raw/call-orders", UUID.randomUUID().toString());
+
+        assertThat(withoutTenant.body()).isEqualTo("MISSING_REQUIRED");
+        assertThat(raw.body()).startsWith("MISSING_REQUIRED|");
+        List<Violation> missing = violations.all().stream().filter(violation -> violation.kind() == Violation.Kind.MISSING_REQUIRED).toList();
+        assertThat(missing).as("MISSING_REQUIRED violations recorded during the test").hasSize(2);
+        assertThat(missing.get(0).captureSite()).as("capture site after Context.without(tenant)").hasValueSatisfying(
+                site -> assertThat(site).startsWith("io.github.boundrail.context.it.topology.EdgeApp."));
+        assertThat(missing.get(1).captureSite()).as("capture site of the task run with EMPTY").isEmpty();
     }
 
     @Test

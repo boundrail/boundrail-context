@@ -6,10 +6,13 @@ import io.github.boundrail.context.internal.RuntimeVersionMarker;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -135,13 +138,22 @@ class BuildSmokeIT {
     }
 
     @Test
-    @DisplayName("TEST-01 the boundrail-context-test JAR ships no AutoConfiguration.imports and no spring.factories")
-    void testModuleJarShipsNoAutoConfiguration() throws Exception {
+    @DisplayName("TEST-01 the boundrail-context-test JAR auto-configures only the TEST-02 violation recorder")
+    void testModuleJarAutoConfiguresOnlyTheViolationRecorder() throws Exception {
         Path jar = Path.of(TestInboundTrustVerifier.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         assertThat(jar.getFileName().toString()).endsWith(".jar");
 
         try (JarFile file = new JarFile(jar.toFile())) {
-            assertThat(file.getJarEntry("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports")).isNull();
+            JarEntry imports = file.getJarEntry("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports");
+            assertThat(imports).as("the imports file").isNotNull();
+            List<String> candidates;
+            try (InputStream in = file.getInputStream(imports)) {
+                candidates = new String(in.readAllBytes(), StandardCharsets.UTF_8).lines()
+                        .map(String::strip)
+                        .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                        .toList();
+            }
+            assertThat(candidates).containsExactly("io.github.boundrail.context.test.BoundrailTestAutoConfiguration");
             assertThat(file.getJarEntry("META-INF/spring.factories")).isNull();
         }
     }

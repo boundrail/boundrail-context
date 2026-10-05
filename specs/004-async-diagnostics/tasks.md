@@ -570,7 +570,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     `api` on `junit-jupiter-api` (catalog entry) and `assertj-core`, and `versionMapping` if the POM needs it ([plan.md](plan.md#build)).
   - Completes: TEST-03 (`SnapshotAssert`); TEST-04; CORE-14 (`SnapshotAssert`).
   - Verify: Unit `SnapshotAssertTest` in `:boundrail-context-test`; `./gradlew check` (BuildSmokeIT).
-- [ ] T023 `@BoundrailTest` and the violation recorder; enable IT-1.8.
+- [x] T023 `@BoundrailTest` and the violation recorder; enable IT-1.8.
   - Red:
     - in `testmodtest/BoundrailTestExtensionTest.java` (JUnit Platform `EngineTestKit` running sample test classes):
       - `TEST-02 @BoundrailTest turns capture sites on for the class and restores the previous mode and rate afterwards`: from `SAMPLED` at
