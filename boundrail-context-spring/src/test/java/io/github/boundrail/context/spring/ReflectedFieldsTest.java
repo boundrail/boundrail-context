@@ -135,4 +135,31 @@ class ReflectedFieldsTest {
                     .hasMessageContaining("renamedTaskExecutor");
         });
     }
+
+    @Configuration(proxyBeanMethods = false)
+    static class RenamedMvcFieldLazyAdapter {
+
+        @Bean
+        static MvcAsyncExecutorPostProcessor renamedFieldPostProcessor(ObjectProvider<EffectivePolicy> policy) {
+            return new MvcAsyncExecutorPostProcessor(policy, "renamedTaskExecutor");
+        }
+
+        @Bean
+        @Lazy
+        RequestMappingHandlerAdapter adapter() {
+            return new RequestMappingHandlerAdapter();
+        }
+    }
+
+    @Test
+    @DisplayName("EXE-10 a missing taskExecutor field fails startup even when the adapter is created lazily")
+    void aMissingTaskExecutorFieldFailsStartupEvenWhenTheAdapterIsCreatedLazily() {
+        runner.withUserConfiguration(RenamedMvcFieldLazyAdapter.class).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause()
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining(RequestMappingHandlerAdapter.class.getName())
+                    .hasMessageContaining("renamedTaskExecutor");
+        });
+    }
 }

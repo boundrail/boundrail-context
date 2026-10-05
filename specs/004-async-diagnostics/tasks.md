@@ -550,7 +550,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 9: Test support (US2's IT-1.8)
 
-- [ ] T021a [US5] Check the MVC field at startup (T021 review follow-up).
+- [x] T021a [US5] Check the MVC field at startup (T021 review follow-up).
   - Red, in `springtest/ReflectedFieldsTest.java`: `EXE-10 a missing taskExecutor field fails startup even when the adapter is created
     lazily`: with the renamed-field post-processor and a `RequestMappingHandlerAdapter` bean that is lazy and never requested, startup still
     fails naming the class and the field (red: T021 looks the field up only when an adapter is post-processed).
