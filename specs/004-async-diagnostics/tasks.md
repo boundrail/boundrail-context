@@ -606,8 +606,9 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     - `CORE-14 containsKind(null) throws NullPointerException`;
     - `TEST-02 assertThatViolations() called while no @BoundrailTest test method is running throws IllegalStateException`: from a plain
       test, and from `@AfterAll` of a `@BoundrailTest` class;
-    - `TEST-02 a violation reported in @BeforeEach or @AfterEach is recorded for that test` (TEST-02 as clarified after the T023 review). This is a guard (accepted by
-      the user): red shown with the recording narrowed to the test method alone, then reverted ([plan.md](plan.md#guard-tests));
+    - `TEST-02 a violation reported in @BeforeEach or @AfterEach is recorded for that test` (TEST-02 as clarified after the T023 review).
+      This is a guard (accepted by the user): red shown with the recording narrowed to the test method alone,
+      then reverted ([plan.md](plan.md#guard-tests));
     - `TEST-02 when an earlier extension's beforeAll fails, @BoundrailTest's afterAll adds no exception of its own` (T023 review): a sample
       class whose first extension throws in `beforeAll` fails with only that exception, nothing suppressed.
   - Green: `testmod/ViolationsAssert.java` and `assertThatViolations()` in `ContextAssertions`; `BoundrailTestExtension.afterAll` returns
