@@ -311,7 +311,8 @@ one JVM, each listener handles only the keys its own policy marks loggable (DESI
 
 **TEST-02** `[M3]` The test module SHALL provide `@BoundrailTest`, an annotation that registers a JUnit Jupiter extension. For the annotated test
 class, the extension SHALL set the capture-site mode to `on` (RT-08) before the class's first test, and SHALL restore the mode and sample rate
-in effect before it after the class's last test. It SHALL record, from the start to the end of each test method, including that test's `@BeforeEach` and `@AfterEach` methods, every violation reported
+in effect before it after the class's last test. It SHALL record, from the start to the end of each test method,
+including that test's `@BeforeEach` and `@AfterEach` methods, every violation reported
 (DIAG-03) in any application context in the JVM, through a `ViolationListener` (DIAG-11) that the test module auto-configures, and SHALL
 expose them to that test as a `RecordedViolations` parameter and through `ContextAssertions.assertThatViolations()` (TEST-03). While no
 `@BoundrailTest` test is running, the listener SHALL keep nothing. IF `ContextAssertions.assertThatViolations()` or `RecordedViolations.all()`
