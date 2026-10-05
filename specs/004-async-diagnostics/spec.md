@@ -217,7 +217,8 @@ once per bean: the private `taskDecorator` field of `ThreadPoolTaskExecutor`, `S
 values only through Spring's public setters. IF such a field is missing at runtime, for example because a Spring upgrade renamed it, THEN
 application startup SHALL fail, with a message naming the class and the field, even when `spring.main.lazy-initialization` is `true` for the
 beans the library processes at startup (DESIGN D47). An executor bean first created after startup SHALL fail, with the same message, when it is
-created. Verified by unit tests.
+created. WHERE Spring MVC is on the classpath, the `RequestMappingHandlerAdapter` field SHALL be checked at startup, before any adapter is
+created, so a missing field fails startup even when the adapter itself is created lazily. Verified by unit tests.
 
 ### Spring MVC async processing
 
