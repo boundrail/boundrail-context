@@ -6,9 +6,9 @@
 [contracts/runtime-listeners.md](contracts/runtime-listeners.md) and [contracts/executors-and-test.md](contracts/executors-and-test.md),
 decisions D39 – D47 in [design.md](../../docs/design.md), the T001 spike's outcome
 
-**Status**: Approved by the user (plan, tasks, both TDD exception rows and all eleven guard tests). The spike T001 is done, and its outcome is
+**Status**: Approved by the user (plan, tasks, both TDD exception rows and all twelve guard tests). The spike T001 is done, and its outcome is
 recorded below. Every spec gap is closed: G2 – G14 in spec.md and design.md D46 (DIAG-12 is new), G1 by the user's decision to allow
-reflection, written into spec.md as EXE-10 with amended EXE-06 and EXE-07 (D47). All eleven guard tests are accepted.
+reflection, written into spec.md as EXE-10 with amended EXE-06 and EXE-07 (D47). All twelve guard tests are accepted.
 
 ## Summary
 
@@ -34,8 +34,8 @@ Context survives in-process async boundaries, and when it does not, the failure 
   and `ContextAssertions`; JUnit Jupiter API and AssertJ as `api` dependencies (TEST-02 – TEST-04, D40).
 
 Library code is driven by unit and `ApplicationContextRunner` tests. Each ContextPropagationIT scenario is enabled in the task whose code
-makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and ten unit tests already pass
-before their task: the nine first approved and the one added in T003, all accepted. The T012 test accepted as a guard turned out red before
+makes it pass, so it is that task's failing acceptance test. RC-9 is enabled in T003. One scenario (IT-1.4) and eleven unit tests already pass
+before their task: the nine first approved and those added in T003 and T024, all accepted. The T012 test accepted as a guard turned out red before
 T012 (T011 replaces the existing decorator), so it is an ordinary test. Each red is shown against a named temporary
 change that is then reverted ([Guard Tests](#guard-tests)). The T003 guard the user accepted for the `null` restorer is no longer one: with
 G13 settled, its test also asserts that the operation does not run, which is red before T003.
@@ -98,7 +98,7 @@ red-green tasks (T002 – T024) and a close task (T025)
 | IV Declared, never guessed | Pass | Mode per executor bean, default `DETACHED` (EXE-01); `Callable` work is `ATTACHED` by declaration (EXE-09, D39) |
 | V Evidence only | Pass | Violations carry thread, capture site and executor evidence only as observed (DIAG-04); stack walking only when `on` or `sampled` (SC-003) |
 | VI Interoperate | Pass | EXE-03 composes with Micrometer's, Boot's and code-set decorators, library outermost, by reading Spring's private `taskDecorator` field once per bean (EXE-10, D47) |
-| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the eleven guard tests and both Javadoc TDD exception rows are approved |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; the twelve guard tests and both Javadoc TDD exception rows are approved |
 | VIII Simplicity | Pass | One post-processor, one decorator, one table shared by evidence and audit, one listener per context; no public audit API (D42) |
 | Technical constraints | Pass | Core stays dependency-free (T025); SLF4J and Spring MVC `compileOnly` behind `@ConditionalOnClass` |
 
@@ -372,6 +372,7 @@ no capture site" sits with "a binding records its site").
 | T020 | `IN-09 an ASYNC dispatch with no stored snapshot runs in the current scope` | Before T020 the inbound filter skips async dispatches, so the chain runs in the current scope | The inbound filter running the chain in `ContextSnapshot.EMPTY` when no snapshot is stored |
 | T023 | `TEST-02 the extension does not change the violation mode` | Nothing sets the violation mode | The extension setting the system property `boundrail.context.violations.mode=report` before the class and clearing it after |
 | T023 | `TEST-01 neither the verifier nor peer() is auto-configured` (rewritten) | T023's auto-configuration declares only the recorder | A `TestInboundTrustVerifier` `@Bean` added to the `-test` auto-configuration |
+| T024 | `TEST-02 a violation reported in @BeforeEach or @AfterEach is recorded for that test` (new after T023; accepted) | T023's recording window already spans `beforeEach` to `afterEach`; before T024 the test failed only to compile | `BoundrailTestExtension` recording through `BeforeTestExecutionCallback`/`AfterTestExecutionCallback`, so only the test method is covered |
 
 ## TDD Exceptions
 

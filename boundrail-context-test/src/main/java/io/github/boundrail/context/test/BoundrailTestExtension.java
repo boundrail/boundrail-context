@@ -29,10 +29,15 @@ final class BoundrailTestExtension implements BeforeAllCallback, AfterAllCallbac
         ContextRuntime.captureSites(CaptureSites.ON, rate);
     }
 
+    /** Restores the saved mode and rate; nothing was saved if an earlier extension's {@code beforeAll} failed, so there is nothing to do. */
     @Override
     public void afterAll(ExtensionContext context) {
         ExtensionContext.Store store = context.getStore(NAMESPACE);
-        ContextRuntime.captureSites(store.get(MODE, CaptureSites.class), store.get(RATE, Double.class));
+        CaptureSites mode = store.get(MODE, CaptureSites.class);
+        if (mode == null) {
+            return;
+        }
+        ContextRuntime.captureSites(mode, store.get(RATE, Double.class));
     }
 
     @Override

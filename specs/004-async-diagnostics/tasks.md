@@ -19,14 +19,14 @@ with the requirement or scenario ID it covers.
   settled, so it is no longer a guard.
 - T001, the spike, is done; its outcome and the user's decisions (EXE-10, amended EXE-06 and EXE-07, D47) are in
   [plan.md](plan.md#spike-t001).
-- Eleven guard tests pass before their task: IT-1.4, one unit test each in T003 (new), T008, T011, T015, T016 and T017, and two
+- Twelve guard tests pass before their task: IT-1.4, one unit test each in T003 (new), T008, T011, T015, T016, T017 and T024 (new), and two
   unit tests each in T020 and T023.
   Their red is shown against a temporary code change that is reverted ([plan.md](plan.md#guard-tests)).
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it.
 - Every spec gap is closed: G2 – G14 (D46, DIAG-12) and G1 (EXE-10, D47) ([plan.md](plan.md#spec-gaps)).
-- All eleven guard tests, including the one added in T003, are accepted by the user ([plan.md](plan.md#guard-tests)).
+- All twelve guard tests, including those added in T003 and T024, are accepted by the user ([plan.md](plan.md#guard-tests)).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -599,14 +599,15 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     file; `compileOnly` on `spring-boot-autoconfigure` in `-test`.
   - Completes: TEST-02; RT-09 (the test module's exception, D40); DIAG-04, DIAG-05 and DIAG-10 end to end; IT-1.8.
   - Verify: Unit `BoundrailTestExtensionTest` and `TestInboundTrustVerifierTest`; IT; `./gradlew check` (BuildSmokeIT).
-- [ ] T024 `ViolationsAssert`.
+- [x] T024 `ViolationsAssert`.
   - Red, in `testmodtest/ViolationsAssertTest.java` (through `EngineTestKit` sample classes under `@BoundrailTest`):
     - `TEST-03 assertThatViolations() checks hasSize, containsKind and isEmpty on the running test's violations`, each passing and failing;
     - `TEST-04 ViolationsAssert extends AbstractAssert`;
     - `CORE-14 containsKind(null) throws NullPointerException`;
     - `TEST-02 assertThatViolations() called while no @BoundrailTest test method is running throws IllegalStateException`: from a plain
       test, and from `@AfterAll` of a `@BoundrailTest` class;
-    - `TEST-02 a violation reported in @BeforeEach or @AfterEach is recorded for that test` (TEST-02 as clarified after the T023 review);
+    - `TEST-02 a violation reported in @BeforeEach or @AfterEach is recorded for that test` (TEST-02 as clarified after the T023 review). This is a guard (accepted by
+      the user): red shown with the recording narrowed to the test method alone, then reverted ([plan.md](plan.md#guard-tests));
     - `TEST-02 when an earlier extension's beforeAll fails, @BoundrailTest's afterAll adds no exception of its own` (T023 review): a sample
       class whose first extension throws in `beforeAll` fails with only that exception, nothing suppressed.
   - Green: `testmod/ViolationsAssert.java` and `assertThatViolations()` in `ContextAssertions`; `BoundrailTestExtension.afterAll` returns
@@ -666,7 +667,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M3): CORE-14, RT-07 – RT-09, IN-09,
   EXE-01 – EXE-07, EXE-09 – EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04; the Javadoc
   statements of EXE-04, EXE-07, DIAG-07 and TEST-02 (parallel runs) checked by inspection (TDD exceptions)
-- [ ] Guard tests (IT-1.4, and the unit guards in T003, T008, T011, T015, T016, T017, T020 (two) and T023 (two)) shown red against their
+- [ ] Guard tests (IT-1.4, and the unit guards in T003, T008, T011, T015, T016, T017, T020 (two), T023 (two) and T024) shown red against their
   temporary change, and the change reverted
 - [x] T001's outcome recorded in plan.md, and G1 settled by the user (EXE-10, D47)
 - [ ] `boundrail-context-core` still has no runtime dependencies; SLF4J and Spring MVC are `compileOnly` in `-spring`
