@@ -458,8 +458,11 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Red, in `MdcScopeListenerTest`:
     - `LOG-01 a nested Context.without(tenant) removes tenant from the MDC and restores it on exit`;
     - `LOG-01 each application context's listener writes only its own policy's loggable keys`: two contexts, each with one loggable key;
-    - `LOG-01 the listener is removed when its context closes`: after `close()`, a scope writes nothing for that context's keys.
-  - Green: removal of unbound names on entry; `DisposableBean.destroy()` removes the listener.
+    - `LOG-01 the listener is removed when its context closes`: after `close()`, a scope writes nothing for that context's keys;
+    - `LOG-01 a codec that throws while entering leaves the MDC as it was` (T017 review): with two loggable keys whose second codec throws a
+      `RuntimeException`, the first key's MDC entry is put back to its previous value, and the scope's outcome is as RT-07 says.
+  - Green: removal of unbound names on entry; `DisposableBean.destroy()` removes the listener; `onEnter` restores the names it already wrote
+    before rethrowing.
   - Completes: LOG-01 (nested scopes, several contexts, removal; D44).
   - Verify: Unit `MdcScopeListenerTest`.
 
