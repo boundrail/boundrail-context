@@ -520,7 +520,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     `ContextInboundFilter`; `spring-webmvc` as `testImplementation` (catalog entry).
   - Completes: IN-09.
   - Verify: Unit `AsyncDispatchTest`.
-- [ ] T021 [US5] Handler `Callable`s run in the request's snapshot, filtered for `ATTACHED`; enable IT-1.9.
+- [x] T021 [US5] Handler `Callable`s run in the request's snapshot, filtered for `ATTACHED`; enable IT-1.9.
   - Red:
     - in `springtest/MvcCallableTest.java` (`MockMvc`):
       - `EXE-09 a Callable returned by a handler runs in the request's snapshot filtered for attached`: an `ATTACHED`-only key is present and a

@@ -26,6 +26,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
 @AutoConfiguration
@@ -113,6 +114,21 @@ public class BoundrailContextAutoConfiguration {
         @Lazy(false)
         MdcScopeListener boundrailMdcScopeListener(EffectivePolicy policy) {
             return new MdcScopeListener(policy);
+        }
+    }
+
+    /**
+     * Runs a handler's {@code Callable}, or a {@code WebAsyncTask} without an executor of its own, in the request's snapshot filtered for
+     * {@code ATTACHED}, where Spring MVC is present (EXE-09).
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(RequestMappingHandlerAdapter.class)
+    static class MvcAsyncConfiguration {
+
+        /** {@code static}, so the effective policy is resolved only when a task is first submitted. */
+        @Bean
+        static MvcAsyncExecutorPostProcessor boundrailMvcAsyncExecutorPostProcessor(ObjectProvider<EffectivePolicy> policy) {
+            return new MvcAsyncExecutorPostProcessor(policy);
         }
     }
 

@@ -184,13 +184,26 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
     @DisplayName("IT-1.9 Spring MVC async processing keeps the request's context")
-    void it19SpringMvcAsyncProcessingKeepsTheRequestsContext() {
+    void it19SpringMvcAsyncProcessingKeepsTheRequestsContext(Topology.Running topology) throws Exception {
         // IT-1.9: Given a public request authenticated as alice (tenant `acme`), when an edge handler returns a `Callable` that calls orders,
         // then orders observes `tenant=acme`. When an edge handler returns a `DeferredResult` that a thread with no context completes, then an
         // edge `HandlerInterceptor` that records the bound `tenant` in `postHandle` of the async dispatch observes `tenant=acme`.
         // *(IN-09, EXE-09)*
+        String callableMarker = UUID.randomUUID().toString();
+
+        HttpResponse<String> callable = callEdge(topology, "/mvc-async/callable", callableMarker);
+
+        assertThat(callable.statusCode()).as(callable.body()).isEqualTo(200);
+        assertThat(callable.body()).as("the Callable ran on MVC's internal default executor").startsWith("MvcAsync");
+        assertThat(observed(topology, "orders", callableMarker)).containsEntry(ObservedContext.TENANT, "acme");
+
+        String deferredMarker = UUID.randomUUID().toString();
+
+        HttpResponse<String> deferred = callEdge(topology, "/mvc-async/deferred", deferredMarker);
+
+        assertThat(deferred.statusCode()).as(deferred.body()).isEqualTo(200);
+        assertThat(observed(topology, EdgeApp.ASYNC_DISPATCH, deferredMarker)).containsEntry(ObservedContext.TENANT, "acme");
     }
 
     /** Sends a GET to the shared edge with alice's JWT and the marker. */

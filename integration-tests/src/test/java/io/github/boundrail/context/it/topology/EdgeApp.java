@@ -11,6 +11,13 @@ import io.github.boundrail.context.it.topology.Topology.Service;
 import io.github.boundrail.context.spring.BoundrailClients;
 import io.github.boundrail.context.spring.JwtClaimContributor;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +41,11 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.context.request.async.DeferredResult;
+import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * Test service {@code edge}: public entry point; an OAuth2 resource server that accepts JWTs signed with the run's
@@ -48,6 +60,9 @@ public class EdgeApp {
 
     /** Header edge copies from its {@code marker} parameter to its outbound calls, so tests find their own observations. */
     public static final String MARKER = "X-Marker";
+
+    /** The name under which edge's interceptor records what it observed in {@code postHandle} of an {@code ASYNC} dispatch (IT-1.9). */
+    public static final String ASYNC_DISPATCH = "edge-async-dispatch";
 
     private final ObservedContext observed;
     private final Topology.Running topology;
@@ -112,6 +127,32 @@ public class EdgeApp {
         return new CleanupJob(observed);
     }
 
+    /**
+     * Registers a {@code HandlerInterceptor} that, in {@code postHandle} of an {@code ASYNC} dispatch, records the request's {@code marker}
+     * parameter and the bound {@code tenant} under {@link #ASYNC_DISPATCH} (IT-1.9).
+     */
+    @Bean
+    static WebMvcConfigurer asyncDispatchRecorder(ObservedContext observed) {
+        HandlerInterceptor recorder = new HandlerInterceptor() {
+            @Override
+            public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) {
+                String marker = request.getParameter("marker");
+                if (request.getDispatcherType() == DispatcherType.ASYNC && marker != null) {
+                    Map<String, String> observation = new HashMap<>();
+                    observation.put(MARKER.toLowerCase(Locale.ROOT), marker);
+                    AppKeys.TENANT.find().ifPresent(tenant -> observation.put(ObservedContext.TENANT, tenant));
+                    observed.record(ASYNC_DISPATCH, observation);
+                }
+            }
+        };
+        return new WebMvcConfigurer() {
+            @Override
+            public void addInterceptors(InterceptorRegistry registry) {
+                registry.addInterceptor(recorder);
+            }
+        };
+    }
+
     @Bean
     static EdgeAsyncWork edgeAsyncWork(Topology.Running topology, RestClient.Builder clients) {
         return new EdgeAsyncWork(topology, clients);
@@ -167,6 +208,23 @@ public class EdgeApp {
         CompletableFuture<CompletableFuture<String>> submitted = new CompletableFuture<>();
         new Thread(() -> submitted.complete(asyncWork.logLine(marker))).start();
         return submitted.get(10, TimeUnit.SECONDS).get(10, TimeUnit.SECONDS);
+    }
+
+    /** Returns a {@code Callable} that calls orders; it completes with the name of the thread it ran on (IT-1.9). */
+    @GetMapping("/mvc-async/callable")
+    Callable<String> mvcCallableCallOrders(@RequestParam("marker") String marker) {
+        return () -> {
+            ping(internalOrders, Service.ORDERS, marker);
+            return Thread.currentThread().getName();
+        };
+    }
+
+    /** Returns a {@code DeferredResult} that a new thread with no context completes (IT-1.9). */
+    @GetMapping("/mvc-async/deferred")
+    DeferredResult<String> mvcDeferred(@RequestParam("marker") String marker) {
+        DeferredResult<String> result = new DeferredResult<>();
+        new Thread(() -> result.setResult("edge")).start();
+        return result;
     }
 
     /** Runs the same work as {@link #asyncCallOrders} on {@code rawExecutor} and waits for it; see {@link #callOrdersOn}. */
