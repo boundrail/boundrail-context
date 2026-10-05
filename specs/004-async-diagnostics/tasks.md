@@ -503,7 +503,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 8: User Story 5 - Spring MVC async requests keep the request's context (Priority: P2)
 
-- [ ] T020 [US5] `ASYNC` dispatches re-enter the request's snapshot.
+- [x] T020 [US5] `ASYNC` dispatches re-enter the request's snapshot.
   - Red, in `springtest/AsyncDispatchTest.java` (`MockMvc` with the library's filters, `asyncDispatch`; `WebApplicationContextRunner` for
     the registration):
     - `IN-09 the inbound filter is registered for REQUEST and ASYNC dispatches`;

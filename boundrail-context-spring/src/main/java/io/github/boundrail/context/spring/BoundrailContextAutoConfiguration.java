@@ -5,6 +5,7 @@ import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.HostPatternClassifier;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.servlet.DispatcherType;
 import java.time.Clock;
 import java.util.Locale;
 import java.util.Objects;
@@ -206,6 +207,7 @@ public class BoundrailContextAutoConfiguration {
                 throw new IllegalArgumentException("spring.security.filter.order must be greater than Integer.MIN_VALUE");
             }
             registration.setOrder(securityOrder - 1);
+            registration.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ASYNC);
             return registration;
         }
 

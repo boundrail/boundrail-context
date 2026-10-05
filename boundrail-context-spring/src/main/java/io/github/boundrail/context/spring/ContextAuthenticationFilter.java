@@ -23,7 +23,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Binds the values the {@link ContextContributor} beans contribute from the authentication of a request, for the rest of the chain (IN-04,
- * IN-05), and reports one {@code INVALID_VALUE} for each key a contributor reports as invalid (IN-07).
+ * IN-05), and reports one {@code INVALID_VALUE} for each key a contributor reports as invalid (IN-07). Inside its scope it replaces the
+ * snapshot stored for the request's {@code ASYNC} dispatches. It does not run on {@code ASYNC} dispatches, so contributors are invoked once
+ * per request (IN-09).
  */
 final class ContextAuthenticationFilter extends OncePerRequestFilter {
 
@@ -59,6 +61,7 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
         }
         try {
             contributions.binding.call(() -> {
+                request.setAttribute(ContextInboundFilter.SNAPSHOT_ATTRIBUTE, Context.capture());
                 chain.doFilter(request, response);
                 return null;
             });
