@@ -126,7 +126,9 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     "boundrail.context.destinations.internal-hosts=*.svc.test",
                     "spring.main.banner-mode=off",
                     // Logging is initialised once per JVM, so the first service's name would label every log line.
-                    "logging.include-application-name=false"));
+                    "logging.include-application-name=false",
+                    // Every log line shows the MDC's tenant (LOG-01, IT-1.6).
+                    "logging.pattern.console=%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%t] %logger{40} tenant=%X{tenant} : %m%n"));
             if (service != Service.EDGE) {
                 properties.add("spring.autoconfigure.exclude=" + SECURITY_AUTO_CONFIGURATIONS);
             } else {

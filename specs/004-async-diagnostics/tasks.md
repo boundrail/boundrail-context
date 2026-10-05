@@ -436,7 +436,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 **Independent Test**: RC-9 (T003) and IT-1.6.
 
-- [ ] T017 [US3] MDC bridge; enable IT-1.6.
+- [x] T017 [US3] MDC bridge; enable IT-1.6.
   - Red:
     - in `springtest/MdcScopeListenerTest.java` (`ApplicationContextRunner`, with the context closed in each test):
       - `LOG-01 a bound loggable key is in the MDC for the scope, encoded with its codec, and the previous value is restored`: `tenant`

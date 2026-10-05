@@ -11,6 +11,7 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 micrometer-core = { module = "io.micrometer:micrometer-core" }
 micrometer-context-propagation = { module = "io.micrometer:context-propagation" }
+slf4j-api = { module = "org.slf4j:slf4j-api" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
 spring-boot-restclient = { module = "org.springframework.boot:spring-boot-restclient" }
 spring-boot-security = { module = "org.springframework.boot:spring-boot-security" }

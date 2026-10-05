@@ -11,6 +11,7 @@ import io.github.boundrail.context.it.topology.Topology.Service;
 import io.github.boundrail.context.spring.BoundrailClients;
 import io.github.boundrail.context.spring.JwtClaimContributor;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -147,6 +148,17 @@ public class EdgeApp {
     @GetMapping("/async/call-orders")
     String asyncCallOrders(@RequestParam("marker") String marker) throws Exception {
         return asyncWork.callOrders(marker).get(10, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Runs {@link EdgeAsyncWork#logLine} from a new thread with no context, so the task is submitted to {@code taskExecutor} without
+     * context, and waits for it; returns the name of the thread it ran on.
+     */
+    @GetMapping("/async/log-without-context")
+    String asyncLogWithoutContext(@RequestParam("marker") String marker) throws Exception {
+        CompletableFuture<CompletableFuture<String>> submitted = new CompletableFuture<>();
+        new Thread(() -> submitted.complete(asyncWork.logLine(marker))).start();
+        return submitted.get(10, TimeUnit.SECONDS).get(10, TimeUnit.SECONDS);
     }
 
     /** Runs the same work as {@link #asyncCallOrders} on {@code rawExecutor} and waits for it; see {@link #callOrdersOn}. */

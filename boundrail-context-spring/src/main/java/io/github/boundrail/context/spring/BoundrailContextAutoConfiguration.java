@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.util.Locale;
 import java.util.Objects;
 import org.apache.commons.logging.LogFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -91,6 +92,18 @@ public class BoundrailContextAutoConfiguration {
     @ConditionalOnMissingBean(DestinationClassifier.class)
     HostPatternClassifier boundrailDestinationClassifier(BoundrailContextProperties properties) {
         return HostPatternClassifier.of(properties.destinations().internalHosts(), properties.destinations().externalHosts());
+    }
+
+    /** Mirrors loggable keys into SLF4J's MDC for each scope, where SLF4J is present (LOG-01, LOG-02). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(MDC.class)
+    static class MdcConfiguration {
+
+        @Bean
+        @Lazy(false)
+        MdcScopeListener boundrailMdcScopeListener(EffectivePolicy policy) {
+            return new MdcScopeListener(policy);
+        }
     }
 
     /** Counts violations in the application's unique or primary {@code MeterRegistry} bean, never the global registry (DIAG-03). */

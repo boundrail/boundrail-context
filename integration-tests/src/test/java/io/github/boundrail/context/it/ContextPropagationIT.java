@@ -133,11 +133,28 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
+    @ExtendWith(OutputCaptureExtension.class)
     @DisplayName("IT-1.6 MDC")
-    void it16Mdc() {
+    void it16Mdc(Topology.Running topology, CapturedOutput output) throws Exception {
         // IT-1.6: A log line written inside the IT-1.1 async work contains `tenant=acme` through `%X{tenant}`, and a later task on the same
         // pooled thread without context logs no tenant. *(LOG-01, RT-03)*
+        String marker = UUID.randomUUID().toString();
+        String laterMarker = UUID.randomUUID().toString();
+
+        HttpResponse<String> work = callEdge(topology, "/async/call-orders", marker);
+        HttpResponse<String> later = callEdge(topology, "/async/log-without-context", laterMarker);
+
+        assertThat(List.of(work.statusCode(), later.statusCode())).containsExactly(200, 200);
+        assertThat(later.body()).as("the same pooled thread").isEqualTo(work.body());
+        assertThat(logLine(output, marker)).contains("tenant=acme :");
+        assertThat(logLine(output, laterMarker)).contains("tenant= :");
+    }
+
+    /** The single log line that mentions the marker. */
+    private static String logLine(CapturedOutput output, String marker) {
+        List<String> lines = output.getOut().lines().filter(line -> line.contains("marker " + marker)).toList();
+        assertThat(lines).as("log lines with marker %s", marker).hasSize(1);
+        return lines.getFirst();
     }
 
     @Test

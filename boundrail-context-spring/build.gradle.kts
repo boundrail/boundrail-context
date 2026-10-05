@@ -14,6 +14,7 @@ dependencies {
     compileOnly(libs.spring.web)
     compileOnly(libs.spring.boot.restclient)
     compileOnly(libs.jakarta.servlet.api)
+    compileOnly(libs.slf4j.api)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.micrometer.core)
