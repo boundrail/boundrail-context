@@ -409,7 +409,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     `@ConditionalOnProperty`.
   - Completes: DIAG-06 (unmatched keys by definition, audit flag binding).
   - Verify: Unit `ExecutorAuditTest`.
-- [ ] T016 [P] [US2] Capture-site properties.
+- [x] T016 [P] [US2] Capture-site properties.
   - Red, in `springtest/CaptureSiteSettingsTest.java` (mode restored after each test):
     - `DIAG-05 capture-sites set in the environment is applied and an unset sample-rate keeps the current rate`;
     - `DIAG-05 sample-rate set alone keeps the current mode`;

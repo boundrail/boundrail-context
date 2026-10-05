@@ -78,6 +78,13 @@ public class BoundrailContextAutoConfiguration {
                 properties.audit().failOnGap(), LogFactory.getLog(ExecutorAudit.class));
     }
 
+    /** Applies the capture-site properties that are set, JVM-wide, at startup, also under lazy initialization (DIAG-05). */
+    @Bean
+    @Lazy(false)
+    CaptureSiteSettings boundrailCaptureSiteSettings(Environment environment) {
+        return new CaptureSiteSettings(environment);
+    }
+
     /** Classifies destinations by the {@code destinations.*} host patterns; an invalid pattern fails startup (OUT-03, DEST-04). */
     @Bean
     @Lazy(false)
