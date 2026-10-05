@@ -104,6 +104,37 @@ class BuildSmokeIT {
     }
 
     @Test
+    @DisplayName("TEST-04 junit-jupiter-api and assertj-core are api dependencies of boundrail-context-test")
+    void junitJupiterApiAndAssertjCoreAreApiDependencies() throws Exception {
+        String pom = System.getProperty("boundrail.it.test-module.pom");
+        assertThat(pom).as("system property boundrail.it.test-module.pom (set by the integration test task)").isNotNull();
+        String metadata = System.getProperty("boundrail.it.test-module.metadata");
+        assertThat(metadata).as("system property boundrail.it.test-module.metadata (set by the integration test task)").isNotNull();
+
+        Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(Path.of(pom).toFile());
+        List<String> pomDependencies = new ArrayList<>();
+        NodeList dependencies = document.getElementsByTagName("dependency");
+        for (int i = 0; i < dependencies.getLength(); i++) {
+            Element dependency = (Element) dependencies.item(i);
+            NodeList scope = dependency.getElementsByTagName("scope");
+            pomDependencies.add(dependency.getElementsByTagName("artifactId").item(0).getTextContent() + ":"
+                    + (scope.getLength() == 0 ? "" : scope.item(0).getTextContent()));
+        }
+        assertThat(pomDependencies).as("POM dependencies (artifactId:scope)").contains("junit-jupiter-api:compile", "assertj-core:compile");
+
+        JsonNode module = JsonMapper.builder().build().readTree(Path.of(metadata).toFile());
+        List<String> apiModules = new ArrayList<>();
+        for (JsonNode variant : module.path("variants")) {
+            if (variant.path("name").asString().equals("apiElements")) {
+                for (JsonNode dependency : variant.path("dependencies")) {
+                    apiModules.add(dependency.path("module").asString());
+                }
+            }
+        }
+        assertThat(apiModules).as("modules of the apiElements variant").contains("junit-jupiter-api", "assertj-core");
+    }
+
+    @Test
     @DisplayName("TEST-01 the boundrail-context-test JAR ships no AutoConfiguration.imports and no spring.factories")
     void testModuleJarShipsNoAutoConfiguration() throws Exception {
         Path jar = Path.of(TestInboundTrustVerifier.class.getProtectionDomain().getCodeSource().getLocation().toURI());

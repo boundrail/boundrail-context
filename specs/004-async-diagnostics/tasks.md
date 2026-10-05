@@ -557,7 +557,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Green: `MvcAsyncExecutorPostProcessor` looks the field up in its constructor.
   - Completes: EXE-10 (MVC field checked at startup).
   - Verify: Unit `ReflectedFieldsTest`.
-- [ ] T022 [P] `SnapshotAssert` and the test module's API dependencies.
+- [x] T022 [P] `SnapshotAssert` and the test module's API dependencies.
   - Red:
     - in `testmodtest/SnapshotAssertTest.java`:
       - `TEST-03 assertThat(snapshot) checks contains, doesNotContain and isEmpty`, each passing and failing (`assertThatThrownBy` with

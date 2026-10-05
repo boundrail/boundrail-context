@@ -9,6 +9,9 @@ dependencies {
     api(project(":boundrail-context-core"))
     compileOnly(platform(libs.spring.boot.bom))
     api(project(":boundrail-context-spring"))
+    // Consumers of the assertions receive JUnit Jupiter and AssertJ transitively (TEST-04).
+    api(libs.junit.jupiter.api)
+    api(libs.assertj.core)
     compileOnly(libs.spring.web)
     compileOnly(libs.jakarta.servlet.api)
 
