@@ -86,6 +86,15 @@ public class BoundrailContextAutoConfiguration {
         return new CaptureSiteSettings(environment);
     }
 
+    /**
+     * Gives {@code @Scheduled} methods a fresh system context by replacing Spring's own scheduled-annotation post-processor definition
+     * (EXE-06). {@code static}, as a bean definition registry post-processor must be.
+     */
+    @Bean
+    static ScheduledContextRegistrar boundrailScheduledContextRegistrar() {
+        return new ScheduledContextRegistrar(LogFactory.getLog(ScheduledContextRegistrar.class));
+    }
+
     /** Classifies destinations by the {@code destinations.*} host patterns; an invalid pattern fails startup (OUT-03, DEST-04). */
     @Bean
     @Lazy(false)

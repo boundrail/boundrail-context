@@ -258,8 +258,10 @@ option B for EXE-06 (G1 closed); spec.md has them as EXE-10 and amended EXE-06 a
     (startup bookkeeping in one context's bean, not context state, so RT-09 holds);
   - overrides `createRunnable(Object target, Method method, String qualifier)` to return a `ScheduledMethodRunnable` subclass with the same
     target, method and qualifier, whose `run()` is `ContextSnapshot.EMPTY.call(() -> Context.with(INITIATOR, Initiator.of("system:scheduled:"
-    + beanName + "." + method.getName())).call(...))` around `super.run()`. That is a binding, so its capture site is recorded under `on` and
-    names the library's frame (DIAG-05, D41).
+    + beanName + "." + method.getName())).call(...))` around the runnable Spring built, to which it delegates. It does not call `super.run()`:
+    Spring builds its runnable with the registrar's private `ObservationRegistry` supplier, so delegating keeps Spring's scheduled-task
+    observation, and the subclass keeps target, method and qualifier only for its description. That is a binding, so its capture site is
+    recorded under `on` and names the library's frame (DIAG-05, D41).
 
   Direct calls by application code do not go through the runnable, so they keep the caller's context. Reactive and Kotlin `suspend` methods
   are scheduled by Spring through another path, and are excluded (Javadoc of `BoundExecutors`).

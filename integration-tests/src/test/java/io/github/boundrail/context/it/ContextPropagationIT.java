@@ -3,6 +3,7 @@ package io.github.boundrail.context.it;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import io.github.boundrail.context.it.topology.CleanupJob;
 import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.ObservedContext;
 import io.github.boundrail.context.it.topology.Topology;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -158,11 +160,18 @@ class ContextPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M3")
     @DisplayName("IT-1.7 Scheduled jobs get a system context")
-    void it17ScheduledJobsGetASystemContext() {
+    void it17ScheduledJobsGetASystemContext(Topology.Running topology) throws InterruptedException {
         // IT-1.7: When a `@Scheduled` method on edge (bean `cleanupJob`, method `run`) runs, then the snapshot it records to
         // `ObservedContext` contains exactly `initiator=system:scheduled:cleanupJob.run`. *(EXE-06)*
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (topology.observed().of(CleanupJob.OBSERVED_AS).isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
+
+        assertThat(topology.observed().of(CleanupJob.OBSERVED_AS)).as("cleanupJob.run's recorded snapshots").isNotEmpty()
+                .allSatisfy(bound -> assertThat(bound).containsExactlyEntriesOf(Map.of("boundrail.initiator",
+                        "system:scheduled:cleanupJob.run")));
     }
 
     @Test

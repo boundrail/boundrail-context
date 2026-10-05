@@ -475,7 +475,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 7: User Story 4 - Scheduled jobs get a system context (Priority: P3)
 
-- [ ] T019 [US4] `@Scheduled` system context; enable IT-1.7.
+- [x] T019 [US4] `@Scheduled` system context; enable IT-1.7.
   - Red:
     - in `springtest/ScheduledContextTest.java` (`ApplicationContextRunner` with `@EnableScheduling` and a fast `fixedDelay`):
       - `EXE-06 a @Scheduled method invoked by the scheduler runs with exactly initiator=system:scheduled:<beanName>.<methodName>, and a

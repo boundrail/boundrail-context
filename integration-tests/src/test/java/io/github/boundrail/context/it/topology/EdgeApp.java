@@ -25,6 +25,7 @@ import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -41,6 +42,7 @@ import org.springframework.web.client.RestClient;
 @SpringBootConfiguration(proxyBeanMethods = false)
 @EnableAutoConfiguration
 @EnableAsync
+@EnableScheduling
 @RestController
 public class EdgeApp {
 
@@ -102,6 +104,12 @@ public class EdgeApp {
         return BoundExecutors.detached(
                 Executors.newSingleThreadExecutor(task -> new Thread(task, "boundExecutor-" + threads.incrementAndGet())),
                 TopologyPolicy.policy());
+    }
+
+    /** A {@code @Scheduled} job that records its context (IT-1.7); Boot's scheduler runs it on {@code scheduling-N} threads. */
+    @Bean
+    static CleanupJob cleanupJob(ObservedContext observed) {
+        return new CleanupJob(observed);
     }
 
     @Bean
