@@ -454,13 +454,16 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
     TrustBoundaryIT too, whose IT-2.8 inspects log lines.
   - Completes: LOG-01 (single context); LOG-02; IT-1.6 (with RT-03).
   - Verify: Unit `MdcScopeListenerTest`; IT, plus `--tests '*TrustBoundaryIT'` on both tasks.
-- [ ] T018 [US3] MDC across nested scopes and several contexts.
+- [x] T018 [US3] MDC across nested scopes and several contexts.
   - Red, in `MdcScopeListenerTest`:
     - `LOG-01 a nested Context.without(tenant) removes tenant from the MDC and restores it on exit`;
     - `LOG-01 each application context's listener writes only its own policy's loggable keys`: two contexts, each with one loggable key;
     - `LOG-01 the listener is removed when its context closes`: after `close()`, a scope writes nothing for that context's keys;
     - `LOG-01 a codec that throws while entering leaves the MDC as it was` (T017 review): with two loggable keys whose second codec throws a
       `RuntimeException`, the first key's MDC entry is put back to its previous value, and the scope's outcome is as RT-07 says.
+    - `LOG-01 a codec that throws an Error while entering leaves the MDC as it was, and the Error propagates` (T018 review): the same with an
+      `Error`; the operation does not run and the `Error` propagates unchanged (RT-07). Loggable keys are walked in name order, so both
+      codec tests are deterministic.
   - Green: removal of unbound names on entry; `DisposableBean.destroy()` removes the listener; `onEnter` restores the names it already wrote
     before rethrowing.
   - Completes: LOG-01 (nested scopes, several contexts, removal; D44).
