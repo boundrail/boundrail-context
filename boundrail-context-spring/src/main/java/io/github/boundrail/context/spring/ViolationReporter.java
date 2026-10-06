@@ -11,13 +11,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.apache.commons.logging.Log;
-import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * Reports violations: a WARN log entry, at most one per (kind, key, boundary) per log interval, and a count of every occurrence (DIAG-03). The
  * entry identifies the value only by key name, wire name and boundary, and never holds a value (DIAG-09). Every violation is then passed to
- * the context's {@link ViolationListener} beans, in bean order (DIAG-11).
+ * {@link ViolationListener} beans defined in the reporting context, not in its ancestors, in bean order (DIAG-11).
  */
 class ViolationReporter {
 
@@ -33,7 +34,7 @@ class ViolationReporter {
     private final EffectivePolicy policy;
     private final Duration logInterval;
     private final Counter counter;
-    private final ObjectProvider<ViolationListener> listeners;
+    private final Supplier<Stream<ViolationListener>> listeners;
     private final Function<String, Optional<String>> executorEvidence;
     private final Log log;
     private final Clock clock;
@@ -42,9 +43,10 @@ class ViolationReporter {
     /**
      * Creates a reporter.
      *
+     * @param listeners the listener beans defined in the reporting context, not in its ancestors, in bean order (DIAG-11)
      * @param executorEvidence the executor evidence for a thread name, from the context's executor table (DIAG-04)
      */
-    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, ObjectProvider<ViolationListener> listeners,
+    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, Supplier<Stream<ViolationListener>> listeners,
             Function<String, Optional<String>> executorEvidence, Log log, Clock clock) {
         this.policy = policy;
         this.logInterval = logInterval;
@@ -69,7 +71,7 @@ class ViolationReporter {
         if (dueForLog(new LogKey(violation.kind(), violation.key(), violation.boundary()))) {
             log.warn(message(violation));
         }
-        listeners.orderedStream().forEach(listener -> notify(listener, violation));
+        listeners.get().forEach(listener -> notify(listener, violation));
     }
 
     /** Passes the violation to one listener; an exception it throws is logged at WARN and the next listener still runs (DIAG-11). */

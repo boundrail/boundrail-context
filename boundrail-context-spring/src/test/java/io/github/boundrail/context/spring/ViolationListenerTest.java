@@ -29,6 +29,7 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
@@ -87,7 +88,7 @@ class ViolationListenerTest {
     /** A reporter wired like the auto-configured one, with the context's listener beans, a recording counter and a recording log. */
     private ViolationReporter reporter(AssertableApplicationContext context) {
         return new ViolationReporter(new EffectivePolicy(BuiltInKeys.defaultPolicy()), Duration.ofMinutes(1), counted::add,
-                context.getBeanProvider(ViolationListener.class), thread -> Optional.empty(), log,
+                context.getBeanProvider(ViolationListener.class)::orderedStream, thread -> Optional.empty(), log,
                 Clock.fixed(Instant.parse("2026-10-01T10:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -156,6 +157,43 @@ class ViolationListenerTest {
         assertThat(events).as("the auto-configured reporter calls the listener beans").singleElement().asString()
                 .startsWith("second saw MISSING_REQUIRED");
         assertThat(output.getOut()).contains("Violation listener " + FirstListener.class.getName() + " failed");
+    }
+
+    @Test
+    @DisplayName("DIAG-11 a violation reaches only the listeners defined in the reporting context, not its ancestors'")
+    void aViolationReachesOnlyTheListenersOfTheReportingContext() {
+        new ApplicationContextRunner()
+                .withBean(FirstListener.class, () -> new FirstListener(recording("parent")))
+                .run(parent -> new ApplicationContextRunner()
+                        .withParent(parent)
+                        .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
+                        .withBean(SecondListener.class, () -> new SecondListener(recording("child")))
+                        .run(child -> {
+                            assertThat(child).hasNotFailed();
+                            child.getBean(ViolationReporter.class).report(VIOLATION);
+                        }));
+
+        assertThat(events).singleElement().asString().startsWith("child saw FORBIDDEN_HEADER");
+    }
+
+    @Test
+    @DisplayName("DIAG-11 the auto-configured reporter calls the context's listeners in bean order, prototype-scoped ones included")
+    void theAutoConfiguredReporterCallsTheContextsListenersInBeanOrderPrototypeScopedOnesIncluded() {
+        // Registered in reverse order, so only bean order (@Order) can put "first" before "second". "first" is prototype-scoped: each
+        // lookup creates another instance.
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
+                .withBean(SecondListener.class, () -> new SecondListener(recording("second")))
+                .withBean(FirstListener.class, () -> new FirstListener(recording("first")),
+                        definition -> definition.setScope(BeanDefinition.SCOPE_PROTOTYPE))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    context.getBean(ViolationReporter.class).report(VIOLATION);
+                });
+
+        assertThat(events).hasSize(2);
+        assertThat(events.get(0)).startsWith("first saw FORBIDDEN_HEADER");
+        assertThat(events.get(1)).startsWith("second saw FORBIDDEN_HEADER");
     }
 
     @Test

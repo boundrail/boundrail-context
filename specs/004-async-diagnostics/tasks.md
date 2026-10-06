@@ -622,7 +622,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Phase 10: Close
 
-- [ ] T024a Violation listeners of the reporting context only (T025 review follow-up).
+- [x] T024a Violation listeners of the reporting context only (T025 review follow-up).
   - Red, in `springtest/ViolationListenerTest.java`: `DIAG-11 a violation reaches only the listeners defined in the reporting context, not
     its ancestors'`: a parent and a child context each define a recording `ViolationListener`; a violation reported in the child reaches only
     the child's listener (red: `ObjectProvider.orderedStream()` includes ancestor beans, so the parent's listener sees it too).

@@ -7,11 +7,17 @@ import io.github.boundrail.context.HostPatternClassifier;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.DispatcherType;
 import java.time.Clock;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.commons.logging.LogFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.BeanFactoryUtils;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -48,9 +54,25 @@ public class BoundrailContextAutoConfiguration {
     @Bean
     @Lazy(false)
     ViolationReporter boundrailViolationReporter(EffectivePolicy policy, BoundrailContextProperties properties,
-            ObjectProvider<ViolationReporter.Counter> counter, ObjectProvider<ViolationListener> listeners, ExecutorTable executorTable) {
+            ObjectProvider<ViolationReporter.Counter> counter, ObjectProvider<ViolationListener> listeners,
+            ConfigurableListableBeanFactory beanFactory, ExecutorTable executorTable) {
+        Set<ViolationListener> ancestors = ancestorListeners(beanFactory);
         return new ViolationReporter(policy, properties.violations().logInterval(), counter.getIfAvailable(() -> violation -> { }),
-                listeners, executorTable::evidence, LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
+                () -> listeners.orderedStream().filter(listener -> !ancestors.contains(listener)), executorTable::evidence,
+                LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
+    }
+
+    /**
+     * {@return the singleton listener beans of the ancestor contexts, by identity} The provider's ordered stream also holds them, so the
+     * reporter drops them and calls only this context's listeners, prototype-scoped ones included (DIAG-11). The ancestors are refreshed
+     * before this context, so they are collected once.
+     */
+    private static Set<ViolationListener> ancestorListeners(ConfigurableListableBeanFactory beanFactory) {
+        Set<ViolationListener> ancestors = Collections.newSetFromMap(new IdentityHashMap<>());
+        if (beanFactory.getParentBeanFactory() instanceof ListableBeanFactory parent) {
+            ancestors.addAll(BeanFactoryUtils.beansOfTypeIncludingAncestors(parent, ViolationListener.class, false, false).values());
+        }
+        return ancestors;
     }
 
     /** The context's executor beans by thread-name prefix, built once the context has refreshed, for executor evidence (DIAG-04, DIAG-12). */

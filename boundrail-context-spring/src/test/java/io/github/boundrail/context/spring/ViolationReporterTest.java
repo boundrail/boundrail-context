@@ -28,12 +28,12 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
@@ -58,7 +58,7 @@ class ViolationReporterTest {
     private final RecordingLog log = new RecordingLog();
     private final MutableClock clock = new MutableClock(Instant.parse("2026-10-01T10:00:00Z"));
     private final ViolationReporter reporter = new ViolationReporter(policy, Duration.ofMinutes(1), violation -> { },
-            new DefaultListableBeanFactory().getBeanProvider(ViolationListener.class), thread -> Optional.empty(), log, clock);
+            Stream::empty, thread -> Optional.empty(), log, clock);
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class));
