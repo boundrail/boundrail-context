@@ -73,8 +73,8 @@ Base package: `io.github.boundrail.context` (proposal P7 — still open until M7
       previous.forEach((name, old) -> { if (old == null) MDC.remove(name); else MDC.put(name, old); });
   }
   ```
-- `AUTHORITY` is never logged, put in the MDC, or included in diagnostics. `DEADLINE` only if
-  the policy marks it loggable (LOG-02).
+- `AUTHORITY` is never logged, put in the MDC, or included in diagnostics. `DEADLINE` is never
+  put in the MDC either, even if the policy marks it loggable (LOG-02).
 - Violation reports are rate-limited and contain only observed facts (§4.9).
 
 ## Tests

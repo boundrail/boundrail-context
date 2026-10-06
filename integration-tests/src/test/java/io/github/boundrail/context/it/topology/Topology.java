@@ -104,7 +104,21 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
             }
         }
 
-        private ConfigurableApplicationContext startService(Service service) {
+        /**
+         * Starts an extra edge instance with the common properties plus the given ones, for a scenario that needs other configuration or
+         * asserts edge's startup log entries. The caller closes it.
+         */
+        public ConfigurableApplicationContext startEdge(String... properties) {
+            return startService(Service.EDGE, properties);
+        }
+
+        /** The base URI of an extra edge instance started with {@link #startEdge}. */
+        public URI uri(ConfigurableApplicationContext edge) {
+            int port = edge.getEnvironment().getRequiredProperty("local.server.port", Integer.class);
+            return URI.create("http://" + Service.EDGE.host + ":" + port);
+        }
+
+        private ConfigurableApplicationContext startService(Service service, String... extraProperties) {
             List<String> properties = new ArrayList<>(List.of(
                     "spring.application.name=" + service.serviceName,
                     "server.address=127.0.0.1",
@@ -112,10 +126,16 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     "boundrail.context.destinations.internal-hosts=*.svc.test",
                     "spring.main.banner-mode=off",
                     // Logging is initialised once per JVM, so the first service's name would label every log line.
-                    "logging.include-application-name=false"));
+                    "logging.include-application-name=false",
+                    // Every log line shows the MDC's tenant (LOG-01, IT-1.6).
+                    "logging.pattern.console=%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%t] %logger{40} tenant=%X{tenant} : %m%n"));
             if (service != Service.EDGE) {
                 properties.add("spring.autoconfigure.exclude=" + SECURITY_AUTO_CONFIGURATIONS);
+            } else {
+                // Boot applies Micrometer's context-propagating decorator to edge's taskExecutor (IT-1.1).
+                properties.add("spring.task.execution.propagate-context=true");
             }
+            properties.addAll(List.of(extraProperties));
             return new SpringApplicationBuilder(service.application)
                     .properties(properties.toArray(String[]::new))
                     .initializers(context -> {

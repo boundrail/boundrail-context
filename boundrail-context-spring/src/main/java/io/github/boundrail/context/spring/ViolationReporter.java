@@ -1,17 +1,24 @@
 package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Boundary;
+import io.github.boundrail.context.Context;
+import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.Violation;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.apache.commons.logging.Log;
 
 /**
  * Reports violations: a WARN log entry, at most one per (kind, key, boundary) per log interval, and a count of every occurrence (DIAG-03). The
- * entry identifies the value only by key name, wire name and boundary, and never holds a value (DIAG-09).
+ * entry identifies the value only by key name, wire name and boundary, and never holds a value (DIAG-09). Every violation is then passed to
+ * {@link ViolationListener} beans defined in the reporting context, not in its ancestors, in bean order (DIAG-11).
  */
 class ViolationReporter {
 
@@ -27,22 +34,52 @@ class ViolationReporter {
     private final EffectivePolicy policy;
     private final Duration logInterval;
     private final Counter counter;
+    private final Supplier<Stream<ViolationListener>> listeners;
+    private final Function<String, Optional<String>> executorEvidence;
     private final Log log;
     private final Clock clock;
     private final Map<LogKey, Instant> lastLogged = new ConcurrentHashMap<>();
 
-    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, Log log, Clock clock) {
+    /**
+     * Creates a reporter.
+     *
+     * @param listeners the listener beans defined in the reporting context, not in its ancestors, in bean order (DIAG-11)
+     * @param executorEvidence the executor evidence for a thread name, from the context's executor table (DIAG-04)
+     */
+    ViolationReporter(EffectivePolicy policy, Duration logInterval, Counter counter, Supplier<Stream<ViolationListener>> listeners,
+            Function<String, Optional<String>> executorEvidence, Log log, Clock clock) {
         this.policy = policy;
         this.logInterval = logInterval;
         this.counter = counter;
+        this.listeners = listeners;
+        this.executorEvidence = executorEvidence;
         this.log = log;
         this.clock = clock;
+    }
+
+    /**
+     * Builds a violation with the observed evidence: the current thread's name, the capture site of the current snapshot, if one was
+     * recorded, and the executor bean the thread belongs to, if any (DIAG-04). Every adapter builds its violations through this method.
+     */
+    Violation violation(Violation.Kind kind, String key, Boundary boundary, Optional<Destination> destination) {
+        String thread = Thread.currentThread().getName();
+        return new Violation(kind, key, boundary, destination, thread, Context.capture().captureSite(), executorEvidence.apply(thread));
     }
 
     void report(Violation violation) {
         counter.increment(violation);
         if (dueForLog(new LogKey(violation.kind(), violation.key(), violation.boundary()))) {
             log.warn(message(violation));
+        }
+        listeners.get().forEach(listener -> notify(listener, violation));
+    }
+
+    /** Passes the violation to one listener; an exception it throws is logged at WARN and the next listener still runs (DIAG-11). */
+    private void notify(ViolationListener listener, Violation violation) {
+        try {
+            listener.onViolation(violation);
+        } catch (RuntimeException e) {
+            log.warn("Violation listener " + listener.getClass().getName() + " failed", e);
         }
     }
 
@@ -70,6 +107,9 @@ class ViolationReporter {
             message.append(", destination ").append(destination.kind());
             destination.service().ifPresent(service -> message.append(' ').append(service));
         });
-        return message.append(", thread ").append(violation.thread()).toString();
+        message.append(", thread ").append(violation.thread());
+        violation.captureSite().ifPresent(site -> message.append(", capture site ").append(site));
+        violation.executorEvidence().ifPresent(evidence -> message.append(", executor ").append(evidence));
+        return message.toString();
     }
 }

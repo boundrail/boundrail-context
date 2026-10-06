@@ -7,6 +7,7 @@ import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextCodec;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.Violation;
 import jakarta.servlet.FilterChain;
@@ -21,7 +22,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Binds the context headers of a trusted request and runs the rest of the chain inside that scope; reports those of an untrusted request
- * (IN-01, IN-02).
+ * (IN-01, IN-02). On the initial dispatch it stores the current snapshot as a request attribute, which {@link ContextAuthenticationFilter}
+ * replaces inside its own scope, and on an {@code ASYNC} dispatch it runs the rest of the chain inside the stored snapshot (IN-09).
  */
 final class ContextInboundFilter extends OncePerRequestFilter {
 
@@ -30,6 +32,9 @@ final class ContextInboundFilter extends OncePerRequestFilter {
      * ordered one below that property (IN-01). Copied, because Spring Security is optional.
      */
     static final int SECURITY_FILTER_ORDER_DEFAULT = -100;
+
+    /** The request attribute holding the snapshot of the innermost scope the library's filters enter for the request (IN-09). */
+    static final String SNAPSHOT_ATTRIBUTE = ContextInboundFilter.class.getName() + ".SNAPSHOT";
 
     private final InboundTrustVerifier verifier;
     private final ContextPolicy policy;
@@ -56,6 +61,10 @@ final class ContextInboundFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        if (isAsyncDispatch(request)) {
+            reenter(request, response, chain);
+            return;
+        }
         ContextBinding binding = null;
         if (verifier.verify(request) == InboundTrustVerifier.Trust.TRUSTED_INTERNAL) {
             for (ContextKey<?> key : policy.keys()) {
@@ -67,14 +76,43 @@ final class ContextInboundFilter extends OncePerRequestFilter {
             reportUntrusted(request);
         }
         if (binding == null) {
+            request.setAttribute(SNAPSHOT_ATTRIBUTE, Context.capture());
             chain.doFilter(request, response);
             return;
         }
         try {
             binding.call(() -> {
+                request.setAttribute(SNAPSHOT_ATTRIBUTE, Context.capture());
                 chain.doFilter(request, response);
                 return null;
             });
+        } catch (Exception e) {
+            ContextInboundFilter.<RuntimeException>sneakyThrow(e);
+        }
+    }
+
+    /** Runs on {@code ASYNC} dispatches too, to re-enter the stored snapshot (IN-09). */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
+    /**
+     * Runs the rest of the chain of an {@code ASYNC} dispatch inside the snapshot stored on the initial dispatch, without asking the verifier,
+     * decoding headers or reporting violations; with no stored snapshot, in the current scope (IN-09). Rethrows the chain's exception
+     * unchanged.
+     */
+    private static void reenter(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+        if (!(request.getAttribute(SNAPSHOT_ATTRIBUTE) instanceof ContextSnapshot stored)) {
+            chain.doFilter(request, response);
+            return;
+        }
+        try {
+            stored.wrap(() -> {
+                chain.doFilter(request, response);
+                return null;
+            }).call();
         } catch (Exception e) {
             ContextInboundFilter.<RuntimeException>sneakyThrow(e);
         }
@@ -87,8 +125,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
     private void reportUntrusted(HttpServletRequest request) {
         for (ContextKey<?> key : policy.keys()) {
             if (policy.wireName(key).filter(name -> request.getHeaders(name).hasMoreElements()).isPresent()) {
-                reporter.report(new Violation(Violation.Kind.UNTRUSTED_HEADER, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                        Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+                reporter.report(reporter.violation(Violation.Kind.UNTRUSTED_HEADER, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             }
         }
     }
@@ -115,14 +152,12 @@ final class ContextInboundFilter extends OncePerRequestFilter {
             return binding;
         }
         if (values.size() > 1) {
-            reporter.report(new Violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                    Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             return binding;
         }
         String header = values.getFirst();
         if (header.length() > maxValueLength) {
-            reporter.report(new Violation(Violation.Kind.OVERSIZED_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                    Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            reporter.report(reporter.violation(Violation.Kind.OVERSIZED_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             return binding;
         }
         T value;
@@ -137,8 +172,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
                 value = codec.get().decode(header);
             }
         } catch (IllegalArgumentException e) {
-            reporter.report(new Violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty(),
-                    Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
+            reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             return binding;
         }
         return binding == null ? Context.with(key, value) : binding.with(key, value);

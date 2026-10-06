@@ -13,9 +13,21 @@ import java.util.stream.Collectors;
 final class ImmutableContextSnapshot implements ContextSnapshot {
 
     private final Map<ContextKey<?>, Object> values;
+    private final String captureSite;
 
     ImmutableContextSnapshot(Map<ContextKey<?>, Object> values) {
+        this(values, null);
+    }
+
+    /**
+     * Creates a snapshot.
+     *
+     * @param values the bindings
+     * @param captureSite the capture site (DIAG-10), or {@code null} if none was recorded
+     */
+    ImmutableContextSnapshot(Map<ContextKey<?>, Object> values, String captureSite) {
         this.values = Map.copyOf(values);
+        this.captureSite = captureSite;
     }
 
     /** {@return the snapshot current on this thread} */
@@ -52,9 +64,14 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
     }
 
     @Override
+    public Optional<String> captureSite() {
+        return Optional.ofNullable(captureSite);
+    }
+
+    @Override
     public void run(Runnable op) {
         Objects.requireNonNull(op, "op");
-        ContextRuntime.SLOT.call(this, () -> {
+        ContextRuntime.enter(this, () -> {
             op.run();
             return null;
         });
@@ -63,7 +80,7 @@ final class ImmutableContextSnapshot implements ContextSnapshot {
     @Override
     public <R, X extends Throwable> R call(ContextCallable<R, X> op) throws X {
         Objects.requireNonNull(op, "op");
-        return ContextRuntime.SLOT.call(this, op);
+        return ContextRuntime.enter(this, op);
     }
 
     @Override

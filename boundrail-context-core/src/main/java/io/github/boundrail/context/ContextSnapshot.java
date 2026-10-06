@@ -68,4 +68,10 @@ public interface ContextSnapshot {
      * @throws NullPointerException if the operation is {@code null}
      */
     <R> Callable<R> wrap(Callable<R> op);
+
+    /**
+     * {@return the capture site recorded when this snapshot was created, in {@link StackTraceElement#toString()} form: the first stack frame
+     * outside the library's core packages, or empty if none was recorded (DIAG-10)}
+     */
+    Optional<String> captureSite();
 }

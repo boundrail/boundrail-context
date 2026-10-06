@@ -28,6 +28,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,7 +57,8 @@ class ViolationReporterTest {
 
     private final RecordingLog log = new RecordingLog();
     private final MutableClock clock = new MutableClock(Instant.parse("2026-10-01T10:00:00Z"));
-    private final ViolationReporter reporter = new ViolationReporter(policy, Duration.ofMinutes(1), violation -> { }, log, clock);
+    private final ViolationReporter reporter = new ViolationReporter(policy, Duration.ofMinutes(1), violation -> { },
+            Stream::empty, thread -> Optional.empty(), log, clock);
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class));
@@ -284,5 +286,15 @@ class ViolationReporterTest {
         public Instant instant() {
             return now;
         }
+    }
+
+    @Test
+    @DisplayName("DIAG-04 the WARN entry includes the capture site after the thread")
+    void theWarnEntryIncludesTheCaptureSiteAfterTheThread() {
+        reporter.report(new Violation(MISSING_REQUIRED, "tenant", INTERNAL_CALL, Optional.empty(), "worker-1",
+                Optional.of("com.example.Orders.place(Orders.java:42)"), Optional.empty()));
+
+        assertThat(warnings()).singleElement().satisfies(entry -> assertThat(entry.message())
+                .endsWith(", thread worker-1, capture site com.example.Orders.place(Orders.java:42)"));
     }
 }

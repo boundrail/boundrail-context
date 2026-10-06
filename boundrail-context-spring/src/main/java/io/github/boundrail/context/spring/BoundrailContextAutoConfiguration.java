@@ -5,11 +5,19 @@ import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.HostPatternClassifier;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.servlet.DispatcherType;
 import java.time.Clock;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.commons.logging.LogFactory;
+import org.slf4j.MDC;
+import org.springframework.beans.factory.BeanFactoryUtils;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -24,6 +32,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
 @AutoConfiguration
@@ -45,9 +54,69 @@ public class BoundrailContextAutoConfiguration {
     @Bean
     @Lazy(false)
     ViolationReporter boundrailViolationReporter(EffectivePolicy policy, BoundrailContextProperties properties,
-            ObjectProvider<ViolationReporter.Counter> counter) {
+            ObjectProvider<ViolationReporter.Counter> counter, ObjectProvider<ViolationListener> listeners,
+            ConfigurableListableBeanFactory beanFactory, ExecutorTable executorTable) {
+        Set<ViolationListener> ancestors = ancestorListeners(beanFactory);
         return new ViolationReporter(policy, properties.violations().logInterval(), counter.getIfAvailable(() -> violation -> { }),
+                () -> listeners.orderedStream().filter(listener -> !ancestors.contains(listener)), executorTable::evidence,
                 LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
+    }
+
+    /**
+     * {@return the singleton listener beans of the ancestor contexts, by identity} The provider's ordered stream also holds them, so the
+     * reporter drops them and calls only this context's listeners, prototype-scoped ones included (DIAG-11). The ancestors are refreshed
+     * before this context, so they are collected once.
+     */
+    private static Set<ViolationListener> ancestorListeners(ConfigurableListableBeanFactory beanFactory) {
+        Set<ViolationListener> ancestors = Collections.newSetFromMap(new IdentityHashMap<>());
+        if (beanFactory.getParentBeanFactory() instanceof ListableBeanFactory parent) {
+            ancestors.addAll(BeanFactoryUtils.beansOfTypeIncludingAncestors(parent, ViolationListener.class, false, false).values());
+        }
+        return ancestors;
+    }
+
+    /** The context's executor beans by thread-name prefix, built once the context has refreshed, for executor evidence (DIAG-04, DIAG-12). */
+    @Bean
+    @Lazy(false)
+    ExecutorTable boundrailExecutorTable() {
+        return new ExecutorTable();
+    }
+
+    /**
+     * Decorates Spring's task executor and scheduler beans (EXE-03). {@code static}, so this configuration class is not created early, and
+     * the effective policy is resolved only when a task is first decorated.
+     */
+    @Bean
+    static ExecutorDecoratingPostProcessor boundrailExecutorDecoratingPostProcessor(ObjectProvider<EffectivePolicy> policy,
+            Environment environment) {
+        return new ExecutorDecoratingPostProcessor(policy, environment);
+    }
+
+    /**
+     * Audits the executor beans when the application is ready, unless {@code audit.enabled=false} (DIAG-06). The flags are bound as Boot
+     * booleans, so an invalid value fails startup.
+     */
+    @Bean
+    @Lazy(false)
+    ExecutorAudit boundrailExecutorAudit(ExecutorTable executorTable, BoundrailContextProperties properties) {
+        return new ExecutorAudit(executorTable, properties.executors().modes().keySet(), properties.audit().enabled(),
+                properties.audit().failOnGap(), LogFactory.getLog(ExecutorAudit.class));
+    }
+
+    /** Applies the capture-site properties that are set, JVM-wide, at startup, also under lazy initialization (DIAG-05). */
+    @Bean
+    @Lazy(false)
+    CaptureSiteSettings boundrailCaptureSiteSettings(Environment environment) {
+        return new CaptureSiteSettings(environment);
+    }
+
+    /**
+     * Gives {@code @Scheduled} methods a fresh system context by replacing Spring's own scheduled-annotation post-processor definition
+     * (EXE-06). {@code static}, as a bean definition registry post-processor must be.
+     */
+    @Bean
+    static ScheduledContextRegistrar boundrailScheduledContextRegistrar() {
+        return new ScheduledContextRegistrar(LogFactory.getLog(ScheduledContextRegistrar.class));
     }
 
     /** Classifies destinations by the {@code destinations.*} host patterns; an invalid pattern fails startup (OUT-03, DEST-04). */
@@ -56,6 +125,33 @@ public class BoundrailContextAutoConfiguration {
     @ConditionalOnMissingBean(DestinationClassifier.class)
     HostPatternClassifier boundrailDestinationClassifier(BoundrailContextProperties properties) {
         return HostPatternClassifier.of(properties.destinations().internalHosts(), properties.destinations().externalHosts());
+    }
+
+    /** Mirrors loggable keys into SLF4J's MDC for each scope, where SLF4J is present (LOG-01, LOG-02). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(MDC.class)
+    static class MdcConfiguration {
+
+        @Bean
+        @Lazy(false)
+        MdcScopeListener boundrailMdcScopeListener(EffectivePolicy policy) {
+            return new MdcScopeListener(policy);
+        }
+    }
+
+    /**
+     * Runs a handler's {@code Callable}, or a {@code WebAsyncTask} without an executor of its own, in the request's snapshot filtered for
+     * {@code ATTACHED}, where Spring MVC is present (EXE-09).
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(RequestMappingHandlerAdapter.class)
+    static class MvcAsyncConfiguration {
+
+        /** {@code static}, so the effective policy is resolved only when a task is first submitted. */
+        @Bean
+        static MvcAsyncExecutorPostProcessor boundrailMvcAsyncExecutorPostProcessor(ObjectProvider<EffectivePolicy> policy) {
+            return new MvcAsyncExecutorPostProcessor(policy);
+        }
     }
 
     /** Counts violations in the application's unique or primary {@code MeterRegistry} bean, never the global registry (DIAG-03). */
@@ -149,6 +245,7 @@ public class BoundrailContextAutoConfiguration {
                 throw new IllegalArgumentException("spring.security.filter.order must be greater than Integer.MIN_VALUE");
             }
             registration.setOrder(securityOrder - 1);
+            registration.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ASYNC);
             return registration;
         }
 

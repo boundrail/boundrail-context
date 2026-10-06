@@ -13,17 +13,19 @@ import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.restclient.RestClientCustomizer;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.web.client.RestClient;
 
 class TestInboundTrustVerifierTest {
@@ -89,15 +91,14 @@ class TestInboundTrustVerifierTest {
     }
 
     @Test
-    @DisplayName("TEST-01 the verifier is not auto-configured")
-    void theVerifierIsNotAutoConfigured() throws IOException {
-        List<String> imports = resources("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports");
-        List<String> factories = resources("META-INF/spring.factories");
-
-        assertThat(imports).as("the -spring imports file is on the classpath, so the scan is not empty")
-                .anyMatch(content -> content.contains("io.github.boundrail.context.spring.BoundrailContextAutoConfiguration"));
-        assertThat(imports).noneMatch(content -> content.contains(TestInboundTrustVerifier.class.getPackageName() + "."));
-        assertThat(factories).noneMatch(content -> content.contains(TestInboundTrustVerifier.class.getPackageName() + "."));
+    @DisplayName("TEST-01 neither the verifier nor peer() is auto-configured")
+    void neitherTheVerifierNorPeerIsAutoConfigured() {
+        new ApplicationContextRunner().withConfiguration(AutoConfigurations.of(BoundrailTestAutoConfiguration.class)).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(InboundTrustVerifier.class);
+            assertThat(context).doesNotHaveBean(RestClientCustomizer.class);
+            assertThat(context).doesNotHaveBean(Consumer.class);
+        });
     }
 
     @Test
@@ -145,15 +146,5 @@ class TestInboundTrustVerifierTest {
             }
         });
         return values;
-    }
-
-    private static List<String> resources(String name) throws IOException {
-        List<String> contents = new ArrayList<>();
-        for (URL url : Collections.list(TestInboundTrustVerifierTest.class.getClassLoader().getResources(name))) {
-            try (InputStream in = url.openStream()) {
-                contents.add(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            }
-        }
-        return contents;
     }
 }
