@@ -29,7 +29,6 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
      * @param mode whether a {@code MISSING_REQUIRED} violation fails the operation or is only reported
      * @param logInterval the rate limit for violation log entries: one per kind, key and boundary per interval; zero logs every
      *     occurrence
-     * @throws IllegalArgumentException if {@code logInterval} is negative
      */
     public record Violations(@DefaultValue("fail") Mode mode, @DefaultValue("1m") Duration logInterval) {
 
@@ -41,6 +40,11 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
             REPORT
         }
 
+        /**
+         * Validates the values.
+         *
+         * @throws IllegalArgumentException if {@code logInterval} is negative
+         */
         public Violations {
             if (logInterval.isNegative()) {
                 throw new IllegalArgumentException("boundrail.context.violations.log-interval must not be negative: " + logInterval);
@@ -82,11 +86,15 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
      *     bean is decorated so that its tasks run in the submitter's context
      * @param modes the mode of each decorated executor, by bean name matched ignoring case: {@code attached} or {@code detached}, matched
      *     with relaxed enum binding; empty or blank means {@code detached}, and so does a bean name with no entry
-     * @throws org.springframework.core.convert.ConversionFailedException if a mode is neither {@code attached} nor {@code detached}
-     * @throws IllegalArgumentException if two keys are equal ignoring case and give different modes
      */
     public record Executors(@DefaultValue("true") boolean autoDecorate, @DefaultValue Map<String, String> modes) {
 
+        /**
+         * Converts and checks the modes.
+         *
+         * @throws org.springframework.core.convert.ConversionFailedException if a mode is neither {@code attached} nor {@code detached}
+         * @throws IllegalArgumentException if two keys are equal ignoring case and give different modes
+         */
         public Executors {
             modes = Map.copyOf(modes);
             Map<String, Boundary> converted = new HashMap<>();
@@ -132,10 +140,14 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
      * Wire values (WIRE-04).
      *
      * @param maxValueLength the maximum length of an encoded wire value, in UTF-16 code units ({@code String.length()})
-     * @throws IllegalArgumentException if {@code maxValueLength} is less than 1
      */
     public record Wire(@DefaultValue("256") int maxValueLength) {
 
+        /**
+         * Validates the value.
+         *
+         * @throws IllegalArgumentException if {@code maxValueLength} is less than 1
+         */
         public Wire {
             if (maxValueLength < 1) {
                 throw new IllegalArgumentException("boundrail.context.wire.max-value-length must be at least 1: " + maxValueLength);
