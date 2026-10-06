@@ -215,6 +215,11 @@ class ContextPropagationIT {
         HttpResponse<String> deferred = callEdge(topology, "/mvc-async/deferred", deferredMarker);
 
         assertThat(deferred.statusCode()).as(deferred.body()).isEqualTo(200);
+        // MVC writes the response before postHandle runs, so the client can see it before the interceptor has recorded.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (marked(topology, EdgeApp.ASYNC_DISPATCH, deferredMarker).isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
         assertThat(observed(topology, EdgeApp.ASYNC_DISPATCH, deferredMarker)).containsEntry(ObservedContext.TENANT, "acme");
     }
 
