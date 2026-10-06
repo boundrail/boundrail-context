@@ -630,7 +630,7 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
   - Completes: DIAG-11 (own context only); with it, `@BoundrailTest` records each violation once in a context hierarchy that loads the test
     module in parent and child.
   - Verify: Unit `ViolationListenerTest`.
-- [ ] T025 Verify each requirement one by one against the code and its tests, using the coverage table in
+- [x] T025 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-14, RT-07 – RT-09, IN-09, EXE-01 – EXE-07, EXE-09, EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01, LOG-02 and
     TEST-02 – TEST-04.
@@ -671,13 +671,13 @@ is added in the green step of the first task whose test needs it ([plan.md](plan
 
 ## Exit Checklist
 
-- [ ] RC-9 enabled and green on all three JDK tasks
-- [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-1.1 – IT-1.9
-- [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M3): CORE-14, RT-07 – RT-09, IN-09,
+- [x] RC-9 enabled and green on all three JDK tasks
+- [x] Scenarios enabled and green on JDK 21 and JDK 25: IT-1.1 – IT-1.9
+- [x] Requirements implemented with tests named after their IDs (roadmap traceability row M3): CORE-14, RT-07 – RT-09, IN-09,
   EXE-01 – EXE-07, EXE-09 – EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04; the Javadoc
   statements of EXE-04, EXE-07, DIAG-07 and TEST-02 (parallel runs) checked by inspection (TDD exceptions)
-- [ ] Guard tests (IT-1.4, and the unit guards in T003, T008, T011, T015, T016, T017, T020 (two), T023 (two) and T024) shown red against their
+- [x] Guard tests (IT-1.4, and the unit guards in T003, T008, T011, T015, T016, T017, T020 (two), T023 (two) and T024) shown red against their
   temporary change, and the change reverted
 - [x] T001's outcome recorded in plan.md, and G1 settled by the user (EXE-10, D47)
-- [ ] `boundrail-context-core` still has no runtime dependencies; SLF4J and Spring MVC are `compileOnly` in `-spring`
-- [ ] `./gradlew check` green
+- [x] `boundrail-context-core` still has no runtime dependencies; SLF4J and Spring MVC are `compileOnly` in `-spring`
+- [x] `./gradlew check` green
