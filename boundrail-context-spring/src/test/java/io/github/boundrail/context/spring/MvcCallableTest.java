@@ -76,11 +76,22 @@ class MvcCallableTest {
             return task;
         }
 
-        /** Blocks until released, so only the timeout produces a result. */
+        /**
+         * Blocks until released, so only the timeout produces a result. Spring interrupts the task when the timeout fires, before it runs
+         * the timeout callback, so the task keeps waiting through interrupts: finishing on one would race the callback for the result.
+         */
         @GetMapping("/web-async-task/timeout")
         WebAsyncTask<String> webAsyncTaskTimingOut() {
             WebAsyncTask<String> task = new WebAsyncTask<>(60_000L, () -> {
-                release.await(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TIMEOUT_MILLIS);
+                while (release.getCount() > 0 && System.nanoTime() < deadline) {
+                    try {
+                        release.await(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
+                    }
+                    catch (InterruptedException interrupted) {
+                        // Keep waiting: see above.
+                    }
+                }
                 return "released";
             });
             task.onTimeout(() -> "timed out");
