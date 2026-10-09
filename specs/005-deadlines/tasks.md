@@ -13,13 +13,13 @@ merged (0a1930d), `main` at 1d31eda
 minimum code that makes it pass, committed and reviewed together. Every task leaves `./gradlew check` green. Every test's display name starts
 with the requirement or scenario ID it covers.
 
-- Approved by the user on 2026-10-09: these tasks, the plan, the TDD exceptions for the Javadoc statements of
-  DL-07 and OUT-05 (T011) and of EXE-08 (T013), and the guard test in T012 ([plan.md](plan.md#tdd-exceptions),
-  [plan.md](plan.md#guard-tests)). Not yet approved: the G2 Javadoc sentence in T014 and the second guard test in T010 (option A only).
-- T001, the spike, runs first. G1 (DL-07's mechanism, after T001) is the only open gap and gates T010. G2 – G6 are closed with the
+- Approved by the user on 2026-10-09: these tasks, the plan, the TDD exceptions for the Javadoc statements of DL-07 and OUT-05 (T011),
+  of EXE-08 (T013) and of G2's `Callable` note (T014), and the guard tests in T010 and T012 ([plan.md](plan.md#tdd-exceptions),
+  [plan.md](plan.md#guard-tests)).
+- T001, the spike, is done; its outcome is in [plan.md](plan.md#spike-t001). Every spec gap is closed: G1 as option A, G2 – G6 with the
   recommended answers, written into spec.md and design.md by the spec-creator ([plan.md](plan.md#spec-gaps)).
-- One approved guard test passes before its task: in T012. T010 adds a second one if G1 settles on option A. Each red is shown against a
-  temporary code change that is reverted ([plan.md](plan.md#guard-tests)).
+- Two guard tests pass before their task: one each in T010 and T012. Each red is shown against a temporary code change that is reverted
+  ([plan.md](plan.md#guard-tests)).
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it. A negative assertion in the same test as a positive assertion that is red before the task is not a guard.
@@ -63,12 +63,14 @@ marker and assert deltas on DeadlinePropagationIT's own edge, never totals, beca
 
 ## Phase 0: Spike
 
-- [ ] T001 Spike: per-request timeout on the JDK `HttpClient` factory, factory detection, exceptions through the clients, the `Callable` hook,
+- [x] T001 Spike: per-request timeout on the JDK `HttpClient` factory, factory detection, exceptions through the clients, the `Callable` hook,
   `sendError` at edge, blank durations.
-  - Throwaway code only, on JDK 21 and JDK 25; nothing committed. The six questions and what is already known from the sources are in
-    [plan.md](plan.md#spike-t001).
-  - Output: the outcome recorded in plan.md's Spike section; G1 put to the user with the findings, and the G2 registration confirmed. If the
-    outcome needs a spec change (EXE-10, DL-07 or EXE-08 wording), the user decides before T010 or T014 starts.
+  - Done; no code kept, nothing committed. Outcome in [plan.md](plan.md#spike-t001): DL-07 uses option A (an interceptor timer that
+    interrupts the calling thread, with a `ReentrantLock` handshake; the JDK client cancels cleanly); Boot's factory is detected with
+    `instanceof JdkClientHttpRequestFactoryBuilder` (a wrapped builder can give a false WARN, documented); `DeadlineExceededException`
+    reaches `RestClient` and `RestTemplate` callers unwrapped; a throwing `preProcess` refuses the `Callable` on Tomcat, with the library's
+    configurer ordered last; `sendError(504)` survives edge's resource-server chain; blank durations are bound as `String`s. The user
+    accepted the recommendations (G1 closed).
 
 ---
 
@@ -97,7 +99,8 @@ if one is needed, is added in the green step of the first task whose test needs 
   - Red, in `springtest/DeadlinePropertiesTest.java` (`ApplicationContextRunner`, reading `BoundrailContextProperties.deadline()`):
     - `DL-03 deadline properties default to no default-inbound, a max-inbound of 30s, expired-status 504 and map-exception true`;
     - `DL-03 default-inbound and max-inbound are bound as Durations with Spring Boot's binding`: `250ms`, `PT2S`, `5` (milliseconds);
-    - `DL-03 a blank default-inbound counts as not set`: `` and `   ` through a `MapPropertySource`;
+    - `DL-03 a blank default-inbound counts as not set, and a blank max-inbound is the default 30s`: `` and `   ` for each, through a
+      `MapPropertySource` (Boot itself fails on the whitespace-only duration, T001 item 6);
     - `DL-03 default-inbound may be greater than max-inbound`: `60s` with `30s` starts and binds both;
     - `DL-03 a default-inbound or max-inbound that is zero, negative or not a duration fails startup, also with lazy initialization`
       (parametrized): `0`, `-1s`, `abc` for each property, with and without lazy initialization;
@@ -105,8 +108,8 @@ if one is needed, is added in the green step of the first task whose test needs 
       and `599` start; `399`, `600` and `abc` fail;
     - `DL-08 map-exception is bound as a Boot boolean, and a value Boot cannot convert fails startup, also with lazy initialization`:
       `yes`, `ON`, `1` are `true`; `no`, `off`, `0` are `false`; `maybe` fails.
-  - Green: the `Deadline` record in `spring/BoundrailContextProperties.java` with its compact-constructor checks; a blank `default-inbound`
-    handled as T001 item 6 found ([plan.md](plan.md#spring-wiring)).
+  - Green: the `Deadline` record in `spring/BoundrailContextProperties.java`, with `default-inbound` and `max-inbound` bound as `String`s and
+    converted with `ApplicationConversionService` (blank: unset, or `30s`), and its compact-constructor checks ([plan.md](plan.md#spring-wiring)).
   - Completes: DL-03 (property binding and validation); DL-04 (`expired-status`); DL-08 (`map-exception`); the Configuration section's startup
     failures.
   - Verify: Unit `DeadlinePropertiesTest` in `:boundrail-context-spring`.
@@ -252,14 +255,14 @@ if one is needed, is added in the green step of the first task whose test needs 
     topology test code: the edge endpoint.
   - Completes: DL-08 (handler exceptions); IT-3.3.
   - Verify: Unit `DeadlineExceptionMappingTest`; IT.
-- [ ] T010 [US2] Cap the response timeout on the JDK `HttpClient` factory until the response headers arrive; enable IT-3.2. Gated by G1,
-  settled after T001.
+- [ ] T010 [US2] Cap the response timeout on the JDK `HttpClient` factory until the response headers arrive (option A); enable IT-3.2.
   - Red:
     - in `springtest/DeadlineTimeoutTest.java` (auto-configured builder with `spring.http.clients.imperative.factory=jdk`; `RecordingServer`
       with a delayed response, and one that sends its headers at once and its body later, added to `support/RecordingServer.java`):
       - `DL-07 a call whose remaining time is shorter than the configured timeout fails with DeadlineExceededException at TIMEOUT within the
-        remaining time plus 200ms, with the client's timeout exception as the cause`: `read-timeout=10s`, a 300ms deadline, a 3s delay;
-        internal and external destinations;
+        remaining time plus 200ms, with the client's interrupt exception as the cause`: `read-timeout=10s`, a 300ms deadline, a 3s delay;
+        internal and external destinations; the cause is the JDK client's `IOException` for the interrupt, not `HttpTimeoutException`; the
+        calling thread is not left interrupted;
       - `DL-07 with no configured timeout the remaining time is the timeout`: no `read-timeout`, the same outcome;
       - `DL-07 a client's own shorter timeout propagates unchanged`: `read-timeout=200ms`, a 5s deadline, a 3s delay: the client's own
         exception (not `DeadlineExceededException`), as without a deadline (sits with the red `TIMEOUT` case in one parametrized test, so
@@ -268,29 +271,39 @@ if one is needed, is added in the green step of the first task whose test needs 
         sent at once and the body after 3s: reading the body fails with the client's own exception, not `DeadlineExceededException` (a third
         case of the same parametrized test, so not a guard);
       - `DL-07 a call that completes within the remaining time is not affected`: a 20ms delay with a 300ms deadline returns 200, and the
-        calling thread is not interrupted afterwards (also checked 500ms later). Green before T010 (nothing interrupts yet); if G1 settles on
-        option A it is a guard, shown red with the timer temporarily left armed after `execute` returns, then reverted
-        ([plan.md](plan.md#guard-tests)); not yet approved;
+        calling thread is not interrupted afterwards (also checked 500ms later). This is a guard (approved): green before T010, since nothing
+        interrupts yet; show it red with the timer temporarily left armed after `execute` returns, then revert ([plan.md](plan.md#guard-tests));
+    - in `springtest/DeadlineTimerTest.java`, through the package-private handshake with a stub execution:
+      - `DL-07 a response that arrives as the time runs out is kept and no interrupt leaks`: the stub returns a response exactly when the
+        timer fires (it waits until the timer has taken the lock); the interceptor returns that response, and the thread's interrupt status
+        is clear afterwards; and a stub that returns just before the timer is due leaves no interrupt 500ms later;
+      - `DL-07 an IOException or a RuntimeException after the timer fired becomes TIMEOUT, with it as the cause`: a stub that, on interrupt,
+        throws `IOException("Request was interrupted")`, and one that throws `CancellationException` (as Apache HttpComponents can); each
+        gives `DeadlineExceededException(TIMEOUT)` with that cause; the same exceptions thrown before the timer fires propagate unchanged;
+      - `DL-07 the scheduler is a bean of the context and stops when it closes` (RT-09): after `close()` the timer's executor is shut down;
     - enable IT-3.2: a trusted caller sends `Boundrail-Deadline-Ms: 500` to billing's `/call-partner/slow` with a marker; status 504; billing
       recorded the stage `TIMEOUT` and an elapsed time no more than its recorded remaining time plus 200ms; partner's observation with the
       marker has no `boundrail-deadline-ms` header.
-  - Green: the mechanism G1 settles, in `spring/ContextClientInterceptor.java` and, if needed, one package-private class and its bean
-    ([plan.md](plan.md#spring-wiring)); topology test code: partner `/slow`, billing `/call-partner/slow` with an `external()` client, and
-    billing's `spring.http.clients.*` properties in `Topology`.
+  - Green: `spring/DeadlineTimer.java` (per-context scheduler bean, `ReentrantLock` handshake) and its use in
+    `spring/ContextClientInterceptor.java`, catching `IOException` and `RuntimeException` ([plan.md](plan.md#spring-wiring)); topology test
+    code: partner `/slow`, billing `/call-partner/slow` with an `external()` client, and billing's `spring.http.clients.*` properties in `Topology`.
   - Completes: DL-07 (capping, `TIMEOUT`); IT-3.2 (with DL-05, DL-08 and OUT-04); SC-002.
   - Verify: Unit `DeadlineTimeoutTest`; IT+.
 - [ ] T011 [US2] Startup WARN for other request factories; the `BoundrailClients` Javadoc.
   - Red, in `springtest/RequestFactoryCheckTest.java` (`ApplicationContextRunner` with Boot's HTTP client and `RestClient` auto-configurations;
     `OutputCaptureExtension`):
     - `DL-07 one WARN is logged at startup when Boot's auto-configured request factory is not the JDK HttpClient one, and DL-05 and DL-06
-      still apply`: with `spring.http.clients.imperative.factory=simple`, exactly one WARN stating that timeout capping is unavailable;
+      still apply`: with `spring.http.clients.imperative.factory=simple`, exactly one WARN stating that timeout capping is not guaranteed
+      and naming `spring.http.clients.imperative.factory`;
       through that client an internal call still carries `Boundrail-Deadline-Ms` and an expired one still throws `BEFORE_SEND`;
     - `DL-07 no WARN is logged with the JDK HttpClient factory, or without Boot's HTTP client auto-configuration`: `factory=jdk`; and a
       context without `ClientHttpRequestFactoryBuilder` (sits with the red WARN assertion above, so not a guard: one parametrized test).
-  - Green: `spring/RequestFactoryCheck.java`, a `@Lazy(false)` bean in `ClientConfiguration` (T001 item 2); `compileOnly` on
-    `spring-boot-http-client` with a catalog entry if the compile classpath lacks it; the Javadoc of `spring/BoundrailClients.java` for DL-07
-    (capping needs the JDK `HttpClient` request factory; clients given their own factory in code are not checked) and OUT-05 (redirects):
-    TDD exception, reviewed ([plan.md](plan.md#tdd-exceptions)).
+  - Green: `spring/RequestFactoryCheck.java`, a `@Lazy(false)` bean in `ClientConfiguration` (`instanceof
+    JdkClientHttpRequestFactoryBuilder`, T001 item 2); `compileOnly` on `spring-boot-http-client` with a catalog entry if the compile
+    classpath lacks it; the Javadoc of `spring/BoundrailClients.java` for DL-07 (capping needs the JDK `HttpClient` request factory and is
+    not guaranteed with others; clients given their own factory in code are not checked; the WARN can be wrong when an application
+    customizer wraps Boot's builder) and OUT-05 (redirects): TDD exception, reviewed ([plan.md](plan.md#tdd-exceptions)). The false-WARN
+    case is documented only, not tested.
   - Completes: DL-07 (WARN, Javadoc); OUT-05.
   - Verify: Unit `RequestFactoryCheckTest`.
 
@@ -345,15 +358,16 @@ if one is needed, is added in the green step of the first task whose test needs 
       blocked; the `Callable`'s flag stays unset, the concurrent result is `DeadlineExceededException(EXECUTOR)`, and the async dispatch
       answers 504; a `Callable` with time left runs and answers 200;
     - `EXE-08 the same holds for a WebAsyncTask without an executor of its own`;
-    - `EXE-08 the check is added to the application's own Callable interceptors, not instead of them`: an application `WebMvcConfigurer`
-      registers a recording `CallableProcessingInterceptor`; for an expired `Callable` both the application's interceptor and the library's
-      check run (sits with the red refusal assertion, so not a guard);
+    - `EXE-08 the check is registered last, after the application's own Callable interceptors, which still get preProcess and
+      postProcess`: an application `WebMvcConfigurer` registers a recording `CallableProcessingInterceptor`; for an expired `Callable` it
+      records `preProcess` then `postProcess`, and the library's check refuses the `Callable`; the library's configurer has order
+      `Ordered.LOWEST_PRECEDENCE` (sits with the red refusal assertion, so not a guard);
     - `EXE-08 the check binds and restores nothing`: a counting `ScopeListener` sees the same number of scope entries with and without the
       library's interceptor registered for a `Callable` with time left (sits with the red assertion above in one test).
-  - Green: `spring/DeadlineCallableInterceptor.java`, its `preProcess` check, and a `WebMvcConfigurer` bean in `MvcAsyncConfiguration`
-    calling `registerCallableInterceptors` ([plan.md](plan.md#spring-wiring)); the Javadoc of `core/BoundExecutors.java` gains the sentence
-    that the `Callable` check needs a `RequestMappingHandlerAdapter` built by `WebMvcConfigurationSupport` (Javadoc only: pending the
-    user's confirmation as part of the T013 TDD exception row, [plan.md](plan.md#tdd-exceptions)).
+  - Green: `spring/DeadlineCallableInterceptor.java`, its `preProcess` check, and a `WebMvcConfigurer` bean ordered last in
+    `MvcAsyncConfiguration` calling `registerCallableInterceptors` ([plan.md](plan.md#spring-wiring)); the Javadoc of
+    `core/BoundExecutors.java` gains the sentence that the `Callable` check needs a `RequestMappingHandlerAdapter` built by
+    `WebMvcConfigurationSupport`: TDD exception, reviewed ([plan.md](plan.md#tdd-exceptions)).
   - Completes: EXE-08 (MVC `Callable`); DL-08 (a `Callable`'s result).
   - Verify: Unit `MvcCallableTest`.
 
@@ -397,20 +411,20 @@ if one is needed, is added in the green step of the first task whose test needs 
   - `boundrail-context-core` still has no runtime dependencies
     (`./gradlew :boundrail-context-core:dependencies --configuration runtimeClasspath`); Micrometer, Spring MVC and Boot's HTTP client stay
     `compileOnly` in `-spring` (`./gradlew :boundrail-context-spring:dependencies --configuration runtimeClasspath`).
-  - By inspection: nothing new is static in core or `-spring` (RT-09); reflection is still limited to EXE-10's four fields (unless G1 changed
-    EXE-10); the `Callable` check binds and restores nothing and is the only
+  - By inspection: nothing new is static in core or `-spring` (RT-09); reflection is still limited to EXE-10's four fields; the `DeadlineTimer`
+    scheduler is a bean of one context; the `Callable` check binds and restores nothing and is the only
     `CallableProcessingInterceptor` (G2); `DEADLINE` is still never written to the MDC (LOG-02).
 
   Run `./gradlew check` fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run. With the CI run green, this closes the feature.
 
 ## Dependencies & Execution Order
 
-- T001 comes first. G1 must be settled before T010.
+- T001 is done; nothing waits on it any more.
 - Foundational: T002 is independent. T003 is independent of T002.
 - US1: T004 needs T003. T005 needs T004. T006 needs T004. T007 needs T004 (the extra edge and the recording).
 - US2: T008 needs T002 (it constructs `BEFORE_SEND` from `-spring`). T009 needs T002, T003 and T008 (IT-3.3 needs `BEFORE_SEND`). T010 needs
-  T001, G1, T007 and T009 (IT-3.2's 504). T011 needs T001, T007 and T008.
-- US3: T012 needs T004 (edge's deadline). T013 needs T012 (same files). T014 needs T001 (item 4) and T009.
+  T007 and T009 (IT-3.2's 504). T011 needs T007 and T008.
+- US3: T012 needs T004 (edge's deadline). T013 needs T012 (same files). T014 needs T009.
 - T015 needs T006, T008, T009, T010 and T014. T016 comes last.
 - Tasks touching the same file run in sequence (`BoundrailContextAutoConfiguration`, `ContextInboundFilter`, `ContextClientInterceptor`,
   `EdgeApp`, `Topology` and `DeadlinePropagationIT` are touched by several).
@@ -418,10 +432,10 @@ if one is needed, is added in the green step of the first task whose test needs 
 
 ## Exit Checklist
 
-- [ ] T001's outcome recorded in plan.md, and G1 settled by the user (G2 – G6 settled)
+- [x] T001's outcome recorded in plan.md, and G1 – G6 settled by the user
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.1 – IT-3.7
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M4): CORE-15, DL-03 – DL-09, DL-12, EXE-08; the
   Javadoc statements of DL-07, OUT-05 and EXE-08 checked by inspection (TDD exceptions)
-- [ ] Guard tests (T012, and T010's if G1 settles on option A) shown red against their temporary change, and the change reverted
+- [ ] Guard tests (T010 and T012) shown red against their temporary change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; Micrometer, Spring MVC and Boot's HTTP client are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

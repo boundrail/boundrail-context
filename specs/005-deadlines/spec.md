@@ -91,8 +91,13 @@ not receive the deadline at all.
 
 ### Edge Cases
 
-- A request factory other than the JDK `HttpClient` one: DL-07 (one WARN at startup; the header and fail-fast still apply).
-- A client given its own request factory in code: DL-07 (not detected at startup; the `BoundrailClients` Javadoc says so).
+- A request factory other than the JDK `HttpClient` one: DL-07 (one WARN at startup that capping is not guaranteed; the timer is still armed,
+  and the header and fail-fast still apply). The Simple or Apache HttpComponents factory on platform threads: DL-07 (not capped).
+- A client given its own request factory in code, a customizer that wraps Boot's `ClientHttpRequestFactoryBuilder`, or an application builder
+  for the JDK factory: DL-07 (the startup WARN can be missing or wrong; the `BoundrailClients` Javadoc says so).
+- The response headers arrive as the remaining time runs out: DL-07 (the response is returned; no interrupt is left set).
+- An application interrupt arrives as the timer fires: DL-07 (cleared too; a stated limitation). The thread is already interrupted before the
+  call: DL-07 (not cleared; the JDK client fails at once and its exception is rethrown unchanged).
 - A client with no configured read timeout: DL-07 (the remaining budget is the timeout).
 - A client whose configured timeout is shorter than the remaining budget and fires first: DL-07 (the client's own exception, unchanged).
 - The remaining budget is under 1ms but not yet expired when a call is sent: DL-05 (`Boundrail-Deadline-Ms: 0` is sent, and the receiver
@@ -147,7 +152,8 @@ on more than one header line (as IN-02 defines; no line is then length-checked, 
 bind no deadline from it, SHALL report one `INVALID_VALUE` violation for `DEADLINE` (DIAG-08, DIAG-09), and SHALL then apply
 `default-inbound` as if the header were absent; an oversized value is reported as
 `OVERSIZED_VALUE` (WIRE-04) and treated the same way. `default-inbound` and `max-inbound` SHALL be bound as `Duration`s with Spring Boot's
-binding, and SHALL be greater than zero; a blank `default-inbound` SHALL count as not set. `default-inbound` MAY be greater than `max-inbound`,
+binding, and SHALL be greater than zero; a blank `default-inbound` SHALL count as not set, and a blank `max-inbound` SHALL mean its
+default, 30s. `default-inbound` MAY be greater than `max-inbound`,
 which caps trusted headers only. IF either is zero, negative or cannot be converted, THEN application startup SHALL fail, even when
 `spring.main.lazy-initialization` is `true` (DESIGN D49). Verified by IT-3.1, IT-3.5, IT-3.6 and unit tests.
 
@@ -173,17 +179,25 @@ tests.
 `DeadlineExceededException` (stage `BEFORE_SEND`) and SHALL NOT send the request. This check SHALL come first, before the required-key check
 (POL-08), so no violation is reported and no header is written for that request (DESIGN D50). Verified by IT-3.3 and unit tests.
 
-**DL-07** `[M4]` For requests the library's interceptor sends to any destination while a deadline is bound, the effective response timeout SHALL be
-`min(configured client timeout, remaining)`, or the remaining time when the client has no configured timeout. IF the call times out and the
-remaining time was the effective timeout, THEN the interceptor SHALL throw `DeadlineExceededException` (stage `TIMEOUT`), with the client's
-timeout exception as its cause (DL-12); a timeout set by the client's own, shorter configuration SHALL propagate unchanged. The effective
-timeout SHALL cover the call until the response headers arrive; a timeout while reading the response body SHALL propagate as the client's own
-exception, unchanged (DESIGN D57). How the timeout is applied per request is settled by the plan's spike (DESIGN D51). v0.1 SHALL support
-the JDK `HttpClient`-based request factory. WHERE the request factory Spring Boot auto-configures for `RestClient.Builder` and
-`RestTemplateBuilder` is not the JDK `HttpClient` one, the Spring module SHALL log one WARN entry at startup stating that timeout capping is
-unavailable, and SHALL still apply DL-05 and DL-06. A client given its own request factory in code is not detected; the Javadoc of
-`BoundrailClients` SHALL state that timeout capping needs the JDK `HttpClient` request factory and that such clients are not checked
-(DESIGN D51). Verified by IT-3.2 and unit tests.
+**DL-07** `[M4]` WHEN the library's interceptor sends a request to any destination while a deadline is bound, it SHALL stop the call if the
+remaining time runs out before the response headers arrive, so the effective timeout is the smaller of the client's configured timeout and the
+remaining time. It SHALL stop the call by interrupting the calling thread. IF the remaining time runs out before the response headers arrive,
+THEN the interceptor SHALL throw `DeadlineExceededException` (stage `TIMEOUT`), with the exception the client threw when it was interrupted as
+its cause (DL-12). A response that arrives as the remaining time runs out SHALL be returned. No interrupt the interceptor causes SHALL remain set
+on the thread, or arrive, after the interceptor returns or throws. A timeout from the client's own, shorter configuration SHALL propagate
+unchanged, and so SHALL a timeout while reading the response body, which happens after the interceptor has returned (DESIGN D57). Stated
+limitations: an application interrupt that arrives at the moment the timer fires is cleared too; an interrupt already set before the call is
+never cleared, so the JDK client fails at once and the interceptor rethrows its exception unchanged.
+
+v0.1 SHALL support the JDK `HttpClient`-based request factory. The interceptor SHALL arm its timer for every client; the call is cut off where
+the request factory honours interrupts: the JDK one; Jetty and Reactor Netty (Jetty only gives up the wait); and the Simple and Apache
+HttpComponents factories on virtual threads. The Simple and Apache HttpComponents factories on platform threads are not capped. WHERE the request
+factory Spring Boot auto-configures for `RestClient.Builder` and `RestTemplateBuilder` is not the JDK `HttpClient` one, the Spring module SHALL log
+one WARN entry at startup stating that timeout capping is not guaranteed, and SHALL still apply DL-05 and DL-06. The WARN reads Boot's
+auto-configured `ClientHttpRequestFactoryBuilder`, so it can be wrong when a customizer wraps that builder or the application defines its own
+builder for the JDK factory, and a client given its own request factory in code is not checked. The Javadoc of `BoundrailClients` SHALL state
+that timeout capping is guaranteed only with the JDK `HttpClient` request factory, which other factories it works with, and these limits of the
+WARN (DESIGN D51). Verified by IT-3.2 and unit tests.
 
 **OUT-05** `[M4]` The Javadoc of `BoundrailClients` SHALL state that a 3xx redirect the HTTP client follows is not classified again, so the
 redirected request may carry the context headers written for the original destination, and that redirect following should be turned off on
@@ -217,7 +231,9 @@ For a task submitted with `execute`, it SHALL pass the exception to the current 
 after its captured deadline has expired, THEN the library SHALL NOT call it, and the request SHALL complete with that exception as the
 `Callable`'s result, so DL-08 maps it. That check SHALL be made by a `CallableProcessingInterceptor` whose `preProcess` only checks the
 deadline and binds or restores no context (DESIGN D39), registered through a `WebMvcConfigurer`; a `RequestMappingHandlerAdapter` not built by
-`WebMvcConfigurationSupport` does not get it, and the Javadoc of `BoundExecutors` SHALL say so (DESIGN D56). Executor beans the Spring module
+`WebMvcConfigurationSupport` does not get it, and the Javadoc of `BoundExecutors` SHALL say that the check needs an adapter built by
+`WebMvcConfigurationSupport`. The library's interceptor SHALL be registered after the application's `CallableProcessingInterceptor`s, so they
+still run (DESIGN D56). Executor beans the Spring module
 decorates (EXE-03) in `ATTACHED` mode carry the deadline but SHALL run the
 task whether or not it has expired, because their decorator cannot fail the future Spring created; the Javadoc of `BoundExecutors` SHALL say
 so. A `DETACHED` executor's snapshot holds no deadline (POL-04), so this never applies to it (DESIGN D55). Verified by IT-3.7 and unit tests.
@@ -233,7 +249,7 @@ or `deadline.max-inbound` that is zero, negative or not a duration (DL-03), a `d
 | Property | Default | Meaning |
 |---|---|---|
 | `deadline.default-inbound` | unset | Budget applied when no trusted deadline is present (DL-03); a `Duration` with Spring Boot's binding, greater than zero; blank counts as not set; may exceed `max-inbound`; any other value fails startup, even under lazy initialization |
-| `deadline.max-inbound` | `30s` | Cap on trusted inbound deadlines (DL-03); a `Duration` with Spring Boot's binding, greater than zero; any other value fails startup, even under lazy initialization |
+| `deadline.max-inbound` | `30s` | Cap on trusted inbound deadlines (DL-03); a `Duration` with Spring Boot's binding, greater than zero; blank means `30s`; any other value fails startup, even under lazy initialization |
 | `deadline.expired-status` | `504` | Status for expired requests (DL-04, DL-08), from 400 to 599; any other value fails startup, even under lazy initialization |
 | `deadline.map-exception` | `true` | Map `DeadlineExceededException` to the status (DL-08); a boolean with Spring Boot's binding, and a value Boot cannot convert fails startup, even under lazy initialization |
 
@@ -253,8 +269,8 @@ or `deadline.max-inbound` that is zero, negative or not a duration (DL-03), a `d
 ## Assumptions
 
 - 004-async-diagnostics is complete (executor modes, IT-3.7).
-- Only the JDK `HttpClient` request factory supports timeout capping in v0.1 (DESIGN D51, was Q1). Spring Framework 7.0.9's
-  `JdkClientHttpRequestFactory` applies one `readTimeout` per factory and offers no per-request timeout, so how DL-07 caps the timeout is
-  decided by the spike that starts the plan (T001), and recorded in DESIGN D51.
+- Timeout capping is guaranteed only with the JDK `HttpClient` request factory in v0.1 (DESIGN D51, was Q1). Spring Framework 7.0.9's
+  `JdkClientHttpRequestFactory` applies one `readTimeout` per factory, covering the whole exchange including the body, and offers no
+  per-request timeout, so DL-07 interrupts the calling thread instead (spike T001).
 - Redirects stay a documented limitation in v0.1 (OUT-05; DESIGN D52, was Q7).
 - Deadline behaviour for Kafka messages belongs to [007-kafka](../007-kafka/spec.md) (IT-3.8).

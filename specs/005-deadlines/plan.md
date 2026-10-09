@@ -5,9 +5,9 @@
 **Input**: Feature specification from `/specs/005-deadlines/spec.md`, contract [contracts/deadline-api.md](contracts/deadline-api.md),
 decisions D48 – D55 in [design.md](../../docs/design.md), the merged code of 002 – 004 (`main` at 1d31eda)
 
-**Status**: Approved by the user (plan, tasks, both TDD exception rows and the one guard test) on 2026-10-09.
-G2 – G6 are closed with the recommended answers, which the spec-creator writes into spec.md and design.md. G1 (how DL-07 caps the timeout)
-stays open until T001 is done, and gates T010 ([Spec Gaps](#spec-gaps)).
+**Status**: Approved by the user on 2026-10-09: plan, tasks, the three TDD exception rows and both guard tests (T012, T010). The spike T001
+is done and its outcome recorded below. Every spec gap is closed: G1 as option A after T001, G2 – G6 with the recommended answers; the
+spec-creator writes them into spec.md and design.md ([Spec Gaps](#spec-gaps)).
 
 ## Summary
 
@@ -29,8 +29,8 @@ A request's time budget travels, shrinks and is enforced, and it stops at detach
   - the counter `boundrail.context.deadline.exceeded`, tagged by stage (DL-09).
 
 Library code is driven by unit and `ApplicationContextRunner`/`MockMvc` tests. Each DeadlinePropagationIT scenario is enabled in the task whose
-code makes it pass, so it is that task's failing acceptance test. One unit test is an approved guard (green before its task), and T010 adds
-a second if G1 settles on option A; each is shown red against a named temporary change ([Guard Tests](#guard-tests)).
+code makes it pass, so it is that task's failing acceptance test. Two unit tests are approved guards (green before their task), in T010 and
+T012; each is shown red against a named temporary change ([Guard Tests](#guard-tests)).
 
 ## Technical Context
 
@@ -59,15 +59,15 @@ above the slot)
 
 **Project Type**: library (Spring Boot auto-configuration)
 
-**Performance Goals**: no reflection and no extra allocation per request beyond the deadline arithmetic; the expiry check is one
-`System.nanoTime()` comparison
+**Performance Goals**: no reflection per request; the expiry check is one `System.nanoTime()` comparison. While a deadline is bound, each
+outbound call allocates one scheduled timer task and one handshake object (DL-07, option A); with no deadline bound, nothing extra
 
 **Constraints**:
 
 - Monotonic clock only; the wire carries remaining milliseconds, rounded down (D50).
 - Every adapter stays around-style for context (principle I). The one `CallableProcessingInterceptor.preProcess` (EXE-08, G2) only checks
   the deadline and binds and restores nothing; 004's ban on `preProcess`/`postProcess` as set/restore hooks for context still holds.
-- EXE-10 lists the only private fields the Spring module may read. Nothing here reads another, unless the user changes EXE-10 under G1.
+- EXE-10 lists the only private fields the Spring module may read. Nothing here reads another (G1 chose option A).
 - No work from M5 – M6: no authority, no Kafka (IT-3.8 stays disabled).
 
 **Scale/Scope**: 1 contract change; 12 requirements (CORE-15, DL-03 – DL-09, DL-12, OUT-05, EXE-08); 7 scenarios; a spike, 14 red-green
@@ -84,61 +84,54 @@ tasks (T002 – T015) and a close task (T016)
 | III Secure by default | Pass | Only a trusted caller sets the deadline, capped by `max-inbound`; an untrusted header is reported, never bound (DL-03, IN-02) |
 | IV Declared, never guessed | Pass | The deadline shrinks per hop (rounded down, D50), never travels to detached work (POL-04), and caps local timeouts (DL-07) and attached work (EXE-08) |
 | V Evidence only | Pass | Each expiry is counted once, where it is detected, with its stage (DL-09); invalid headers are reported by key, never by value (DIAG-09) |
-| VI Interoperate | Pass, pending G1 | Spring's resolver chain decides the response (DL-08); the capping mechanism of DL-07 depends on what T001 finds |
+| VI Interoperate | Pass | Spring's resolver chain decides the response (DL-08); DL-07 uses the JDK client's own cancellation on interrupt, without replacing Boot's factory or reading private fields |
 | VII Spec-first, test-first | Pass | Every task is one red-green cycle; both TDD exception rows and the guard test are approved |
 | VIII Simplicity | Pass | One expiry check per adapter; no new public types in `-spring` (contract) |
 | Technical constraints | Pass | Core stays dependency-free; Micrometer, Spring MVC and Boot's HTTP client stay `compileOnly` behind conditions |
 
 ## Spike (T001)
 
-Not yet run. Reading the Spring Framework 7.0.9 and Spring Boot 4.1.1 sources (read-only, from the Gradle cache) already shows:
+Done; no code kept. The user accepted its recommendations (G1 closed as option A, plus the WARN wording, the blank `max-inbound` rule, the
+T010 guard and the T014 Javadoc note); the spec-creator writes them into spec.md and design.md. Known before the spike, from the Spring
+Framework 7.0.9 sources: `JdkClientHttpRequestFactory` gives every request the factory's one `readTimeout`, the request is created after the
+last interceptor, and request attributes are ignored, so Spring has no per-request timeout and an interceptor cannot change it.
 
-- **No per-request timeout hook.** `JdkClientHttpRequestFactory.createRequest` passes the factory's one `readTimeout` to the package-private
-  `JdkClientHttpRequest`, which applies it with a `TimeoutHandler` that cancels the response future. `InterceptingClientHttpRequest`'s end of
-  chain calls `requestFactory.createRequest(uri, method)` after the last interceptor and copies the request's attributes, which
-  `JdkClientHttpRequest` ignores. So an interceptor cannot change the timeout of the request the factory creates. D51's premise, "the JDK
-  client has a per-request timeout", holds for `java.net.http.HttpRequest.Builder.timeout`, but Spring does not expose it.
-- **How a timeout surfaces.** The factory's timeout throws `java.net.http.HttpTimeoutException` (an `IOException`) out of
-  `execution.execute(...)`, inside the interceptor; an interrupt of the calling thread cancels the response future and throws
-  `IOException("Request was interrupted")`. `RestClient` and `RestTemplate` wrap an `IOException` in `ResourceAccessException` only after the
-  interceptor; whether a `RuntimeException` thrown by the interceptor reaches the caller unwrapped must be confirmed (DL-08 maps only the
-  exception itself).
-- **Boot's factory.** `ImperativeHttpClientAutoConfiguration` defines a `ClientHttpRequestFactoryBuilder<?>` bean, chosen by
-  `spring.http.clients.imperative.factory` or detected (Apache HttpComponents, Jetty, Reactor, JDK, simple, in that order) and adjusted by
-  `ClientHttpRequestFactoryBuilderCustomizer` beans, whose `customize` must return the same builder type. The read timeout is
-  `spring.http.clients.read-timeout`.
+1. **DL-07 mechanism: option A (G1).** The interceptor arms a one-shot timer for the remaining time around `execution.execute`, on a
+   per-context scheduler bean (RT-09: shut down with its context). When the timer fires first, it interrupts the calling thread; the JDK
+   client cancels the response future cleanly and throws `IOException("Request was interrupted")`. A `ReentrantLock` handshake between the
+   timer and the interceptor guarantees that no interrupt leaks: the timer interrupts only while the call is still running, and the
+   interceptor, after `execute` returns or throws, takes the lock, disarms the timer and clears an interrupt the timer delivered. Outcomes:
+   - the timer fired and the call failed: `DeadlineExceededException(TIMEOUT, cause)`, where the cause is the client's interrupt
+     `IOException` (not `HttpTimeoutException`). The interceptor catches `IOException` and `RuntimeException`, because a non-JDK factory can
+     surface the interrupt as an unchecked exception (Apache HttpComponents: `CancellationException`);
+   - a response that arrives as the time runs out is kept: the call returned, so its response is returned and the timer's interrupt is
+     cleared;
+   - the client's own shorter timeout fires first: its exception propagates unchanged.
 
-T001 answers, with throwaway code on JDK 21 and JDK 25:
+   Behaviour by request factory:
 
-1. **DL-07 mechanism (G1).** Which of these caps the effective timeout at `min(configured, remaining)`, with `TIMEOUT` only when the
-   remaining time was the effective one:
-   - **A. Interceptor timer.** The interceptor arms a one-shot timer for the remaining time around `execution.execute`, on a per-context
-     scheduler bean; when it fires first, it interrupts the calling thread, the JDK request cancels its future, and the interceptor clears
-     the interrupt and throws `DeadlineExceededException(TIMEOUT, cause)`. The client's own shorter timeout fires first and propagates
-     unchanged. Needs no reflection and also covers clients given their own JDK factory in code. To check: the race between completion and
-     the timer (a late interrupt must never leak), virtual threads, and what an interrupt does to the simple, Apache and Jetty factories
-     (capping is only claimed for JDK; an interrupt there must not break the call).
-   - **B. Replace the factory.** The library's client customizers rebuild Boot's factory and wrap it in one that, per request, creates a
-     `JdkClientHttpRequestFactory` around the same `HttpClient` with `readTimeout = min(configured, remaining)`. `JdkClientHttpRequestFactory`
-     has no getters, so this reads its private `httpClient`, `executor`, `readTimeout` and `compression` fields, which EXE-10 forbids, and a
-     client given its own factory in code is not capped.
-   - Record which phase each option covers: until the response headers arrive (inside the interceptor), or also while the body is read
-     (after the interceptor returns; G4).
-2. **Detecting Boot's factory (DL-07 WARN).** Whether `ClientHttpRequestFactoryBuilder<?>` bean `instanceof JdkClientHttpRequestFactoryBuilder`
-   is reliable after Boot's customizers, without building a factory (which would create an `HttpClient`); what `detect` picks on the `-spring`
-   test classpath and on the integration-test classpath; that `RestTemplateBuilder` uses the same builder bean.
-3. **Exceptions through the clients.** A `DeadlineExceededException` thrown by the interceptor reaches the caller of
-   `RestClient...retrieve().toBodilessEntity()` and of `RestTemplate.getForObject` unwrapped.
-4. **EXE-08 `Callable` hook (G2).** A `CallableProcessingInterceptor` whose `preProcess` throws `DeadlineExceededException(EXECUTOR)` when the
-   captured deadline (the snapshot `AttachedAsyncTaskExecutor` entered) has expired: `WebAsyncManager` then skips the `Callable`, sets the
-   exception as the concurrent result and dispatches, also for a `WebAsyncTask` without its own executor. Confirm the registration G2
-   settled: a `WebMvcConfigurer` (`configureAsyncSupport` → `registerCallableInterceptors`) keeps the application's own interceptors.
-5. **DL-08 at edge.** A lowest-precedence `HandlerExceptionResolver` calling `sendError(504)` runs after `@ExceptionHandler` methods, and the
-   resulting `ERROR` dispatch through Spring Security on edge (bearer JWT, stateless) still answers 504, not 401.
-6. **Blank durations.** Whether Boot binds `deadline.default-inbound=` and `deadline.default-inbound=` followed by spaces to `null`; if not, the
-   property is bound as a `String` and converted with `ApplicationConversionService`, as T001 of 004 found for `executors.modes`.
+   | Factory | On the timer's interrupt | Capping |
+   |---|---|---|
+   | JDK `HttpClient` | Cancels the response future; `IOException("Request was interrupted")` | Supported (DL-07) |
+   | Simple (`HttpURLConnection`) | Platform thread: ignored, the call completes; virtual thread: cut off, `SocketException("Closed by interrupt")` | Virtual threads only |
+   | Apache HttpComponents 5 (classic) | Platform thread: ignored; virtual thread: cut off, `CancellationException` | Virtual threads only |
+   | Jetty 12 | Caller cut off with `IOException("Request was interrupted")`, but the exchange is not aborted | Waiting only |
+   | Reactor Netty | Cut off, `IOException` caused by `InterruptedException` | Supported, not part of the test matrix |
 
-No code is kept. The outcome is recorded here, and any spec change it needs goes to the user before T010 or T014 starts.
+2. **Detecting Boot's factory.** `ClientHttpRequestFactoryBuilder<?>` bean `instanceof JdkClientHttpRequestFactoryBuilder`, read once at
+   startup without building a factory. The WARN says that timeout capping is not guaranteed with other factories. It can be wrong when an
+   application customizer wraps the builder (a JDK builder wrapped in another type gives a false WARN); the Javadoc of `BoundrailClients`
+   documents this.
+3. **Exceptions through the clients.** A `DeadlineExceededException` thrown by the interceptor reaches callers of `RestClient` and
+   `RestTemplate` unwrapped.
+4. **EXE-08 `Callable` hook (G2).** A `preProcess` that throws makes `WebAsyncManager` skip the `Callable` and dispatch with the exception as
+   the result, on Tomcat too. The library's `WebMvcConfigurer` is ordered last, so the application's own `CallableProcessingInterceptor`s
+   are registered first and still get `preProcess` and `postProcess`.
+5. **DL-08 at edge.** `sendError(504)` from the lowest-precedence resolver survives the `ERROR` dispatch through edge's OAuth2
+   resource-server filter chain.
+6. **Blank durations.** Boot binds an empty `default-inbound` to `null`, but a whitespace-only value fails conversion. So `default-inbound`
+   and `max-inbound` are bound as `String`s and converted with `ApplicationConversionService`; a blank `default-inbound` is unset, and a
+   blank `max-inbound` is the default `30s`.
 
 ## Research Notes
 
@@ -162,8 +155,9 @@ No code is kept. The outcome is recorded here, and any spec change it needs goes
 - **Properties.** `BoundrailContextProperties` gains `@DefaultValue Deadline deadline`, a record `(Duration defaultInbound, @DefaultValue("30s")
   Duration maxInbound, @DefaultValue("504") int expiredStatus, @DefaultValue("true") boolean mapException)`. The compact constructor rejects a
   `defaultInbound` or `maxInbound` that is zero or negative, and an `expiredStatus` outside 400 – 599, with `IllegalArgumentException` naming
-  the property. A blank `default-inbound` is `null` if T001 confirms Boot's converter returns `null` for it; otherwise the raw string is bound
-  (T001 item 6). Boot's binder rejects a non-duration, a non-integer status and a non-boolean `map-exception`. The `@Lazy(false)` reporter
+  the property. `default-inbound` and `max-inbound` are bound as `String`s and converted with `ApplicationConversionService` to
+  `Duration`, because Boot fails on a whitespace-only duration (T001 item 6): blank `default-inbound` is unset, blank `max-inbound` is `30s`,
+  and a value that does not convert throws. Boot's binder rejects a non-integer status and a non-boolean `map-exception`. The `@Lazy(false)` reporter
   already binds the properties at startup, so every failure also occurs under lazy initialization (T003 uses 003's T006a setup).
 - **Inbound (DL-03, DL-04).** In `ContextInboundFilter.doFilterInternal`, on the initial dispatch, after the IN-02 keys:
   1. a trusted request: read `Boundrail-Deadline-Ms` with the same steps as `bind` (several lines → one `INVALID_VALUE`; longer than
@@ -186,11 +180,14 @@ No code is kept. The outcome is recorded here, and any spec change it needs goes
      single valid value (DL-03's digit rule) that is smaller wins; WIRE-04 applies to the value written (when the value is oversized, the
      application's header is removed too and one `OVERSIZED_VALUE` is reported, G3). With no deadline bound, an application's header
      stays (OUT-04). For external and unknown calls WIRE-07 already strips the header;
-  4. DL-07, with a deadline bound: the mechanism T001 and G1 settle; a `TIMEOUT` expiry throws `DeadlineExceededException(TIMEOUT, cause)`
-     with the client's exception as the cause.
+  4. DL-07, with a deadline bound: option A ([Spike](#spike-t001) item 1): a package-private `DeadlineTimer` bean (a one-thread
+     `ScheduledExecutorService`, daemon, shut down on context close) arms the interrupt for `remaining`; the `ReentrantLock` handshake
+     disarms it and clears a delivered interrupt; a call that failed after the timer fired throws `DeadlineExceededException(TIMEOUT, cause)`
+     with the caught `IOException` or `RuntimeException` as the cause; a response is kept; the client's own timeout propagates unchanged.
 - **Factory check (DL-07).** A `@Lazy(false)` bean in `ClientConfiguration` reads the `ClientHttpRequestFactoryBuilder<?>` bean, if any, once
-  at startup, and logs one WARN through `LogFactory` when it is not the JDK one (T001 item 2), naming the property to change. No WARN when no
-  such bean exists (no Boot HTTP client auto-configuration).
+  at startup, and logs one WARN through `LogFactory` when it is not a `JdkClientHttpRequestFactoryBuilder`: timeout capping is not
+  guaranteed, naming the property to change. No WARN when no such bean exists (no Boot HTTP client auto-configuration). A builder wrapped by
+  an application customizer can give a false WARN; the `BoundrailClients` Javadoc says so.
 - **Exception mapping (DL-08).** In a nested configuration conditional on a servlet web application and on `HandlerExceptionResolver`, and
   on `map-exception` (read from the bound properties, not `@ConditionalOnProperty`, so `yes` and `on` work, as T015a of 004 found), a
   package-private `DeadlineExceptionResolver` with `Ordered.LOWEST_PRECEDENCE`. `DispatcherServlet` sorts it after Boot's
@@ -200,15 +197,16 @@ No code is kept. The outcome is recorded here, and any spec change it needs goes
 - **`Callable` expiry (EXE-08, G2).** A check-only `CallableProcessingInterceptor` whose `preProcess` throws
   `DeadlineExceededException(EXECUTOR)` when `Deadlines.current()` is expired. It runs on MVC's executor thread inside the snapshot
   `AttachedAsyncTaskExecutor` entered, so it sees the captured deadline; it binds and restores nothing. It is registered by a `WebMvcConfigurer`
-  bean in the existing `MvcAsyncConfiguration` (`configureAsyncSupport` → `registerCallableInterceptors`), which adds to the application's
-  own interceptors. A `RequestMappingHandlerAdapter` not built by `WebMvcConfigurationSupport` does not get it; the Javadoc of
-  `BoundExecutors` says so, next to EXE-08's decorated-bean statement (T014).
+  bean in the existing `MvcAsyncConfiguration` (`configureAsyncSupport` → `registerCallableInterceptors`), ordered last
+  (`Ordered.LOWEST_PRECEDENCE`), which adds to the application's own interceptors, so they still get `preProcess` and `postProcess`. A
+  `RequestMappingHandlerAdapter` not built by `WebMvcConfigurationSupport` does not get it; the Javadoc of `BoundExecutors` says so, next to
+  EXE-08's decorated-bean statement (T014).
 - **Metric (DL-09).** A package-private functional interface `DeadlineCounter { void increment(Stage stage); }`, as `ViolationReporter.Counter`
   is: the Micrometer configuration supplies one that resolves `ObjectProvider<MeterRegistry>.getIfUnique()` (unique or primary) and
   increments `boundrail.context.deadline.exceeded` with `stage=<lowercase>`; without Micrometer, a no-op. The filter (`inbound`), the
   interceptor (`before_send`, `timeout`), the `Callable` check (`executor`) and the resolver (`application` only) call it where they detect
   the expiry. Never `Metrics.globalRegistry` (RT-09).
-- **RT-09.** Nothing new is static in `-spring`; a scheduler for option A of G1 would be a bean of one context, shut down with it.
+- **RT-09.** Nothing new is static in `-spring`; the `DeadlineTimer` scheduler is a bean of one context, shut down with it.
 
 ### Integration tests
 
@@ -258,12 +256,12 @@ ends with `./gradlew check`.
 
 ## Spec Gaps
 
-G2 – G6 are closed by the user's decision (the recommended answers), which the spec-creator writes into spec.md and design.md; their tests are
-in the tasks named. G1 stays open until T001 is done.
+All gaps are closed by the user's decisions (G1 after T001; G2 – G6 with the recommended answers), which the spec-creator writes into
+spec.md and design.md; their tests are in the tasks named.
 
 | Gap | Status | Decision | Tasks |
 |---|---|---|---|
-| G1 | **Open; gates T010** | Spring 7.0.9 offers no per-request timeout on the JDK factory, so DL-07 needs option A (an interceptor timer that interrupts the calling thread) or option B (replacing Boot's factory, reading four private fields of `JdkClientHttpRequestFactory`, which EXE-10 forbids). *Recommendation*: A, if T001 shows the interrupt race can be closed and the other factories survive an interrupt; B would need EXE-10 amended and DL-07 to say that a client given its own JDK factory is not capped | T001, T010 |
+| G1 | Closed | Option A (T001): an interceptor timer on a per-context scheduler interrupts the calling thread, with a `ReentrantLock` handshake so no interrupt leaks and a response arriving as time runs out is kept; the cause of `TIMEOUT` is the client's interrupt `IOException`; `IOException` and `RuntimeException` are caught. Capping is supported on the JDK factory and not guaranteed on others (WARN). No change to EXE-10 | T001, T010 |
 | G2 | Closed | EXE-08's `Callable` check is a check-only `CallableProcessingInterceptor.preProcess` that binds and restores nothing, registered through a `WebMvcConfigurer` (`registerCallableInterceptors`); a `RequestMappingHandlerAdapter` not built by `WebMvcConfigurationSupport` does not get it, which the `BoundExecutors` Javadoc states | T014 |
 | G3 | Closed | When the value DL-05 would write is longer than `wire.max-value-length`, an application-set `Boundrail-Deadline-Ms` is removed too, and one `OVERSIZED_VALUE` is reported, so a child never receives a longer budget (§4.8) | T007 |
 | G4 | Closed | DL-07 covers the call until the response headers arrive; reading the body keeps the client's configured timeout, and a timeout there propagates as the client's own exception | T010 |
@@ -285,19 +283,17 @@ with "with `true` it is" in T009).
 | Task | Scenario or test | Why green first | Red shown against (temporary, reverted) |
 |---|---|---|---|
 | T012 | `EXE-08 a decorated executor in attached mode runs a task whose deadline has expired, and the task sees the deadline` | `ExecutorDecorator` has never checked deadlines; EXE-08 keeps it so (D55) | `ExecutorDecorator` throwing `DeadlineExceededException(EXECUTOR)` from the wrapped task when the captured deadline has expired |
-| T010 (only if G1 settles on option A; not yet approved) | `DL-07 a call that completes within the remaining time is not affected` | Before T010 nothing caps or interrupts | The interceptor's timer left armed after `execute` returns, so it interrupts the thread later |
+| T010 (approved) | `DL-07 a call that completes within the remaining time is not affected` | Before T010 nothing caps or interrupts | The interceptor's timer left armed after `execute` returns, so it interrupts the thread later |
 
 ## TDD Exceptions
 
-Both rows are approved. T014 adds one sentence to the second row's Javadoc (G2); see the note under the table.
+All three rows are approved.
 
 | Task | What | Verified by |
 |---|---|---|
-| T011 | The Javadoc statements of `BoundrailClients`: DL-07 (timeout capping needs the JDK `HttpClient` request factory; a client given its own request factory in code is not checked) and OUT-05 (a followed 3xx redirect is not classified again and may carry the original destination's context headers; turn off redirect following on internal clients and on clients reaching internal host patterns). Documentation, with no behaviour a test can fail on | Review of T011, and inspection in T016 against each requirement's wording |
+| T011 | The Javadoc statements of `BoundrailClients`: DL-07 (timeout capping needs the JDK `HttpClient` request factory and is not guaranteed with others; a client given its own request factory in code is not checked; the startup WARN can be wrong when an application customizer wraps Boot's builder) and OUT-05 (a followed 3xx redirect is not classified again and may carry the original destination's context headers; turn off redirect following on internal clients and on clients reaching internal host patterns). Documentation, with no behaviour a test can fail on | Review of T011, and inspection in T016 against each requirement's wording |
 | T013 | The Javadoc statement of `BoundExecutors` required by EXE-08: executor beans the Spring module decorates in `ATTACHED` mode carry the deadline but run the task whether or not it has expired. The behaviour itself is tested (the T012 guard) | Review of T013, and inspection in T016 |
-
-Note for the user: G2's decision adds a Javadoc-only statement of the same kind, that the `Callable` check needs an adapter built by
-`WebMvcConfigurationSupport` (T014). It is not covered by the approval above until the user confirms it as part of the T013 row.
+| T014 | The Javadoc statement of `BoundExecutors` from G2: the `Callable` check needs a `RequestMappingHandlerAdapter` built by `WebMvcConfigurationSupport` | Review of T014, and inspection in T016 |
 
 T001 is a spike, not an exception: no code from it is kept. A dependency or catalog entry, if T011 needs one, is part of a green step.
 
@@ -329,7 +325,7 @@ boundrail-context-spring/src/main/java/io/github/boundrail/context/spring/
 ├── BoundrailContextAutoConfiguration.java                          # T003 – T015
 ├── ContextInboundFilter.java (DL-03, DL-04)                        # T004 – T006
 ├── ContextClientInterceptor.java (DL-05 – DL-07)                   # T007, T008, T010
-├── <timeout mechanism per G1, package-private>                     # T010
+├── DeadlineTimer.java (package-private, per-context scheduler)       # T010
 ├── RequestFactoryCheck.java (package-private)                      # T011
 ├── BoundrailClients.java (Javadoc)                                 # T011
 ├── DeadlineExceptionResolver.java (package-private)                # T009
@@ -374,14 +370,12 @@ integration-tests/src/test/java/io/github/boundrail/context/it/
 
 ## Risks
 
-- **Timeout capping (DL-07, G1).** Spring exposes no per-request timeout; T001 decides between an interrupt-based timer and factory
-  replacement. Either way IT-3.2 and T010's unit tests pin the behaviour, not the mechanism.
+- **Timeout capping (DL-07, G1).** Spring exposes no per-request timeout, so the library interrupts the calling thread (option A). IT-3.2
+  and T010's unit tests pin the behaviour; the handshake tests pin that no interrupt leaks.
 - **Cold-JVM timing.** A 500ms budget across three services is tight on a cold JVM; the extra edge, warm-up requests and nanosecond
   recordings (Integration tests) keep IT-3.1 and IT-3.6 stable. If they still flake, the fix is in the test harness, not a looser assertion.
-- **Spring Security error dispatch (DL-08 at edge).** `sendError` makes an `ERROR` dispatch through Security; T001 item 5 checks that IT-3.3
-  still gets 504.
-- **Interrupts (option A of G1).** A late timer interrupt must never reach application code; T010's tests include a call that completes just
-  before the budget.
+- **Spring Security error dispatch (DL-08 at edge).** T001 item 5 found that `sendError(504)` survives it; IT-3.3 keeps it pinned.
+- **Interrupts (option A).** A late timer interrupt must never reach application code; T010's guard and race tests pin the handshake.
 - **Existing tests that M4 contradicts.** `IN-02 a trusted request binds no deadline and no authority from headers` and `IN-02 a repeated
   Boundrail-Deadline-Ms on a trusted request is skipped, not reported` (`ContextInboundFilterTest`), and `OUT-04 an internal call writes no
   Authorization and no Boundrail-Deadline-Ms` (`ContextClientInterceptorTest`) encode M2's "not before M4". T004, T005 and T007 narrow them
@@ -391,4 +385,4 @@ integration-tests/src/test/java/io/github/boundrail/context/it/
 
 ## Complexity Tracking
 
-No constitution violations to justify. G1 option B would need a spec change (EXE-10) before T010; it is listed as a gap, not taken.
+No constitution violations to justify. Option B of G1, which would have needed EXE-10 changed, was not taken.
