@@ -77,7 +77,7 @@ values are ignored and reported, and never fail the request.
   runs in the caller's existing scope; no empty scope is entered).
 - A handler uses Spring MVC async processing (`DeferredResult`, `Callable`): known limitation in M2 (see Assumptions; DESIGN Q8). The async
   dispatch runs without the inbound context.
-- The HTTP client follows a 3xx redirect to another host: known limitation in M2 (see Assumptions; DESIGN Q7). The redirected request may
+- The HTTP client follows a 3xx redirect to another host: known limitation in M2 (see Assumptions; DESIGN D52, was Q7). The redirected request may
   carry the context headers written for the original destination, without being classified again.
 - A destination matches both an internal and an external host pattern: DEST-02 (internal patterns are checked first).
 - A hostname with an underscore, such as `http://orders_svc:8080/` in Docker Compose: DEST-02 (no host pattern matches, so it is `UNKNOWN`;
@@ -372,7 +372,8 @@ required-key check (POL-08), except `AUTHORITY` and `DEADLINE`: `AUTHORITY` has 
 `Boundrail-Deadline-Ms` is written by DL-05 `[M4]`. For `EXTERNAL` and `UNKNOWN` destinations, it SHALL write only keys that propagate to
 `EXTERNAL_CALL` (none by default), and SHALL apply WIRE-07. IF application code has already set a policy wire header (IN-02) on a request,
 whatever its destination (`INTERNAL`, `EXTERNAL` or `UNKNOWN`), THEN the interceptor SHALL leave it unchanged and SHALL NOT write the context
-value under that name, as ID-03 does for `Authorization`. On an `EXTERNAL` or `UNKNOWN` request, WIRE-07 still removes such a header when its
+value under that name, as ID-03 does for `Authorization`; the one exception is `Boundrail-Deadline-Ms` on an `INTERNAL` request while a
+deadline is bound, which DL-05 `[M4]` replaces. On an `EXTERNAL` or `UNKNOWN` request, WIRE-07 still removes such a header when its
 key does not propagate to `EXTERNAL_CALL`; for a key that does, the application's value is sent. A header counts as already set only when it
 has at least one value (names compared as WIRE-06 defines): a name present with no values SHALL be treated as unset, so the interceptor
 writes the context value under it exactly as it would if the name were absent. The empty string `""` is a value, so a header whose only
@@ -476,7 +477,8 @@ present), several `DestinationClassifier` beans with none primary (OUT-03).
 - Redirects are a known limitation in M2. The interceptor runs once per request (OUT-01, OUT-02). An HTTP client that follows a 3xx redirect
   does so below the interceptor, so a request redirected to another host may carry the context headers written for the original destination,
   without being classified again or stripped (WIRE-07). Turn off redirect following on clients declared internal (OUT-03), and on clients that
-  reach hosts matched by an internal host pattern (DEST-02). DESIGN Q7 tracks the fix, resolved with the M4 request-factory work.
+  reach hosts matched by an internal host pattern (DEST-02). DESIGN D52 (was Q7) keeps this limitation for v0.1, documented in the Javadoc
+  of `BoundrailClients` (OUT-05 in [005-deadlines](../005-deadlines/spec.md)).
 - Spring MVC async processing is a known limitation in M2. `ContextInboundFilter` does not run again on async dispatches, so with
   `DeferredResult` or `Callable` the async dispatch runs without the inbound context that IN-01 and IN-02 bind for the original request.
   DESIGN Q8 tracks the fix, picked up in [004-async-diagnostics](../004-async-diagnostics/spec.md) `[M3]`.
