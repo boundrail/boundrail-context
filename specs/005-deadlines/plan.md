@@ -152,8 +152,8 @@ last interceptor, and request attributes are ignored, so Spring has no per-reque
 
 ### Spring wiring
 
-- **Properties.** `BoundrailContextProperties` gains `@DefaultValue Deadline deadline`, a record `(Duration defaultInbound, @DefaultValue("30s")
-  Duration maxInbound, @DefaultValue("504") int expiredStatus, @DefaultValue("true") boolean mapException)`. The compact constructor rejects a
+- **Properties.** `BoundrailContextProperties` gains `@DefaultValue Deadline deadline`, a record `(String defaultInbound, @DefaultValue("30s")
+  String maxInbound, @DefaultValue("504") int expiredStatus, @DefaultValue("true") boolean mapException)`. The compact constructor rejects a
   `defaultInbound` or `maxInbound` that is zero or negative, and an `expiredStatus` outside 400 – 599, with `IllegalArgumentException` naming
   the property. `default-inbound` and `max-inbound` are bound as `String`s and converted with `ApplicationConversionService` to
   `Duration`, because Boot fails on a whitespace-only duration (T001 item 6): blank `default-inbound` is unset, blank `max-inbound` is `30s`,

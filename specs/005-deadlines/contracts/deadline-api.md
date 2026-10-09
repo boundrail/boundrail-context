@@ -15,4 +15,5 @@ public final class DeadlineExceededException extends RuntimeException {
 }
 ```
 
-The Spring module adds no public types in this feature; its behaviour is configured through the properties in [spec.md](../spec.md#configuration).
+The Spring module adds no public types in this feature beyond the `BoundrailContextProperties.Deadline` properties record that binds
+the properties in [spec.md](../spec.md#configuration).
