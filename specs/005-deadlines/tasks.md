@@ -83,7 +83,7 @@ if one is needed, is added in the green step of the first task whose test needs 
 
 ## Phase 2: Foundational
 
-- [ ] T002 [P] Public constructors of `DeadlineExceededException`.
+- [x] T002 [P] Public constructors of `DeadlineExceededException`.
   - Red, in `coretest/DeadlineExceededExceptionTest.java`:
     - `DL-12 the (Stage) constructor is public and sets the message and the stage`: `DeadlineExceededException.class.getConstructor(Stage.class)`
       exists (red: it is package-private); for each stage, the message is `Deadline exceeded at stage <NAME>`, `stage()` returns it and
