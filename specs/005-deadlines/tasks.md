@@ -95,7 +95,7 @@ if one is needed, is added in the green step of the first task whose test needs 
     `super` ([plan.md](plan.md#core)).
   - Completes: DL-12; CORE-15.
   - Verify: Unit `DeadlineExceededExceptionTest` in `:boundrail-context-core`.
-- [ ] T003 The `deadline.*` properties: binding and startup validation.
+- [x] T003 The `deadline.*` properties: binding and startup validation.
   - Red, in `springtest/DeadlinePropertiesTest.java` (`ApplicationContextRunner`, reading `BoundrailContextProperties.deadline()`):
     - `DL-03 deadline properties default to no default-inbound, a max-inbound of 30s, expired-status 504 and map-exception true`;
     - `DL-03 default-inbound and max-inbound are bound as Durations with Spring Boot's binding`: `250ms`, `PT2S`, `5` (milliseconds);
