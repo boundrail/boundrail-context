@@ -9,7 +9,8 @@ import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -18,7 +19,6 @@ import org.springframework.boot.test.context.assertj.AssertableWebApplicationCon
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /** An escaping {@code DeadlineExceededException} is mapped to {@code expired-status} by a lowest-precedence resolver (DL-08). */
 class DeadlineExceptionMappingTest {
@@ -188,17 +189,74 @@ class DeadlineExceptionMappingTest {
     @DisplayName("DL-08 the resolver runs after the application's resolvers and is absent without Spring MVC")
     void theResolverRunsAfterTheApplicationsResolversAndIsAbsentWithoutSpringMvc() {
         runner.run(context -> {
-            Map<String, DeadlineExceptionResolver> resolvers = context.getBeansOfType(DeadlineExceptionResolver.class);
+            HandlerExceptionResolver mvcs = (request, response, handler, ex) -> null;
+            List<HandlerExceptionResolver> chain = new ArrayList<>(List.of(mvcs));
 
-            assertThat(resolvers).hasSize(1);
-            assertThat(resolvers.values().iterator().next().getOrder()).isEqualTo(Ordered.LOWEST_PRECEDENCE);
+            context.getBeansOfType(WebMvcConfigurer.class).values().forEach(configurer -> configurer.extendHandlerExceptionResolvers(chain));
+
+            assertThat(chain).as("appended after the resolvers MVC configures").hasSize(2).first().isSameAs(mvcs);
+            assertThat(chain.getLast()).isInstanceOf(DeadlineExceptionResolver.class);
+            assertThat(context.getBeansOfType(DeadlineExceptionResolver.class)).as("not a bean").isEmpty();
         });
         new WebApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
-                .withClassLoader(new FilteredClassLoader(HandlerExceptionResolver.class))
+                .withClassLoader(new FilteredClassLoader(WebMvcConfigurer.class))
                 .run(context -> {
                     assertThat(context).hasNotFailed();
+                    assertThat(context.getBeanNamesForType(WebMvcConfigurer.class)).isEmpty();
                     assertThat(context.getBeanNamesForType(HandlerExceptionResolver.class)).isEmpty();
                 });
+    }
+
+    /** An application exception with its own handler. */
+    static final class ApplicationException extends RuntimeException {
+    }
+
+    @RestController
+    static final class ApplicationHandlers {
+
+        @GetMapping("/application")
+        String application() {
+            throw new ApplicationException();
+        }
+    }
+
+    @RestControllerAdvice(assignableTypes = ApplicationHandlers.class)
+    static final class ApplicationExceptionAdvice {
+
+        @ExceptionHandler(ApplicationException.class)
+        @ResponseStatus(HttpStatus.I_AM_A_TEAPOT)
+        String handled() {
+            return "application";
+        }
+    }
+
+    /** Controllers and advice only: no {@code @EnableWebMvc}, so {@code DispatcherServlet} installs its default strategies. */
+    @Configuration(proxyBeanMethods = false)
+    static class PlainDispatcherServlet {
+
+        @Bean
+        ApplicationHandlers applicationHandlers() {
+            return new ApplicationHandlers();
+        }
+
+        @Bean
+        ApplicationExceptionAdvice applicationExceptionAdvice() {
+            return new ApplicationExceptionAdvice();
+        }
+    }
+
+    @Test
+    @DisplayName("DL-08 the resolver is added to MVC's resolver chain, not as a HandlerExceptionResolver bean")
+    void theResolverIsAddedToMvcsResolverChainNotAsABean() {
+        new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
+                .withUserConfiguration(PlainDispatcherServlet.class)
+                .run(context -> assertThat(perform(context, "/application").getResponse().getStatus())
+                        .as("DispatcherServlet's default resolvers still run the application's @ExceptionHandler").isEqualTo(418));
+        runner.withUserConfiguration(PlainDispatcherServlet.class).run(context -> {
+            assertThat(perform(context, "/application").getResponse().getStatus()).as("with @EnableWebMvc").isEqualTo(418);
+            assertThat(perform(context, "/expired").getResponse().getStatus()).as("an unhandled DeadlineExceededException").isEqualTo(504);
+        });
     }
 }

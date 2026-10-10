@@ -9,6 +9,7 @@ import jakarta.servlet.DispatcherType;
 import java.time.Clock;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
@@ -33,6 +34,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
@@ -155,16 +157,26 @@ public class BoundrailContextAutoConfiguration {
         }
     }
 
-    /** Maps an escaping {@code DeadlineExceededException} to {@code expired-status} in a servlet application with Spring MVC (DL-08). */
+    /**
+     * Maps an escaping {@code DeadlineExceededException} to {@code expired-status} in a servlet application with Spring MVC (DL-08). The
+     * resolver is appended to the resolvers MVC configures, after the application's {@code @ExceptionHandler} methods, and is never a
+     * {@code HandlerExceptionResolver} bean, which would stop {@code DispatcherServlet} from installing its default resolvers.
+     */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-    @ConditionalOnClass(HandlerExceptionResolver.class)
+    @ConditionalOnClass(WebMvcConfigurer.class)
     static class DeadlineExceptionConfiguration {
 
         /** Inert when {@code map-exception} is off: read from the bound properties, so Boot's boolean forms such as {@code yes} work. */
         @Bean
-        DeadlineExceptionResolver boundrailDeadlineExceptionResolver(BoundrailContextProperties properties) {
-            return new DeadlineExceptionResolver(properties.deadline());
+        WebMvcConfigurer boundrailDeadlineExceptionMvcConfigurer(BoundrailContextProperties properties) {
+            DeadlineExceptionResolver resolver = new DeadlineExceptionResolver(properties.deadline());
+            return new WebMvcConfigurer() {
+                @Override
+                public void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers) {
+                    resolvers.add(resolver);
+                }
+            };
         }
     }
 

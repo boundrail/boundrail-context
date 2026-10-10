@@ -256,7 +256,7 @@ if one is needed, is added in the green step of the first task whose test needs 
     topology test code: the edge endpoint.
   - Completes: DL-08 (handler exceptions); IT-3.3.
   - Verify: Unit `DeadlineExceptionMappingTest`; IT.
-- [ ] T009a [US2] Register the DL-08 resolver through MVC's resolver chain (T009 review follow-up).
+- [x] T009a [US2] Register the DL-08 resolver through MVC's resolver chain (T009 review follow-up).
   - Red, in `springtest/DeadlineExceptionMappingTest.java`: `DL-08 the resolver is added to MVC's resolver chain, not as a
     HandlerExceptionResolver bean`: in a servlet `DispatcherServlet` setup without `@EnableWebMvc` and without Boot's MVC auto-configuration,
     an application `@ExceptionHandler` still handles its exception (red: T009's lone bean replaces `DispatcherServlet`'s default resolvers);

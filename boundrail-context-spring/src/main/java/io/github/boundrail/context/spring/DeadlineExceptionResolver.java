@@ -4,15 +4,15 @@ import io.github.boundrail.context.DeadlineExceededException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import org.springframework.core.Ordered;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.ModelAndView;
 
 /**
  * Maps a {@code DeadlineExceededException} escaping a request handler to {@code expired-status} through {@code sendError}, as Spring does for
- * {@code ResponseStatusException} (DL-08). Ordered last, so the application's {@code @ExceptionHandler} methods run first.
+ * {@code ResponseStatusException} (DL-08). Appended to the end of MVC's resolver chain, so the application's {@code @ExceptionHandler}
+ * methods run first.
  */
-final class DeadlineExceptionResolver implements HandlerExceptionResolver, Ordered {
+final class DeadlineExceptionResolver implements HandlerExceptionResolver {
 
     private final boolean mapException;
     private final int expiredStatus;
@@ -38,10 +38,5 @@ final class DeadlineExceptionResolver implements HandlerExceptionResolver, Order
             return null;
         }
         return new ModelAndView();
-    }
-
-    @Override
-    public int getOrder() {
-        return Ordered.LOWEST_PRECEDENCE;
     }
 }
