@@ -351,4 +351,66 @@ class BoundExecutorsTest {
             pool.shutdownNow();
         }
     }
+
+    /** What an {@code UncaughtExceptionHandler} received, and on which thread. */
+    private record Uncaught(String thread, Throwable exception) {
+    }
+
+    @Test
+    @DisplayName("EXE-08 an expired task passed to execute is not run, its exception goes to the current thread's UncaughtExceptionHandler,"
+            + " and execute returns normally")
+    void anExpiredTaskPassedToExecuteGoesToTheUncaughtExceptionHandler() throws Exception {
+        for (String variant : List.of("attached(Executor)", "attached(ExecutorService)")) {
+            List<Uncaught> uncaught = new CopyOnWriteArrayList<>();
+            AtomicInteger threads = new AtomicInteger();
+            ExecutorService pool = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "pool-" + threads.incrementAndGet());
+                thread.setUncaughtExceptionHandler((t, e) -> uncaught.add(new Uncaught(t.getName(), e)));
+                return thread;
+            });
+            try {
+                Executor attached = variant.equals("attached(Executor)")
+                        ? BoundExecutors.attached((Executor) pool, POLICY)
+                        : BoundExecutors.attached(pool, POLICY);
+                AtomicBoolean ran = new AtomicBoolean();
+
+                expired().run(() -> attached.execute(() -> ran.set(true)));
+                String nextThread = pool.submit(() -> Thread.currentThread().getName()).get(5, TimeUnit.SECONDS);
+
+                assertThat(ran).as("%s: the expired task did not run", variant).isFalse();
+                assertThat(uncaught).as(variant).singleElement().satisfies(received -> {
+                    assertThat(received.thread()).as("on the pool thread").isEqualTo("pool-1");
+                    assertThat(received.exception()).isInstanceOf(DeadlineExceededException.class);
+                    assertThat(((DeadlineExceededException) received.exception()).stage()).isEqualTo(DeadlineExceededException.Stage.EXECUTOR);
+                });
+                assertThat(nextThread).as("%s: the same pool thread runs the next task", variant).isEqualTo("pool-1");
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("EXE-08 with an inline executor the caller's handler receives it and execute returns")
+    void withAnInlineExecutorTheCallersHandlerReceivesIt() {
+        Thread caller = Thread.currentThread();
+        Thread.UncaughtExceptionHandler previous = caller.getUncaughtExceptionHandler();
+        List<Uncaught> uncaught = new CopyOnWriteArrayList<>();
+        caller.setUncaughtExceptionHandler((t, e) -> uncaught.add(new Uncaught(t.getName(), e)));
+        try {
+            AtomicBoolean ran = new AtomicBoolean();
+
+            Throwable thrown = catchThrowable(() -> expired().run(() -> BoundExecutors.attached(Runnable::run, POLICY).execute(() -> ran.set(true))));
+
+            assertThat(thrown).as("execute returns normally").isNull();
+            assertThat(ran).as("the expired task did not run").isFalse();
+            assertThat(uncaught).singleElement().satisfies(received -> {
+                assertThat(received.thread()).isEqualTo(caller.getName());
+                assertThat(received.exception()).isInstanceOf(DeadlineExceededException.class);
+                assertThat(((DeadlineExceededException) received.exception()).stage()).isEqualTo(DeadlineExceededException.Stage.EXECUTOR);
+            });
+        } finally {
+            caller.setUncaughtExceptionHandler(previous == caller.getThreadGroup() ? null : previous);
+        }
+    }
 }

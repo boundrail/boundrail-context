@@ -15,7 +15,8 @@ import java.util.concurrent.TimeoutException;
  * An executor service returned by {@link BoundExecutors}: every task submitted through {@code execute}, {@code submit}, {@code invokeAll}
  * or {@code invokeAny} runs in the submitter's snapshot, filtered for the mode (EXE-02). A task submitted with {@code submit},
  * {@code invokeAll} or {@code invokeAny} whose captured deadline has expired when it starts is not run, and its future fails with
- * {@code DeadlineExceededException} at {@code EXECUTOR} (EXE-08). Lifecycle methods delegate.
+ * {@code DeadlineExceededException} at {@code EXECUTOR}; one given to {@code execute} is not run either, and that exception goes to the
+ * worker thread's {@code UncaughtExceptionHandler} (EXE-08). Lifecycle methods delegate.
  */
 final class BoundExecutorService implements ExecutorService, ModeExecutor {
 
@@ -64,7 +65,7 @@ final class BoundExecutorService implements ExecutorService, ModeExecutor {
     }
 
     private static void checkDeadline(ContextSnapshot snapshot) {
-        if (snapshot.find(BuiltInKeys.DEADLINE).filter(Deadline::isExpired).isPresent()) {
+        if (BoundExecutor.isExpired(snapshot)) {
             throw new DeadlineExceededException(DeadlineExceededException.Stage.EXECUTOR);
         }
     }
@@ -82,7 +83,8 @@ final class BoundExecutorService implements ExecutorService, ModeExecutor {
 
     @Override
     public void execute(Runnable task) {
-        delegate.execute(captured().wrap(task));
+        ContextSnapshot snapshot = captured();
+        delegate.execute(BoundExecutor.handingOverExpired(snapshot, snapshot.wrap(task)));
     }
 
     @Override

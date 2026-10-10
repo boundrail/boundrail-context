@@ -357,7 +357,7 @@ if one is needed, is added in the green step of the first task whose test needs 
   - Completes: EXE-08 (`submit`, `invokeAll`, `invokeAny`; decorated executors still run expired tasks); IT-3.7 (with EXE-01, EXE-02,
     EXE-04, POL-04).
   - Verify: Unit `BoundExecutorsTest` and `ExecutorModeTest`; IT+.
-- [ ] T013 [US3] Expired tasks passed to `execute` go to the thread's `UncaughtExceptionHandler`.
+- [x] T013 [US3] Expired tasks passed to `execute` go to the thread's `UncaughtExceptionHandler`.
   - Red, in `coretest/BoundExecutorsTest.java`:
     - `EXE-08 an expired task passed to execute is not run, its exception goes to the current thread's UncaughtExceptionHandler, and execute
       returns normally`: for `attached(Executor)` and `attached(ExecutorService)`, with a pool thread whose handler records; the handler
