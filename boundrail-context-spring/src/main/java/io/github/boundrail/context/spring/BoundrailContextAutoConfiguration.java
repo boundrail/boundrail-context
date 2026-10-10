@@ -207,14 +207,20 @@ public class BoundrailContextAutoConfiguration {
     @ConditionalOnClass({ClientHttpRequestInterceptor.class, RestClientCustomizer.class, RestTemplateCustomizer.class})
     static class ClientConfiguration {
 
+        /** The timer that stops calls whose deadline runs out (DL-07); one per context, shut down when it closes (RT-09). */
+        @Bean(destroyMethod = "close")
+        DeadlineTimer boundrailDeadlineTimer() {
+            return new DeadlineTimer();
+        }
+
         @Bean
         @Lazy(false)
         RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties) {
+                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer) {
             return builder -> builder.requestInterceptors(interceptors -> {
                 if (interceptors.stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     interceptors.add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength()));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer));
                 }
             });
         }
@@ -222,11 +228,11 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         @Lazy(false)
         RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties) {
+                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer) {
             return restTemplate -> {
                 if (restTemplate.getInterceptors().stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength()));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer));
                 }
             };
         }

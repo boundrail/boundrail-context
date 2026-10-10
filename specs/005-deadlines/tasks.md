@@ -265,7 +265,7 @@ if one is needed, is added in the green step of the first task whose test needs 
     bean; the `BoundrailClients` Javadoc note is part of T011's Javadoc (TDD exception row).
   - Completes: DL-08 (registration).
   - Verify: Unit `DeadlineExceptionMappingTest`; IT-3.3.
-- [ ] T010 [US2] Cap the response timeout on the JDK `HttpClient` factory until the response headers arrive (option A); enable IT-3.2.
+- [x] T010 [US2] Cap the response timeout on the JDK `HttpClient` factory until the response headers arrive (option A); enable IT-3.2.
   - Red:
     - in `springtest/DeadlineTimeoutTest.java` (auto-configured builder with `spring.http.clients.imperative.factory=jdk`; `RecordingServer`
       with a delayed response, and one that sends its headers at once and its body later, added to `support/RecordingServer.java`):

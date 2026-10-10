@@ -77,14 +77,27 @@ class DeadlinePropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M4")
     @DisplayName("IT-3.2 Slow external call fails fast")
-    void it32SlowExternalCallFailsFast() {
+    void it32SlowExternalCallFailsFast(Topology.Running topology) {
         // IT-3.2: Given a billing client for partner, declared `external()` and built on the JDK `HttpClient` request factory with a
         // configured read timeout of 10s, when a trusted caller sends `Boundrail-Deadline-Ms: 500` to a billing handler that calls partner's
         // endpoint that sleeps for 5s, then the call fails with `DeadlineExceededException` (stage `TIMEOUT`) no later than the budget
         // remaining when it was sent plus 200ms, partner receives no `Boundrail-Deadline-Ms` header, and billing responds with 504.
         // *(DL-05, DL-07, DL-08, OUT-04)*
+        String marker = UUID.randomUUID().toString();
+        // A trusted caller: the test's own client, with the test peer header (TEST-01).
+        RestClient billing = RestClient.builder().baseUrl(topology.uri(Service.BILLING).toString())
+                .apply(TestInboundTrustVerifier.peer()).build();
+
+        int status = billing.get().uri("/call-partner/slow").header(EdgeApp.MARKER, marker).header("Boundrail-Deadline-Ms", "500")
+                .exchange((request, response) -> response.getStatusCode().value());
+
+        assertThat(status).isEqualTo(504);
+        Map<String, String> call = observed(topology, "billing-partner-call", marker);
+        assertThat(call).containsEntry("stage", "TIMEOUT");
+        assertThat(Long.parseLong(call.get("elapsed-nanos"))).as("no later than the remaining time plus 200ms")
+                .isLessThanOrEqualTo(Long.parseLong(call.get("remaining-nanos")) + 200_000_000L);
+        assertThat(observed(topology, "partner", marker)).doesNotContainKey("boundrail-deadline-ms");
     }
 
     @Test

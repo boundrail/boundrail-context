@@ -24,4 +24,12 @@ public class PartnerApp {
         observed.record("partner", ObservedContext.ping(headers));
         return "partner";
     }
+
+    /** Records its headers, then sleeps 5s before answering (IT-3.2). */
+    @GetMapping("/slow")
+    String slow(@RequestHeader HttpHeaders headers) throws InterruptedException {
+        observed.record("partner", ObservedContext.ping(headers));
+        Thread.sleep(5_000);
+        return "partner";
+    }
 }
