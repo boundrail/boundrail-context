@@ -187,8 +187,8 @@ the interceptor SHALL throw `DeadlineExceededException` (stage `TIMEOUT`), with 
 thread, or arrive, after the interceptor returns or throws. A timeout from the client's own, shorter configuration SHALL propagate unchanged, and so
 SHALL a timeout while reading the response body, which happens after the interceptor has returned (DESIGN D57). Stated limitations: an application
 interrupt that arrives at the moment the timer fires is cleared too; an interrupt already set before the call is never cleared, so the JDK client
-fails at once and the interceptor rethrows its exception unchangedA call made while or after its application context closes, when the timer can no
-longer be armed, SHALL run without the cap; DL-05 and DL-06 still apply (DESIGN D51). .
+fails at once and the interceptor rethrows its exception unchanged. A call made while or after its application context closes, when the timer can no
+longer be armed, SHALL run without the cap; DL-05 and DL-06 still apply (DESIGN D51).
 
 v0.1 SHALL support the JDK `HttpClient`-based request factory. The interceptor SHALL arm its timer for every client; the call is cut off where
 the request factory honours interrupts: the JDK one; Jetty and Reactor Netty (Jetty only gives up the wait); and the Simple and Apache

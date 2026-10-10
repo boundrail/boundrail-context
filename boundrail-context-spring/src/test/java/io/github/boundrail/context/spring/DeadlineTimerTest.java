@@ -140,6 +140,17 @@ class DeadlineTimerTest {
     }
 
     @Test
+    @DisplayName("DL-07 a call made after the timer has shut down runs without the cap")
+    void aCallMadeAfterTheTimerHasShutDownRunsWithoutTheCap() throws IOException {
+        MockClientHttpResponse response = new MockClientHttpResponse(new byte[0], HttpStatus.OK);
+        timer.close();
+
+        ClientHttpResponse returned = execute(Duration.ofSeconds(30), (request, body) -> response);
+
+        assertThat(returned).as("the execution's response, not RejectedExecutionException").isSameAs(response);
+    }
+
+    @Test
     @DisplayName("DL-07 the scheduler is a bean of the context and stops when it closes")
     void theSchedulerIsABeanOfTheContextAndStopsWhenItCloses() {
         AtomicReference<DeadlineTimer> bean = new AtomicReference<>();

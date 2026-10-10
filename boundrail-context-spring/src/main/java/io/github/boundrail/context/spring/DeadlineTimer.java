@@ -3,6 +3,7 @@ package io.github.boundrail.context.spring;
 import io.github.boundrail.context.DeadlineExceededException;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -33,7 +34,7 @@ final class DeadlineTimer implements AutoCloseable {
      * {@code execute} returns or throws, the timer is disarmed and an interrupt it delivered is cleared, so none remains or arrives later. A
      * response is returned even if the timer fired as it arrived. An {@code IOException} or {@code RuntimeException} thrown after the timer
      * fired becomes {@code DeadlineExceededException} with stage {@code TIMEOUT} and that cause; before it fired, it propagates unchanged.
-     * If the calling thread is already interrupted, executes the request without a timer.
+     * If the calling thread is already interrupted, or the timer has shut down with its context, executes the request without a timer.
      */
     ClientHttpResponse execute(Duration remaining, HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
             throws IOException {
@@ -42,7 +43,12 @@ final class DeadlineTimer implements AutoCloseable {
             return execution.execute(request, body);
         }
         Armed armed = new Armed(Thread.currentThread());
-        armed.timer = scheduler.schedule(armed::fire, remaining.toNanos(), TimeUnit.NANOSECONDS);
+        try {
+            armed.timer = scheduler.schedule(armed::fire, remaining.toNanos(), TimeUnit.NANOSECONDS);
+        } catch (RejectedExecutionException e) {
+            // The context is closing or closed: the call runs without the cap; DL-05 and DL-06 still applied (DL-07, D51).
+            return execution.execute(request, body);
+        }
         try {
             return execution.execute(request, body);
         } catch (IOException | RuntimeException e) {
