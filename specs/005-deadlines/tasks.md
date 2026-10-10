@@ -306,7 +306,7 @@ if one is needed, is added in the green step of the first task whose test needs 
   - Green: `DeadlineTimer.execute` calls the execution directly when the scheduler is shut down or rejects the task.
   - Completes: DL-07 (after context close; D51).
   - Verify: Unit `DeadlineTimerTest`.
-- [ ] T011 [US2] Startup WARN for other request factories; the `BoundrailClients` Javadoc.
+- [x] T011 [US2] Startup WARN for other request factories; the `BoundrailClients` Javadoc.
   - Red, in `springtest/RequestFactoryCheckTest.java` (`ApplicationContextRunner` with Boot's HTTP client and `RestClient` auto-configurations;
     `OutputCaptureExtension`):
     - `DL-07 one WARN is logged at startup when Boot's auto-configured request factory is not the JDK HttpClient one, and DL-05 and DL-06

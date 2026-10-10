@@ -23,6 +23,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.restclient.RestClientCustomizer;
 import org.springframework.boot.restclient.RestTemplateCustomizer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -206,6 +207,18 @@ public class BoundrailContextAutoConfiguration {
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass({ClientHttpRequestInterceptor.class, RestClientCustomizer.class, RestTemplateCustomizer.class})
     static class ClientConfiguration {
+
+        /** Warns once at startup when Boot's auto-configured request factory is not the JDK {@code HttpClient} one (DL-07). */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnClass(ClientHttpRequestFactoryBuilder.class)
+        static class RequestFactoryCheckConfiguration {
+
+            @Bean
+            @Lazy(false)
+            RequestFactoryCheck boundrailRequestFactoryCheck(ObjectProvider<ClientHttpRequestFactoryBuilder<?>> builders) {
+                return new RequestFactoryCheck(builders.getIfAvailable(), LogFactory.getLog(RequestFactoryCheck.class));
+            }
+        }
 
         /** The timer that stops calls whose deadline runs out (DL-07); one per context, shut down when it closes (RT-09). */
         @Bean(destroyMethod = "close")
