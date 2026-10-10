@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -131,6 +133,82 @@ class InboundDeadlineTest {
                 .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "boundrail.deadline"));
         assertThat(violations).extracting(Violation::kind, Violation::key)
                 .containsExactly(tuple(Violation.Kind.UNTRUSTED_HEADER, "boundrail.deadline"));
+    }
+
+    /** The deadline the chain found for a trusted request with the given headers, and the violations reported for that request. */
+    private record Result(Optional<Deadline> deadline, List<Violation> violations) {
+    }
+
+    private Result trusted(Consumer<MockHttpServletRequest> headers, String... properties) {
+        violations.clear();
+        Optional<Deadline> deadline = deadline(true, headers, properties);
+        return new Result(deadline, List.copyOf(violations));
+    }
+
+    /** Asserts that the 500ms default is bound. */
+    private static void assertDefaultBound(Optional<Deadline> deadline) {
+        assertThat(deadline).as("default-inbound applies").hasValueSatisfying(bound -> assertThat(bound.remaining())
+                .isGreaterThan(Duration.ofMillis(400))
+                .isLessThanOrEqualTo(Duration.ofMillis(500)));
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"abc", "-1", "+5", "1.5", "", " 5", "5 ", "\uFF11\uFF12"})
+    @DisplayName("DL-03 a trusted value that is not one or more ASCII digits binds nothing, is reported once as INVALID_VALUE, and default-inbound applies")
+    void aTrustedValueThatIsNotAsciiDigitsIsReportedAsInvalidValue(String value) {
+        Result withDefault = trusted(deadlineHeader(value), "boundrail.context.deadline.default-inbound=500ms");
+        Result withoutDefault = trusted(deadlineHeader(value));
+
+        assertDefaultBound(withDefault.deadline());
+        assertThat(withoutDefault.deadline()).as("without a default nothing is bound").isEmpty();
+        for (Result result : List.of(withDefault, withoutDefault)) {
+            assertThat(result.violations()).extracting(Violation::kind, Violation::key)
+                    .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "boundrail.deadline"));
+            if (!value.isBlank()) {
+                assertThat(result.violations().getFirst().toString()).as("DIAG-09: without the value").doesNotContain(value.strip());
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("DL-03 a trusted header on more than one line binds nothing, is reported once as INVALID_VALUE, and default-inbound applies")
+    void aTrustedHeaderOnMoreThanOneLineIsReportedOnceAsInvalidValue() {
+        Consumer<MockHttpServletRequest> twoLines = request -> {
+            request.addHeader("Boundrail-Deadline-Ms", "5000");
+            request.addHeader("Boundrail-Deadline-Ms", "6000");
+        };
+        Consumer<MockHttpServletRequest> oneLineTooLong = request -> {
+            request.addHeader("Boundrail-Deadline-Ms", "5000");
+            request.addHeader("Boundrail-Deadline-Ms", "1".repeat(300));
+        };
+
+        Result repeated = trusted(twoLines, "boundrail.context.deadline.default-inbound=500ms");
+        Result repeatedWithoutDefault = trusted(twoLines);
+        Result repeatedTooLong = trusted(oneLineTooLong, "boundrail.context.deadline.default-inbound=500ms");
+
+        assertDefaultBound(repeated.deadline());
+        assertThat(repeatedWithoutDefault.deadline()).as("without a default nothing is bound").isEmpty();
+        assertDefaultBound(repeatedTooLong.deadline());
+        for (Result result : List.of(repeated, repeatedWithoutDefault, repeatedTooLong)) {
+            assertThat(result.violations()).as("one INVALID_VALUE and no OVERSIZED_VALUE (G6)").extracting(Violation::kind, Violation::key)
+                    .containsExactly(tuple(Violation.Kind.INVALID_VALUE, "boundrail.deadline"));
+        }
+    }
+
+    @Test
+    @DisplayName("DL-03 a trusted value longer than wire.max-value-length is reported as OVERSIZED_VALUE, and default-inbound applies")
+    void aTrustedValueLongerThanMaxValueLengthIsReportedAsOversizedValue() {
+        Result oversized = trusted(deadlineHeader("5000"), "boundrail.context.wire.max-value-length=3",
+                "boundrail.context.deadline.default-inbound=500ms");
+        Result fits = trusted(deadlineHeader("500"), "boundrail.context.wire.max-value-length=3");
+
+        assertDefaultBound(oversized.deadline());
+        assertThat(oversized.violations()).extracting(Violation::kind, Violation::key)
+                .containsExactly(tuple(Violation.Kind.OVERSIZED_VALUE, "boundrail.deadline"));
+        assertThat(fits.deadline()).as("a value of max-value-length is bound").hasValueSatisfying(bound -> assertThat(bound.remaining())
+                .isGreaterThan(Duration.ofMillis(400))
+                .isLessThanOrEqualTo(Duration.ofMillis(500)));
+        assertThat(fits.violations()).isEmpty();
     }
 
     /** Returns a {@code DeferredResult} the test completes. */

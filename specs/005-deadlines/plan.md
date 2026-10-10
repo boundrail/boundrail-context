@@ -379,7 +379,9 @@ integration-tests/src/test/java/io/github/boundrail/context/it/
 - **Existing tests that M4 contradicts.** `IN-02 a trusted request binds no deadline and no authority from headers` and `IN-02 a repeated
   Boundrail-Deadline-Ms on a trusted request is skipped, not reported` (`ContextInboundFilterTest`), and `OUT-04 an internal call writes no
   Authorization and no Boundrail-Deadline-Ms` (`ContextClientInterceptorTest`) encode M2's "not before M4". T004, T005 and T007 narrow them
-  to their M2 part, and the deadline part moves into those tasks' red tests.
+  to their M2 part, and the deadline part moves into those tasks' red tests. In `WIRE-04 a trusted value longer than max-value-length is not
+  bound and is reported as OVERSIZED_VALUE` (`ContextInboundFilterTest`), T005 changes the deadline assertion from "skipped, no violation"
+  to one `OVERSIZED_VALUE` for `boundrail.deadline`.
 - **Shared topology.** New edge executor beans appear in IT-1.3 – IT-1.5's audit output as covered, not as gaps; T012 re-runs
   ContextPropagationIT.
 

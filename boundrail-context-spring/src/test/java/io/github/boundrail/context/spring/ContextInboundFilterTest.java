@@ -351,24 +351,6 @@ class ContextInboundFilterTest {
     }
 
     @Test
-    @DisplayName("IN-02 a repeated Boundrail-Deadline-Ms on a trusted request is skipped, not reported")
-    void aRepeatedBoundrailDeadlineMsOnATrustedRequestIsSkippedNotReported() {
-        List<Violation> violations = new CopyOnWriteArrayList<>();
-        runner.withClassLoader(new FilteredClassLoader(MeterRegistry.class))
-                .withBean(InboundTrustVerifier.class, () -> TRUSTING)
-                .withBean(ViolationReporter.Counter.class, () -> violations::add)
-                .run(context -> {
-                    Optional<?> deadline = observe(inboundRegistration(context).getFilter(), BuiltInKeys.DEADLINE, request -> {
-                        request.addHeader("Boundrail-Deadline-Ms", "5000");
-                        request.addHeader("Boundrail-Deadline-Ms", "6000");
-                    });
-
-                    assertThat(deadline).isEmpty();
-                    assertThat(violations).isEmpty();
-                });
-    }
-
-    @Test
     @DisplayName("IN-02 one UNTRUSTED_HEADER violation is reported per policy wire header present")
     void oneUntrustedHeaderViolationIsReportedPerPolicyWireHeaderPresent() {
         Filtered filtered = filterUntrusted(POLICY, request -> {
@@ -496,7 +478,9 @@ class ContextInboundFilterTest {
         assertThat(initiator.observed().initiator()).as("checked before Initiator.of").isEmpty();
         assertThat(initiator.violations()).containsExactly(new Violation(Violation.Kind.OVERSIZED_VALUE, "boundrail.initiator",
                 INTERNAL_CALL, Optional.empty(), Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
-        assertThat(deadline.violations()).as("the deadline is skipped before the length check").isEmpty();
+        assertThat(deadline.violations()).as("the deadline is length-checked too (DL-03)").containsExactly(new Violation(
+                Violation.Kind.OVERSIZED_VALUE, "boundrail.deadline", INTERNAL_CALL, Optional.empty(), Thread.currentThread().getName(),
+                Optional.empty(), Optional.empty()));
         assertThat(output.getOut()).contains("OVERSIZED_VALUE").contains("key tenant").doesNotContain("acme-")
                 .doesNotContain("qqqqqqqqqq");
     }

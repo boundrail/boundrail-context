@@ -156,7 +156,7 @@ if one is needed, is added in the green step of the first task whose test needs 
       request, and the trusted test client.
   - Completes: DL-03 (valid header, cap, default, untrusted, scope); IT-3.5; IT-3.6.
   - Verify: Unit `InboundDeadlineTest` and `ContextInboundFilterTest`; IT.
-- [ ] T005 [US1] Invalid, repeated and oversized trusted deadlines.
+- [x] T005 [US1] Invalid, repeated and oversized trusted deadlines.
   - Red, in `springtest/InboundDeadlineTest.java`:
     - `DL-03 a trusted value that is not one or more ASCII digits binds nothing, is reported once as INVALID_VALUE, and default-inbound
       applies` (parametrized): `abc`, `-1`, `+5`, `1.5`, ``, ` 5`, `5 `, `１２` (full-width digits); with `default-inbound=500ms` the default is
@@ -167,7 +167,9 @@ if one is needed, is added in the green step of the first task whose test needs 
     - `DL-03 a trusted value longer than wire.max-value-length is reported as OVERSIZED_VALUE, and default-inbound applies`: with
       `max-value-length=3`, `5000` gives one `OVERSIZED_VALUE` and no `INVALID_VALUE`, and `500` is bound;
     - replace `IN-02 a repeated Boundrail-Deadline-Ms on a trusted request is skipped, not reported` in `ContextInboundFilterTest`, which M4
-      contradicts, by the repeated-line test above.
+      contradicts, by the repeated-line test above;
+    - in `ContextInboundFilterTest`'s `WIRE-04 a trusted value longer than max-value-length is not bound and is reported as OVERSIZED_VALUE`,
+      change the deadline assertion from "skipped, no violation" to one `OVERSIZED_VALUE` for `boundrail.deadline` (M4 contradicts it).
   - Green: the invalid-value and repetition paths fall back to the default ([plan.md](plan.md#spring-wiring)).
   - Completes: DL-03 (invalid, repeated, oversized).
   - Verify: Unit `InboundDeadlineTest` and `ContextInboundFilterTest`.

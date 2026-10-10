@@ -148,16 +148,32 @@ final class ContextInboundFilter extends OncePerRequestFilter {
 
     /**
      * {@return the budget of a trusted request's {@code Boundrail-Deadline-Ms}, if it is carried on one header line and is one or more ASCII
-     * digits, capped at {@code max-inbound}; a value too large for a {@code long} is {@code max-inbound}} (DL-03)
+     * digits, capped at {@code max-inbound}; a value too large for a {@code long} is {@code max-inbound}} A header on several lines is
+     * reported once as {@code INVALID_VALUE}, with no line length-checked; otherwise a value longer than {@code maxValueLength} is reported
+     * as {@code OVERSIZED_VALUE} (WIRE-04), and a value that is not digits as {@code INVALID_VALUE}. Each gives no budget, so
+     * {@code default-inbound} applies (DL-03, DIAG-09: the value is never reported).
      */
     private Optional<Duration> trustedBudget(HttpServletRequest request) {
         List<String> values = policy.wireName(BuiltInKeys.DEADLINE)
                 .<List<String>>map(name -> Collections.list(request.getHeaders(name)))
                 .orElse(List.of());
-        if (values.size() != 1 || !isDigits(values.getFirst())) {
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+        // As IN-02 does for every key: several lines are one INVALID_VALUE, and no line is length-checked (D57).
+        if (values.size() > 1) {
+            reportDeadline(Violation.Kind.INVALID_VALUE);
             return Optional.empty();
         }
         String value = values.getFirst();
+        if (value.length() > maxValueLength) {
+            reportDeadline(Violation.Kind.OVERSIZED_VALUE);
+            return Optional.empty();
+        }
+        if (!isDigits(value)) {
+            reportDeadline(Violation.Kind.INVALID_VALUE);
+            return Optional.empty();
+        }
         // 18 digits always fit in a long. A practical bound: a longer value is at least 10^18 ms, about 31.7 million years, so it
         // exceeds any realistic max-inbound and is capped to it.
         if (value.length() > 18) {
@@ -165,6 +181,10 @@ final class ContextInboundFilter extends OncePerRequestFilter {
         }
         Duration requested = Duration.ofMillis(Long.parseLong(value));
         return Optional.of(requested.compareTo(maxInbound) < 0 ? requested : maxInbound);
+    }
+
+    private void reportDeadline(Violation.Kind kind) {
+        reporter.report(reporter.violation(kind, BuiltInKeys.DEADLINE.name(), Boundary.INTERNAL_CALL, Optional.empty()));
     }
 
     private static boolean isDigits(String value) {
