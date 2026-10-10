@@ -7,11 +7,14 @@ import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.ContextViolationException;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.Deadlines;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.OutboundRequest;
 import io.github.boundrail.context.Violation;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.http.HttpRequest;
@@ -40,7 +43,7 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
     /**
      * Classifies the request URI and the client's declaration, if any (OUT-02), checks the required keys (POL-08), writes the wire headers
      * of the bound keys that propagate to the boundary (OUT-04), strips forbidden headers from an external or unknown request (WIRE-07),
-     * then executes the request once.
+     * writes the remaining time of a bound deadline to an internal request (DL-05), then executes the request once.
      */
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
@@ -52,8 +55,43 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         writeHeaders(request, policy.filter(Context.capture(), boundary), boundary, destination);
         if (boundary == Boundary.EXTERNAL_CALL) {
             stripForbiddenHeaders(request, destination);
+        } else {
+            Deadlines.current().ifPresent(deadline -> writeDeadline(request, deadline, destination));
         }
         return execution.execute(request, body);
+    }
+
+    /**
+     * Sets {@code Boundrail-Deadline-Ms} on an internal call to the deadline's remaining time in whole milliseconds, read last, or to an
+     * application-set value that is one header value of ASCII digits and smaller (DL-05, an exception to OUT-04). A value longer than
+     * {@code maxValueLength} is not written, any application-set value is removed too, and one {@code OVERSIZED_VALUE} is reported, so the
+     * receiver never gets a longer budget than the sender's (WIRE-04, DESIGN D50, D57).
+     */
+    private void writeDeadline(HttpRequest request, Deadline deadline, Destination destination) {
+        String wireName = policy.wireName(BuiltInKeys.DEADLINE).orElseThrow();
+        List<String> application = request.getHeaders().getOrEmpty(wireName);
+        String value = headerValue(deadline.remaining());
+        if (application.size() == 1 && ContextInboundFilter.isDigits(application.getFirst()) && isSmaller(application.getFirst(), value)) {
+            value = application.getFirst();
+        }
+        if (value.length() > maxValueLength) {
+            request.getHeaders().remove(wireName);
+            reporter.report(reporter.violation(Violation.Kind.OVERSIZED_VALUE, BuiltInKeys.DEADLINE.name(), Boundary.INTERNAL_CALL,
+                    Optional.of(destination)));
+            return;
+        }
+        request.getHeaders().set(wireName, value);
+    }
+
+    /** {@return the remaining time in whole milliseconds, rounded down} (DL-05) */
+    static String headerValue(Duration remaining) {
+        return Long.toString(remaining.toMillis());
+    }
+
+    /** {@return whether the digits {@code candidate} are a smaller number than the digits {@code remaining}} */
+    private static boolean isSmaller(String candidate, String remaining) {
+        String digits = candidate.replaceFirst("^0+(?=.)", "");
+        return digits.length() != remaining.length() ? digits.length() < remaining.length() : digits.compareTo(remaining) < 0;
     }
 
     /**

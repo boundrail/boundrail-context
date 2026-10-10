@@ -46,7 +46,8 @@ class DeadlinePropagationIT {
         edge = topology.startEdge("boundrail.context.deadline.default-inbound=500ms",
                 "boundrail.context.executors.modes.attachedExecutor=attached");
         // Warm-up: class loading and the first JWT verification must not eat the timed requests' budget.
-        pingEdge(topology, UUID.randomUUID().toString());
+        callEdge(topology, "/ping", UUID.randomUUID().toString());
+        callEdge(topology, "/deadline/chain", UUID.randomUUID().toString());
     }
 
     @AfterAll
@@ -57,12 +58,22 @@ class DeadlinePropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M4")
     @DisplayName("IT-3.1 Budget shrinks across hops")
-    void it31BudgetShrinksAcrossHops() {
+    void it31BudgetShrinksAcrossHops(Topology.Running topology) throws Exception {
         // IT-3.1: Given a public request authenticated as alice, when edge calls orders through an internal client and orders calls billing
         // through an internal client, then the remaining budgets that edge, orders and billing record on arrival satisfy
         // `500ms ≥ edge > orders > billing > 0`. *(DL-03, DL-05)*
+        String marker = UUID.randomUUID().toString();
+
+        int status = callEdge(topology, "/deadline/chain", marker);
+
+        assertThat(status).isEqualTo(200);
+        long edgeNanos = remainingNanos(topology, "edge", marker);
+        long ordersNanos = remainingNanos(topology, "orders", marker);
+        long billingNanos = remainingNanos(topology, "billing", marker);
+        assertThat(edgeNanos).as("edge").isLessThanOrEqualTo(500_000_000L).isGreaterThan(ordersNanos);
+        assertThat(ordersNanos).as("orders").isGreaterThan(billingNanos);
+        assertThat(billingNanos).as("billing").isPositive();
     }
 
     @Test
@@ -165,9 +176,9 @@ class DeadlinePropagationIT {
         // `initiator=user:alice`. *(KAF-01, KAF-02, KAF-04)*
     }
 
-    /** Calls this class's edge {@code /ping} as alice with the marker, and returns the status. */
-    private static int pingEdge(Topology.Running topology, String marker) throws Exception {
-        return HTTP.send(HttpRequest.newBuilder(topology.uri(edge).resolve("/ping"))
+    /** Calls an endpoint of this class's edge as alice with the marker, and returns the status. */
+    private static int callEdge(Topology.Running topology, String path, String marker) throws Exception {
+        return HTTP.send(HttpRequest.newBuilder(topology.uri(edge).resolve(path))
                         .header("Authorization", "Bearer " + topology.jwts().alice())
                         .header(EdgeApp.MARKER, marker)
                         .build(),
@@ -181,6 +192,13 @@ class DeadlinePropagationIT {
                 .counters().stream()
                 .mapToDouble(Counter::count)
                 .sum();
+    }
+
+    /** The remaining nanoseconds a service recorded on arrival of the request with this marker. */
+    private static long remainingNanos(Topology.Running topology, String service, String marker) {
+        Map<String, String> seen = observed(topology, service, marker);
+        assertThat(seen).as("%s recorded a deadline", service).containsKey(ObservedContext.DEADLINE_REMAINING_NANOS);
+        return Long.parseLong(seen.get(ObservedContext.DEADLINE_REMAINING_NANOS));
     }
 
     /** The single request a service observed with this marker. */

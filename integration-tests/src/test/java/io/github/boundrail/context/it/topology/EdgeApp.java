@@ -170,6 +170,16 @@ public class EdgeApp {
         return "edge";
     }
 
+    /** Records on arrival, then calls orders' {@code /call-billing} through the internal client with the same marker (IT-3.1). */
+    @GetMapping("/deadline/chain")
+    String deadlineChain(@RequestHeader HttpHeaders headers) {
+        observed.record("edge", ObservedContext.ping(headers));
+        internalOrders.get().uri(topology.uri(Service.ORDERS).resolve("/call-billing"))
+                .header(MARKER, headers.getFirst(MARKER))
+                .retrieve().toBodilessEntity();
+        return "edge";
+    }
+
     /** Calls orders through an internal client, then partner through an {@code external()} client. */
     @GetMapping("/call-partner/external")
     String callPartnerExternal(@RequestParam("marker") String marker) {

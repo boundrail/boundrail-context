@@ -146,8 +146,8 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                         context.getBeanFactory().registerSingleton("meterRegistry", new SimpleMeterRegistry());
                         // Every service trusts callers whose client applies TestInboundTrustVerifier.peer() (TEST-01).
                         context.getBeanFactory().registerSingleton("inboundTrustVerifier", new TestInboundTrustVerifier());
-                        if (service == Service.EDGE) {
-                            // Edge resolves the other services' URIs per request: they start after it, on random ports.
+                        if (service == Service.EDGE || service == Service.ORDERS || service == Service.BILLING) {
+                            // These services resolve the other services' URIs per request: those start later, on random ports.
                             context.getBeanFactory().registerSingleton("topology", this);
                         }
                     })

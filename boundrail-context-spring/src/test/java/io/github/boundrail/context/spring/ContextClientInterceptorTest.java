@@ -127,17 +127,13 @@ class ContextClientInterceptorTest {
     }
 
     @Test
-    @DisplayName("OUT-04 an internal call writes no Authorization and no Boundrail-Deadline-Ms")
-    void anInternalCallWritesNoAuthorizationAndNoBoundrailDeadlineMs() {
+    @DisplayName("OUT-04 an internal call writes no Authorization")
+    void anInternalCallWritesNoAuthorization() {
         RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
-                Context.with(TENANT, "acme")
-                        .with(BuiltInKeys.AUTHORITY, Authority.of("alice", "secret-token"))
-                        .with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofMinutes(1))),
-                NO_HEADERS);
+                Context.with(TENANT, "acme").with(BuiltInKeys.AUTHORITY, Authority.of("alice", "secret-token")), NO_HEADERS);
 
         assertThat(header(request, "Tenant-Id")).containsExactly("acme");
         assertThat(header(request, "Authorization")).isEmpty();
-        assertThat(header(request, "Boundrail-Deadline-Ms")).isEmpty();
     }
 
     @Test

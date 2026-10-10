@@ -194,7 +194,8 @@ final class ContextInboundFilter extends OncePerRequestFilter {
         reporter.report(reporter.violation(kind, BuiltInKeys.DEADLINE.name(), Boundary.INTERNAL_CALL, Optional.empty()));
     }
 
-    private static boolean isDigits(String value) {
+    /** {@return whether the value is one or more ASCII digits} (DL-03) */
+    static boolean isDigits(String value) {
         if (value.isEmpty()) {
             return false;
         }

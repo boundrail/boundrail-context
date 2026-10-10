@@ -188,7 +188,7 @@ if one is needed, is added in the green step of the first task whose test needs 
   - Green: the expiry check after binding, in the initial-dispatch branch of `ContextInboundFilter` ([plan.md](plan.md#spring-wiring)).
   - Completes: DL-04; IT-3.4.
   - Verify: Unit `InboundDeadlineTest`; IT.
-- [ ] T007 [US1] Remaining time on internal calls; enable IT-3.1.
+- [x] T007 [US1] Remaining time on internal calls; enable IT-3.1.
   - Red:
     - in `springtest/OutboundDeadlineTest.java` (`RecordingServer`, a client from the auto-configured `RestClient.Builder`):
       - `DL-05 an internal call with a deadline bound carries Boundrail-Deadline-Ms with the remaining milliseconds, never more than the
