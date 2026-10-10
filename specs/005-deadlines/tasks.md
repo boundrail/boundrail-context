@@ -299,6 +299,13 @@ if one is needed, is added in the green step of the first task whose test needs 
     code: partner `/slow`, billing `/call-partner/slow` with an `external()` client, and billing's `spring.http.clients.*` properties in `Topology`.
   - Completes: DL-07 (capping, `TIMEOUT`); IT-3.2 (with DL-05, DL-08 and OUT-04); SC-002.
   - Verify: Unit `DeadlineTimeoutTest`; IT+.
+- [ ] T010a [US2] Run uncapped when the timer is shut down (T010 review follow-up).
+  - Red, in `springtest/DeadlineTimerTest.java`: `DL-07 a call made after the timer has shut down runs without the cap`: after `close()`,
+    `execute` with a remaining time returns the execution's response instead of throwing `RejectedExecutionException` (red: T010 schedules
+    on the shut-down scheduler).
+  - Green: `DeadlineTimer.execute` calls the execution directly when the scheduler is shut down or rejects the task.
+  - Completes: DL-07 (after context close; D51).
+  - Verify: Unit `DeadlineTimerTest`.
 - [ ] T011 [US2] Startup WARN for other request factories; the `BoundrailClients` Javadoc.
   - Red, in `springtest/RequestFactoryCheckTest.java` (`ApplicationContextRunner` with Boot's HTTP client and `RestClient` auto-configurations;
     `OutputCaptureExtension`):
