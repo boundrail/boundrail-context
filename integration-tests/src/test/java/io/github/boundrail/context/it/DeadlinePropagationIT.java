@@ -174,9 +174,8 @@ class DeadlinePropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M4")
     @DisplayName("IT-3.7 Attached versus detached executors")
-    void it37AttachedVersusDetachedExecutors() {
+    void it37AttachedVersusDetachedExecutors(Topology.Running topology) throws Exception {
         // IT-3.7: Within a public request authenticated as alice (tenant `acme`), which has edge's 500ms default deadline:
         // - a task on `attachedExecutor`, an edge `ThreadPoolTaskExecutor` bean configured with
         //   `executors.modes.attachedExecutor=attached`, observes the deadline;
@@ -185,6 +184,21 @@ class DeadlinePropagationIT {
         //   `ExecutorService`, while that thread is blocked until the deadline has expired, is not run, and its future's `get` throws
         //   `ExecutionException` whose cause is `DeadlineExceededException` (stage `EXECUTOR`).
         // *(EXE-01, EXE-02, EXE-04, EXE-08, POL-04)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(edge).resolve("/deadline/executors"))
+                        .header("Authorization", "Bearer " + topology.jwts().alice())
+                        .header(EdgeApp.MARKER, marker)
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).as("the stage of the ExecutionException's cause").isEqualTo("EXECUTOR");
+        assertThat(observed(topology, "edge-executors", marker))
+                .containsEntry("attached-deadline", "true")
+                .containsEntry("detached-deadline", "false")
+                .containsEntry("detached-tenant", "acme")
+                .containsEntry("bound-attached-ran", "false");
     }
 
     @Test

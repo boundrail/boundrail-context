@@ -334,7 +334,7 @@ if one is needed, is added in the green step of the first task whose test needs 
 
 **Independent Test**: IT-3.7 in the IT command.
 
-- [ ] T012 [US3] `BoundExecutors.attached` refuses expired tasks submitted with `submit`, `invokeAll` or `invokeAny`; enable IT-3.7.
+- [x] T012 [US3] `BoundExecutors.attached` refuses expired tasks submitted with `submit`, `invokeAll` or `invokeAny`; enable IT-3.7.
   - Red:
     - in `coretest/BoundExecutorsTest.java`:
       - `EXE-08 a task submitted to an attached executor service after its deadline has expired is not run, and its future fails with

@@ -72,6 +72,9 @@ public class EdgeApp {
     private final EdgeAsyncWork asyncWork;
     private final ExecutorService rawExecutor;
     private final ExecutorService boundExecutor;
+    private final ThreadPoolTaskExecutor taskExecutor;
+    private final ThreadPoolTaskExecutor attachedExecutor;
+    private final ExecutorService boundAttachedExecutor;
     private final RestClient internalOrders;
     private final RestClient externalPartner;
     private final RestClient undeclaredPartner;
@@ -81,8 +84,13 @@ public class EdgeApp {
      * clients apply {@code TestInboundTrustVerifier.peer()}, so partner never receives the test peer header.
      */
     public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients, EdgeAsyncWork asyncWork,
-            @Qualifier("rawExecutor") ExecutorService rawExecutor, @Qualifier("boundExecutor") ExecutorService boundExecutor) {
+            @Qualifier("rawExecutor") ExecutorService rawExecutor, @Qualifier("boundExecutor") ExecutorService boundExecutor,
+            @Qualifier("taskExecutor") ThreadPoolTaskExecutor taskExecutor, @Qualifier("attachedExecutor") ThreadPoolTaskExecutor attachedExecutor,
+            @Qualifier("boundAttachedExecutor") ExecutorService boundAttachedExecutor) {
         this.observed = observed;
+        this.taskExecutor = taskExecutor;
+        this.attachedExecutor = attachedExecutor;
+        this.boundAttachedExecutor = boundAttachedExecutor;
         this.topology = topology;
         this.asyncWork = asyncWork;
         this.rawExecutor = rawExecutor;
@@ -121,6 +129,28 @@ public class EdgeApp {
         AtomicInteger threads = new AtomicInteger();
         return BoundExecutors.detached(
                 Executors.newSingleThreadExecutor(task -> new Thread(task, "boundExecutor-" + threads.incrementAndGet())),
+                TopologyPolicy.policy());
+    }
+
+    /**
+     * A one-thread {@code ThreadPoolTaskExecutor} the library decorates; DeadlinePropagationIT's edge sets
+     * {@code executors.modes.attachedExecutor=attached} (IT-3.7), the shared edge leaves it detached.
+     */
+    @Bean
+    static ThreadPoolTaskExecutor attachedExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setThreadNamePrefix("attachedExecutor-");
+        return executor;
+    }
+
+    /** A one-thread {@code ExecutorService} wrapped by {@code BoundExecutors.attached} with the topology policy (IT-3.7). */
+    @Bean
+    static ExecutorService boundAttachedExecutor() {
+        AtomicInteger threads = new AtomicInteger();
+        return BoundExecutors.attached(
+                Executors.newSingleThreadExecutor(task -> new Thread(task, "boundAttachedExecutor-" + threads.incrementAndGet())),
                 TopologyPolicy.policy());
     }
 
@@ -189,6 +219,37 @@ public class EdgeApp {
             observed.record("edge-deadline", Map.of(MARKER.toLowerCase(Locale.ROOT), marker, "stage", e.stage().name()));
             throw e;
         }
+    }
+
+    /**
+     * Records under {@code edge-executors}, with the marker, whether a task on {@code attachedExecutor} saw a deadline, and what a task on
+     * {@code taskExecutor} saw; then blocks {@code boundAttachedExecutor}'s thread until the request's deadline has expired, submits a task
+     * behind it, and returns the stage of the {@code DeadlineExceededException} that caused its {@code ExecutionException} (IT-3.7).
+     */
+    @GetMapping("/deadline/executors")
+    String deadlineExecutors(@RequestHeader HttpHeaders headers) throws Exception {
+        Map<String, String> observation = new HashMap<>();
+        observation.put(MARKER.toLowerCase(Locale.ROOT), headers.getFirst(MARKER));
+        observation.put("attached-deadline", attachedExecutor.submit(() -> Deadlines.current().isPresent()).get(5, TimeUnit.SECONDS).toString());
+        observation.put("detached-deadline", taskExecutor.submit(() -> Deadlines.current().isPresent()).get(5, TimeUnit.SECONDS).toString());
+        observation.put("detached-tenant", taskExecutor.submit(() -> AppKeys.TENANT.find().orElse("-")).get(5, TimeUnit.SECONDS));
+        Deadline deadline = Deadlines.current().orElseThrow();
+        boundAttachedExecutor.submit(() -> {
+            Thread.sleep(deadline.remaining().plusMillis(20));
+            return null;
+        });
+        AtomicInteger ran = new AtomicInteger();
+        Future<?> refused = boundAttachedExecutor.submit(ran::incrementAndGet);
+        String stage;
+        try {
+            refused.get(5, TimeUnit.SECONDS);
+            stage = "none";
+        } catch (ExecutionException e) {
+            stage = e.getCause() instanceof DeadlineExceededException expired ? expired.stage().name() : e.getCause().toString();
+        }
+        observation.put("bound-attached-ran", Boolean.toString(ran.get() > 0));
+        observed.record("edge-executors", observation);
+        return stage;
     }
 
     /** Records on arrival, then calls orders' {@code /call-billing} through the internal client with the same marker (IT-3.1). */
