@@ -8,6 +8,7 @@ import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
 import io.github.boundrail.context.Deadlines;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.DestinationClassifier;
@@ -41,12 +42,17 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
     }
 
     /**
-     * Classifies the request URI and the client's declaration, if any (OUT-02), checks the required keys (POL-08), writes the wire headers
-     * of the bound keys that propagate to the boundary (OUT-04), strips forbidden headers from an external or unknown request (WIRE-07),
-     * writes the remaining time of a bound deadline to an internal request (DL-05), then executes the request once.
+     * Throws {@code DeadlineExceededException} with stage {@code BEFORE_SEND}, without sending, if the bound deadline has expired (DL-06).
+     * Otherwise classifies the request URI and the client's declaration, if any (OUT-02), checks the required keys (POL-08), writes the
+     * wire headers of the bound keys that propagate to the boundary (OUT-04), strips forbidden headers from an external or unknown request
+     * (WIRE-07), writes the remaining time of a bound deadline to an internal request (DL-05), then executes the request once.
      */
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
+        // DL-06: first, before the required-key check, so an expired call reports no violation and writes no header.
+        if (Deadlines.current().filter(Deadline::isExpired).isPresent()) {
+            throw new DeadlineExceededException(DeadlineExceededException.Stage.BEFORE_SEND);
+        }
         Optional<Destination> declared = Optional.ofNullable((Destination) request.getAttributes().get(BoundrailClients.DESTINATION_ATTRIBUTE));
         Destination destination = classifier.classify(new OutboundRequest(request.getURI(), declared));
         // DEST-03: UNKNOWN is treated exactly like EXTERNAL.

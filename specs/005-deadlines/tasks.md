@@ -226,7 +226,7 @@ if one is needed, is added in the green step of the first task whose test needs 
 
 **Independent Test**: IT-3.2 – IT-3.4 in the IT command (IT-3.4 enabled in T006).
 
-- [ ] T008 [US2] Fail fast before sending.
+- [x] T008 [US2] Fail fast before sending.
   - Red, in `springtest/OutboundDeadlineTest.java`:
     - `DL-06 an expired deadline throws DeadlineExceededException at BEFORE_SEND and the request is not sent, to any destination`: internal,
       external and unknown destinations; the `RecordingServer` records nothing; the exception reaches the caller unwrapped through
