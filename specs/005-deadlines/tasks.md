@@ -173,7 +173,7 @@ if one is needed, is added in the green step of the first task whose test needs 
   - Green: the invalid-value and repetition paths fall back to the default ([plan.md](plan.md#spring-wiring)).
   - Completes: DL-03 (invalid, repeated, oversized).
   - Verify: Unit `InboundDeadlineTest` and `ContextInboundFilterTest`.
-- [ ] T006 [US1] Expired on arrival; enable IT-3.4.
+- [x] T006 [US1] Expired on arrival; enable IT-3.4.
   - Red:
     - in `springtest/InboundDeadlineTest.java`:
       - `DL-04 a request whose deadline is already expired gets expired-status with an empty body, without sendError, and the chain is not

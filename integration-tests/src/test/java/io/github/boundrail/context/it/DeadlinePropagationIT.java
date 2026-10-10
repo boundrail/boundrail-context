@@ -86,11 +86,21 @@ class DeadlinePropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M4")
     @DisplayName("IT-3.4 Expired on arrival")
-    void it34ExpiredOnArrival() {
+    void it34ExpiredOnArrival(Topology.Running topology) {
         // IT-3.4: When a trusted caller sends `Boundrail-Deadline-Ms: 0` to orders, then orders responds with 504 and its handler is not
         // invoked. *(DL-04)*
+        String marker = UUID.randomUUID().toString();
+        // A trusted caller: the test's own client, with the test peer header (TEST-01).
+        RestClient orders = RestClient.builder().baseUrl(topology.uri(Service.ORDERS).toString())
+                .apply(TestInboundTrustVerifier.peer()).build();
+
+        int status = orders.get().uri("/ping").header(EdgeApp.MARKER, marker).header("Boundrail-Deadline-Ms", "0")
+                .exchange((request, response) -> response.getStatusCode().value());
+
+        assertThat(status).isEqualTo(504);
+        assertThat(topology.observed().of("orders")).as("orders' handler is not invoked")
+                .noneMatch(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))));
     }
 
     @Test

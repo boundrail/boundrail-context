@@ -18,6 +18,7 @@ import io.github.boundrail.context.Deadline;
 import io.github.boundrail.context.Violation;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.Filter;
+import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Duration;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +37,9 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -262,6 +266,80 @@ class InboundDeadlineTest {
             assertThat(interceptor.seen).as("the ASYNC dispatch sees the stored deadline")
                     .containsExactly(Optional.of(stored.find(BuiltInKeys.DEADLINE).orElseThrow()));
             assertThat(interceptor.seen.getFirst().orElseThrow()).isSameAs(stored.find(BuiltInKeys.DEADLINE).orElseThrow());
+        });
+    }
+
+    /** What a trusted request with the given headers produced: the response, and whether the servlet at the end of the chain ran. */
+    private record Answered(MockHttpServletResponse response, boolean chainRan) {
+    }
+
+    private Answered answer(Consumer<MockHttpServletRequest> headers, String... properties) {
+        AtomicReference<Answered> answered = new AtomicReference<>();
+        runner.withPropertyValues(properties).withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            headers.accept(request);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            AtomicBoolean chainRan = new AtomicBoolean();
+            HttpServlet servlet = new HttpServlet() {
+                @Override
+                protected void service(HttpServletRequest req, HttpServletResponse resp) {
+                    chainRan.set(true);
+                }
+            };
+            new MockFilterChain(servlet, inboundRegistration(context).getFilter()).doFilter(request, response);
+            answered.set(new Answered(response, chainRan.get()));
+        });
+        return answered.get();
+    }
+
+    @Test
+    @DisplayName("DL-04 a request whose deadline is already expired gets expired-status with an empty body, without sendError, and the chain is not invoked")
+    void aRequestWhoseDeadlineIsAlreadyExpiredGetsExpiredStatus() {
+        Answered answered = answer(deadlineHeader("0"));
+
+        assertThat(answered.response().getStatus()).isEqualTo(504);
+        assertThat(answered.response().getContentLength()).isZero();
+        assertThat(answered.response().getContentAsByteArray()).isEmpty();
+        assertThat(answered.response().getErrorMessage()).as("no sendError").isNull();
+        assertThat(answered.response().isCommitted()).as("no sendError, which would commit the response").isFalse();
+        assertThat(answered.chainRan()).as("the chain is not invoked").isFalse();
+    }
+
+    @Test
+    @DisplayName("DL-04 expired-status is configurable")
+    void expiredStatusIsConfigurable() {
+        Answered answered = answer(deadlineHeader("0"), "boundrail.context.deadline.expired-status=503");
+
+        assertThat(answered.response().getStatus()).isEqualTo(503);
+        assertThat(answered.chainRan()).isFalse();
+    }
+
+    @Test
+    @DisplayName("DL-04 the check is made once, on the initial dispatch")
+    void theCheckIsMadeOnceOnTheInitialDispatch() {
+        DeferredController controller = new DeferredController();
+        runner.withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
+            FilterRegistrationBean<?> registration = inboundRegistration(context);
+            MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                    .addFilter(registration.getFilter(), "inbound", Map.of(), registration.determineDispatcherTypes(), "/*")
+                    .build();
+
+            MvcResult expired = mockMvc.perform(get("/deferred").header("Boundrail-Deadline-Ms", "0")).andReturn();
+            MvcResult started = mockMvc.perform(get("/deferred").header("Boundrail-Deadline-Ms", "50")).andReturn();
+            // Read now: the ASYNC dispatch below resets the mock request's async state.
+            boolean reachedHandler = started.getRequest().isAsyncStarted();
+            Deadline deadline = ((ContextSnapshot) started.getRequest().getAttribute(ContextInboundFilter.SNAPSHOT_ATTRIBUTE))
+                    .find(BuiltInKeys.DEADLINE).orElseThrow();
+            while (!deadline.isExpired()) {
+                Thread.sleep(5);
+            }
+            controller.pending.get().setResult("done");
+            MvcResult dispatched = mockMvc.perform(asyncDispatch(started)).andReturn();
+
+            assertThat(expired.getResponse().getStatus()).as("the initial dispatch is checked").isEqualTo(504);
+            assertThat(reachedHandler).as("the 50ms request reached the handler").isTrue();
+            assertThat(dispatched.getResponse().getStatus()).as("the ASYNC dispatch is not checked again").isEqualTo(200);
+            assertThat(dispatched.getResponse().getContentAsString()).isEqualTo("done");
         });
     }
 }

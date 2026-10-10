@@ -44,6 +44,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
     private final int maxValueLength;
     private final Optional<Duration> defaultInbound;
     private final Duration maxInbound;
+    private final int expiredStatus;
 
     ContextInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy, ViolationReporter reporter, int maxValueLength,
             BoundrailContextProperties.Deadline deadline) {
@@ -53,6 +54,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
         this.maxValueLength = maxValueLength;
         this.defaultInbound = deadline.defaultInboundDuration();
         this.maxInbound = deadline.maxInboundDuration();
+        this.expiredStatus = deadline.expiredStatus();
     }
 
     /**
@@ -64,8 +66,9 @@ final class ContextInboundFilter extends OncePerRequestFilter {
      * decode is left unbound and reported as {@code INVALID_VALUE} (WIRE-05). For an {@code UNTRUSTED} request, binds nothing and reports
      * each policy wire header present (IN-02). In the same scope it binds the deadline: from a trusted request's single
      * {@code Boundrail-Deadline-Ms} of ASCII digits, capped at {@code max-inbound}; otherwise from {@code default-inbound}, if set (DL-03).
-     * Then runs the rest of the chain inside that scope and restores the previous snapshot, rethrowing the chain's exception unchanged
-     * (IN-01, CORE-08).
+     * If that deadline has already expired, it sets {@code expired-status}, writes no body, does not call {@code sendError} and does not
+     * run the rest of the chain (DL-04); an {@code ASYNC} dispatch is not checked again. Otherwise it runs the rest of the chain inside
+     * that scope and restores the previous snapshot, rethrowing the chain's exception unchanged (IN-01, CORE-08).
      */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -89,6 +92,10 @@ final class ContextInboundFilter extends OncePerRequestFilter {
         budget = budget.or(() -> defaultInbound);
         if (budget.isPresent()) {
             Deadline deadline = Deadline.after(budget.get());
+            if (deadline.isExpired()) {
+                response.setStatus(expiredStatus);
+                return;
+            }
             binding = binding == null ? Context.with(BuiltInKeys.DEADLINE, deadline) : binding.with(BuiltInKeys.DEADLINE, deadline);
         }
         if (binding == null) {
