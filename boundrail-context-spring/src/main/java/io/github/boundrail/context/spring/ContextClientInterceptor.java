@@ -32,15 +32,17 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
     private final BoundrailContextProperties.Violations.Mode mode;
     private final int maxValueLength;
     private final DeadlineTimer timer;
+    private final DeadlineCounter counter;
 
     ContextClientInterceptor(DestinationClassifier classifier, EffectivePolicy policy, ViolationReporter reporter,
-            BoundrailContextProperties.Violations.Mode mode, int maxValueLength, DeadlineTimer timer) {
+            BoundrailContextProperties.Violations.Mode mode, int maxValueLength, DeadlineTimer timer, DeadlineCounter counter) {
         this.classifier = classifier;
         this.policy = policy.policy();
         this.reporter = reporter;
         this.mode = mode;
         this.maxValueLength = maxValueLength;
         this.timer = timer;
+        this.counter = counter;
     }
 
     /**
@@ -54,6 +56,7 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
         // DL-06: first, before the required-key check, so an expired call reports no violation and writes no header.
         if (Deadlines.current().filter(Deadline::isExpired).isPresent()) {
+            counter.increment(DeadlineExceededException.Stage.BEFORE_SEND);
             throw new DeadlineExceededException(DeadlineExceededException.Stage.BEFORE_SEND);
         }
         Optional<Destination> declared = Optional.ofNullable((Destination) request.getAttributes().get(BoundrailClients.DESTINATION_ATTRIBUTE));

@@ -163,8 +163,8 @@ public class BoundrailContextAutoConfiguration {
         static class DeadlineCallableConfiguration {
 
             @Bean
-            DeadlineCallableInterceptor.Registration boundrailDeadlineCallableRegistration() {
-                return new DeadlineCallableInterceptor.Registration();
+            DeadlineCallableInterceptor.Registration boundrailDeadlineCallableRegistration(ObjectProvider<DeadlineCounter> counters) {
+                return new DeadlineCallableInterceptor.Registration(counters.getIfAvailable(() -> stage -> { }));
             }
         }
     }
@@ -181,8 +181,9 @@ public class BoundrailContextAutoConfiguration {
 
         /** Inert when {@code map-exception} is off: read from the bound properties, so Boot's boolean forms such as {@code yes} work. */
         @Bean
-        WebMvcConfigurer boundrailDeadlineExceptionMvcConfigurer(BoundrailContextProperties properties) {
-            DeadlineExceptionResolver resolver = new DeadlineExceptionResolver(properties.deadline());
+        WebMvcConfigurer boundrailDeadlineExceptionMvcConfigurer(BoundrailContextProperties properties,
+                ObjectProvider<DeadlineCounter> counters) {
+            DeadlineExceptionResolver resolver = new DeadlineExceptionResolver(properties.deadline(), counters.getIfAvailable(() -> stage -> { }));
             return new WebMvcConfigurer() {
                 @Override
                 public void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers) {
@@ -196,6 +197,17 @@ public class BoundrailContextAutoConfiguration {
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(MeterRegistry.class)
     static class MicrometerConfiguration {
+
+        /** Counts deadline expiries by stage, in the unique or primary registry, never the global one (DL-09). */
+        @Bean
+        DeadlineCounter boundrailDeadlineCounter(ObjectProvider<MeterRegistry> registries) {
+            return stage -> {
+                MeterRegistry registry = registries.getIfUnique();
+                if (registry != null) {
+                    registry.counter("boundrail.context.deadline.exceeded", "stage", stage.name().toLowerCase(Locale.ROOT)).increment();
+                }
+            };
+        }
 
         @Bean
         ViolationReporter.Counter boundrailViolationCounter(ObjectProvider<MeterRegistry> registries) {
@@ -233,18 +245,20 @@ public class BoundrailContextAutoConfiguration {
 
         /** The timer that stops calls whose deadline runs out (DL-07); one per context, shut down when it closes (RT-09). */
         @Bean(destroyMethod = "close")
-        DeadlineTimer boundrailDeadlineTimer() {
-            return new DeadlineTimer();
+        DeadlineTimer boundrailDeadlineTimer(ObjectProvider<DeadlineCounter> counters) {
+            return new DeadlineTimer(counters.getIfAvailable(() -> stage -> { }));
         }
 
         @Bean
         @Lazy(false)
         RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer) {
+                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer,
+                ObjectProvider<DeadlineCounter> counters) {
+            DeadlineCounter counter = counters.getIfAvailable(() -> stage -> { });
             return builder -> builder.requestInterceptors(interceptors -> {
                 if (interceptors.stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     interceptors.add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength(), timer));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter));
                 }
             });
         }
@@ -252,11 +266,13 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         @Lazy(false)
         RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer) {
+                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer,
+                ObjectProvider<DeadlineCounter> counters) {
+            DeadlineCounter counter = counters.getIfAvailable(() -> stage -> { });
             return restTemplate -> {
                 if (restTemplate.getInterceptors().stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength(), timer));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter));
                 }
             };
         }
@@ -292,9 +308,10 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         @Lazy(false)
         FilterRegistrationBean<ContextInboundFilter> boundrailInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties, Environment environment) {
-            FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(
-                    new ContextInboundFilter(verifier, policy, reporter, properties.wire().maxValueLength(), properties.deadline()));
+                ViolationReporter reporter, BoundrailContextProperties properties, Environment environment,
+                ObjectProvider<DeadlineCounter> counters) {
+            FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(new ContextInboundFilter(verifier, policy,
+                    reporter, properties.wire().maxValueLength(), properties.deadline(), counters.getIfAvailable(() -> stage -> { })));
             int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
                     ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
             if (securityOrder == Integer.MIN_VALUE) {

@@ -9,6 +9,7 @@ import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.Violation;
 import jakarta.servlet.FilterChain;
@@ -45,9 +46,10 @@ final class ContextInboundFilter extends OncePerRequestFilter {
     private final Optional<Duration> defaultInbound;
     private final Duration maxInbound;
     private final int expiredStatus;
+    private final DeadlineCounter counter;
 
     ContextInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy, ViolationReporter reporter, int maxValueLength,
-            BoundrailContextProperties.Deadline deadline) {
+            BoundrailContextProperties.Deadline deadline, DeadlineCounter counter) {
         this.verifier = verifier;
         this.policy = policy.policy();
         this.reporter = reporter;
@@ -55,6 +57,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
         this.defaultInbound = deadline.defaultInboundDuration();
         this.maxInbound = deadline.maxInboundDuration();
         this.expiredStatus = deadline.expiredStatus();
+        this.counter = counter;
     }
 
     /**
@@ -93,6 +96,7 @@ final class ContextInboundFilter extends OncePerRequestFilter {
         if (budget.isPresent()) {
             Deadline deadline = Deadline.after(budget.get());
             if (deadline.isExpired()) {
+                counter.increment(DeadlineExceededException.Stage.INBOUND);
                 response.setStatus(expiredStatus);
                 return;
             }

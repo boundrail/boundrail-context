@@ -394,7 +394,7 @@ if one is needed, is added in the green step of the first task whose test needs 
 
 ## Phase 6: Metrics
 
-- [ ] T015 [US2] Count deadline expiries.
+- [x] T015 [US2] Count deadline expiries.
   - Red, in `springtest/DeadlineMetricsTest.java` (a `SimpleMeterRegistry` bean):
     - `DL-09 each expiry is counted once, where it is detected, tagged with its stage in lowercase`: one `inbound` (T006's request), one
       `before_send` (T008), one `timeout` (T010), one `executor` (T014's `Callable`), each counter at 1 under

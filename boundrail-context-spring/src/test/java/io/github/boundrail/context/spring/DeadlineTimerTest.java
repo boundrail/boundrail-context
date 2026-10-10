@@ -26,7 +26,7 @@ import org.springframework.mock.http.client.MockClientHttpResponse;
 /** The timer the interceptor arms around {@code execute}, and its handshake with the calling thread (DL-07, RT-09). */
 class DeadlineTimerTest {
 
-    private final DeadlineTimer timer = new DeadlineTimer();
+    private final DeadlineTimer timer = new DeadlineTimer(stage -> { });
 
     @AfterEach
     void closeTimer() {

@@ -18,12 +18,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 final class DeadlineCallableInterceptor implements CallableProcessingInterceptor {
 
+    private final DeadlineCounter counter;
+
+    DeadlineCallableInterceptor(DeadlineCounter counter) {
+        this.counter = counter;
+    }
+
     /**
      * Throws {@code DeadlineExceededException} with stage {@code EXECUTOR} if the deadline current on MVC's executor thread has expired.
      */
     @Override
     public <T> void preProcess(NativeWebRequest request, Callable<T> task) {
         if (Deadlines.current().filter(Deadline::isExpired).isPresent()) {
+            counter.increment(DeadlineExceededException.Stage.EXECUTOR);
             throw new DeadlineExceededException(DeadlineExceededException.Stage.EXECUTOR);
         }
     }
@@ -36,9 +43,15 @@ final class DeadlineCallableInterceptor implements CallableProcessingInterceptor
      */
     static final class Registration implements WebMvcConfigurer, Ordered {
 
+        private final DeadlineCounter counter;
+
+        Registration(DeadlineCounter counter) {
+            this.counter = counter;
+        }
+
         @Override
         public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
-            configurer.registerCallableInterceptors(new DeadlineCallableInterceptor());
+            configurer.registerCallableInterceptors(new DeadlineCallableInterceptor(counter));
         }
 
         @Override

@@ -24,7 +24,11 @@ final class DeadlineTimer implements AutoCloseable {
         return thread;
     });
 
-    DeadlineTimer() {
+    private final DeadlineCounter counter;
+
+    /** Creates a timer that counts each call it stops at {@code TIMEOUT} (DL-09). */
+    DeadlineTimer(DeadlineCounter counter) {
+        this.counter = counter;
         // A disarmed timer leaves the queue at once, instead of waiting out its delay while holding the caller's thread.
         scheduler.setRemoveOnCancelPolicy(true);
     }
@@ -53,6 +57,7 @@ final class DeadlineTimer implements AutoCloseable {
             return execution.execute(request, body);
         } catch (IOException | RuntimeException e) {
             if (armed.disarm()) {
+                counter.increment(DeadlineExceededException.Stage.TIMEOUT);
                 throw new DeadlineExceededException(DeadlineExceededException.Stage.TIMEOUT, e);
             }
             throw e;

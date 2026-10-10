@@ -16,10 +16,12 @@ final class DeadlineExceptionResolver implements HandlerExceptionResolver {
 
     private final boolean mapException;
     private final int expiredStatus;
+    private final DeadlineCounter counter;
 
-    DeadlineExceptionResolver(BoundrailContextProperties.Deadline deadline) {
+    DeadlineExceptionResolver(BoundrailContextProperties.Deadline deadline, DeadlineCounter counter) {
         this.mapException = deadline.mapException();
         this.expiredStatus = deadline.expiredStatus();
+        this.counter = counter;
     }
 
     /**
@@ -29,13 +31,17 @@ final class DeadlineExceptionResolver implements HandlerExceptionResolver {
      */
     @Override
     public ModelAndView resolveException(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        if (!mapException || !(ex instanceof DeadlineExceededException) || response.isCommitted()) {
+        if (!mapException || !(ex instanceof DeadlineExceededException expired) || response.isCommitted()) {
             return null;
         }
         try {
             response.sendError(expiredStatus);
         } catch (IOException e) {
             return null;
+        }
+        // Counts only what it maps, and only APPLICATION: other stages were counted where they were detected (DL-09).
+        if (expired.stage() == DeadlineExceededException.Stage.APPLICATION) {
+            counter.increment(DeadlineExceededException.Stage.APPLICATION);
         }
         return new ModelAndView();
     }
