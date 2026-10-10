@@ -7,6 +7,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import io.github.boundrail.context.Context;
+import io.github.boundrail.context.BuiltInKeys;
+import io.github.boundrail.context.ContextRuntime;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
+import io.github.boundrail.context.ScopeListener;
+import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.core.Ordered;
+import org.springframework.scheduling.concurrent.ConcurrentTaskExecutor;
+import org.springframework.web.context.request.NativeWebRequest;
+import org.springframework.web.context.request.async.CallableProcessingInterceptor;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import jakarta.servlet.AsyncEvent;
@@ -218,6 +233,192 @@ class MvcCallableTest {
             } finally {
                 controller.release.countDown();
             }
+        });
+    }
+
+    /** Handlers whose tasks set a flag when they are called. */
+    @RestController
+    static final class FlagController {
+
+        final AtomicBoolean callableCalled = new AtomicBoolean();
+        final AtomicBoolean webAsyncTaskCalled = new AtomicBoolean();
+
+        @GetMapping("/flag/callable")
+        Callable<String> callable() {
+            return () -> {
+                callableCalled.set(true);
+                return "called";
+            };
+        }
+
+        @GetMapping("/flag/web-async-task")
+        WebAsyncTask<String> webAsyncTask() {
+            return new WebAsyncTask<>(() -> {
+                webAsyncTaskCalled.set(true);
+                return "called";
+            });
+        }
+    }
+
+    /** MVC's executor: one thread, which a test can block until the request's deadline has expired. */
+    @Configuration(proxyBeanMethods = false)
+    static class BlockableMvcExecutor implements WebMvcConfigurer {
+
+        final ExecutorService thread = Executors.newSingleThreadExecutor(task -> new Thread(task, "blockableMvc-1"));
+
+        @Bean
+        FlagController flagController() {
+            return new FlagController();
+        }
+
+        @Override
+        public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+            configurer.setTaskExecutor(new ConcurrentTaskExecutor(thread));
+        }
+
+        @Bean(destroyMethod = "")
+        BlockableMvcExecutor.Shutdown blockableShutdown() {
+            return new Shutdown(thread);
+        }
+
+        /** Shuts the thread down with the context. */
+        record Shutdown(ExecutorService thread) implements org.springframework.beans.factory.DisposableBean {
+            @Override
+            public void destroy() {
+                thread.shutdownNow();
+            }
+        }
+    }
+
+    /** The application's own Callable interceptor, recording the calls it gets. */
+    @Configuration(proxyBeanMethods = false)
+    static class ApplicationCallableInterceptor implements WebMvcConfigurer {
+
+        final List<String> calls = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+            configurer.registerCallableInterceptors(new CallableProcessingInterceptor() {
+                @Override
+                public <T> void preProcess(NativeWebRequest request, Callable<T> task) {
+                    calls.add("preProcess");
+                }
+
+                @Override
+                public <T> void postProcess(NativeWebRequest request, Callable<T> task, Object result) {
+                    calls.add("postProcess " + (result instanceof DeadlineExceededException expired ? expired.stage() : result));
+                }
+            });
+        }
+    }
+
+    /**
+     * Starts the request inside a 50ms deadline while MVC's thread is blocked, releases the thread once the deadline has expired, and returns
+     * the started request.
+     */
+    private static MvcResult startAfterExpiry(MockMvc mockMvc, ExecutorService mvcThread, String path) throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        mvcThread.submit(() -> release.await(5, TimeUnit.SECONDS));
+        Deadline deadline = Deadline.after(Duration.ofMillis(50));
+        MvcResult started = Context.with(BuiltInKeys.DEADLINE, deadline).call(() -> mockMvc.perform(get(path)).andReturn());
+        while (!deadline.isExpired()) {
+            Thread.sleep(5);
+        }
+        release.countDown();
+        return started;
+    }
+
+    private static MvcResult startWithTimeLeft(MockMvc mockMvc, String path) throws Exception {
+        return Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofSeconds(10))).call(() -> mockMvc.perform(get(path)).andReturn());
+    }
+
+    /** Asserts that the concurrent result is {@code DeadlineExceededException} at {@code EXECUTOR} and that the async dispatch answers 504. */
+    private static void assertRefused(MockMvc mockMvc, MvcResult started) throws Exception {
+        Object result = started.getAsyncResult(TIMEOUT_MILLIS);
+        assertThat(result).isInstanceOf(DeadlineExceededException.class);
+        assertThat(((DeadlineExceededException) result).stage()).isEqualTo(DeadlineExceededException.Stage.EXECUTOR);
+        assertThat(mockMvc.perform(asyncDispatch(started)).andReturn().getResponse().getStatus()).as("mapped by DL-08").isEqualTo(504);
+    }
+
+    @Test
+    @DisplayName("EXE-08 a Callable that starts after its captured deadline has expired is not called, and the request completes with the"
+            + " exception, which DL-08 maps")
+    void aCallableThatStartsAfterItsDeadlineHasExpiredIsNotCalled() {
+        runner.withUserConfiguration(BlockableMvcExecutor.class).run(context -> {
+            MockMvc mockMvc = mockMvc(context);
+            FlagController controller = context.getBean(FlagController.class);
+            ExecutorService mvcThread = context.getBean(BlockableMvcExecutor.class).thread;
+
+            MvcResult expired = startAfterExpiry(mockMvc, mvcThread, "/flag/callable");
+            assertRefused(mockMvc, expired);
+            assertThat(controller.callableCalled).as("the Callable was not called").isFalse();
+
+            MvcResult live = startWithTimeLeft(mockMvc, "/flag/callable");
+            assertThat(live.getAsyncResult(TIMEOUT_MILLIS)).isEqualTo("called");
+            assertThat(mockMvc.perform(asyncDispatch(live)).andReturn().getResponse().getStatus()).isEqualTo(200);
+        });
+    }
+
+    @Test
+    @DisplayName("EXE-08 the same holds for a WebAsyncTask without an executor of its own")
+    void theSameHoldsForAWebAsyncTaskWithoutAnExecutorOfItsOwn() {
+        runner.withUserConfiguration(BlockableMvcExecutor.class).run(context -> {
+            MockMvc mockMvc = mockMvc(context);
+            FlagController controller = context.getBean(FlagController.class);
+
+            MvcResult expired = startAfterExpiry(mockMvc, context.getBean(BlockableMvcExecutor.class).thread, "/flag/web-async-task");
+
+            assertRefused(mockMvc, expired);
+            assertThat(controller.webAsyncTaskCalled).as("the WebAsyncTask's Callable was not called").isFalse();
+        });
+    }
+
+    @Test
+    @DisplayName("EXE-08 the check is registered last, after the application's own Callable interceptors, which still get preProcess and"
+            + " postProcess")
+    void theCheckIsRegisteredLastAfterTheApplicationsOwnCallableInterceptors() {
+        runner.withUserConfiguration(BlockableMvcExecutor.class, ApplicationCallableInterceptor.class).run(context -> {
+            MockMvc mockMvc = mockMvc(context);
+            FlagController controller = context.getBean(FlagController.class);
+            List<String> calls = context.getBean(ApplicationCallableInterceptor.class).calls;
+
+            MvcResult expired = startAfterExpiry(mockMvc, context.getBean(BlockableMvcExecutor.class).thread, "/flag/callable");
+            assertRefused(mockMvc, expired);
+
+            assertThat(controller.callableCalled).as("the library's check refused the Callable").isFalse();
+            assertThat(calls).containsExactly("preProcess", "postProcess EXECUTOR");
+            assertThat(context.getBeansOfType(WebMvcConfigurer.class).values()).filteredOn(DeadlineCallableInterceptor.Registration.class::isInstance)
+                    .singleElement().extracting(configurer -> ((Ordered) configurer).getOrder()).isEqualTo(Ordered.LOWEST_PRECEDENCE);
+        });
+    }
+
+    @Test
+    @DisplayName("EXE-08 the check binds and restores nothing")
+    void theCheckBindsAndRestoresNothing() {
+        runner.withUserConfiguration(BlockableMvcExecutor.class).run(context -> {
+            MockMvc mockMvc = mockMvc(context);
+            AtomicInteger mvcThreadEntries = new AtomicInteger();
+            ScopeListener counting = entered -> {
+                if (Thread.currentThread().getName().equals("blockableMvc-1")) {
+                    mvcThreadEntries.incrementAndGet();
+                }
+                return () -> { };
+            };
+            Object refused;
+            ContextRuntime.addScopeListener(counting);
+            try {
+                MvcResult live = startWithTimeLeft(mockMvc, "/flag/callable");
+                assertThat(live.getAsyncResult(TIMEOUT_MILLIS)).isEqualTo("called");
+                MvcResult expired = startAfterExpiry(mockMvc, context.getBean(BlockableMvcExecutor.class).thread, "/flag/callable");
+                refused = expired.getAsyncResult(TIMEOUT_MILLIS);
+            } finally {
+                ContextRuntime.removeScopeListener(counting);
+            }
+
+            // Two Callables were run or refused on MVC's thread, each in the one scope AttachedAsyncTaskExecutor enters (EXE-09), as
+            // without the library's interceptor; the blocking task, submitted to the raw thread, entered none.
+            assertThat(mvcThreadEntries).as("scope entries on MVC's thread").hasValue(2);
+            assertThat(refused).as("refused").isInstanceOf(DeadlineExceededException.class);
         });
     }
 }

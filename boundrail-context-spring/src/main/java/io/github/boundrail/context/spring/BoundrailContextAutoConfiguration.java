@@ -145,7 +145,7 @@ public class BoundrailContextAutoConfiguration {
 
     /**
      * Runs a handler's {@code Callable}, or a {@code WebAsyncTask} without an executor of its own, in the request's snapshot filtered for
-     * {@code ATTACHED}, where Spring MVC is present (EXE-09).
+     * {@code ATTACHED}, where Spring MVC is present (EXE-09), and refuses it if its deadline has expired when it would start (EXE-08).
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(RequestMappingHandlerAdapter.class)
@@ -155,6 +155,17 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         static MvcAsyncExecutorPostProcessor boundrailMvcAsyncExecutorPostProcessor(ObjectProvider<EffectivePolicy> policy) {
             return new MvcAsyncExecutorPostProcessor(policy);
+        }
+
+        /** Refuses a {@code Callable} whose captured deadline has expired when it would start; registered last (EXE-08). */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnClass(WebMvcConfigurer.class)
+        static class DeadlineCallableConfiguration {
+
+            @Bean
+            DeadlineCallableInterceptor.Registration boundrailDeadlineCallableRegistration() {
+                return new DeadlineCallableInterceptor.Registration();
+            }
         }
     }
 

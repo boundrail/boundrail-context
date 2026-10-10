@@ -368,7 +368,7 @@ if one is needed, is added in the green step of the first task whose test needs 
     reviewed ([plan.md](plan.md#tdd-exceptions)).
   - Completes: EXE-08 (`execute`; Javadoc).
   - Verify: Unit `BoundExecutorsTest`.
-- [ ] T014 [US3] An expired MVC `Callable` is not called (check-only `preProcess`, registered through a `WebMvcConfigurer`, G2).
+- [x] T014 [US3] An expired MVC `Callable` is not called (check-only `preProcess`, registered through a `WebMvcConfigurer`, G2).
   - Red, in `springtest/MvcCallableTest.java` (`MockMvc`, `asyncDispatch`):
     - `EXE-08 a Callable that starts after its captured deadline has expired is not called, and the request completes with the exception,
       which DL-08 maps`: the request's 50ms deadline (bound around the request, as the filter does) expires while MVC's one-thread executor is
