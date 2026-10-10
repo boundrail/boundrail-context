@@ -188,10 +188,11 @@ last interceptor, and request attributes are ignored, so Spring has no per-reque
   at startup, and logs one WARN through `LogFactory` when it is not a `JdkClientHttpRequestFactoryBuilder`: timeout capping is not
   guaranteed, naming the property to change. No WARN when no such bean exists (no Boot HTTP client auto-configuration). A builder wrapped by
   an application customizer can give a false WARN; the `BoundrailClients` Javadoc says so.
-- **Exception mapping (DL-08).** In a nested configuration conditional on a servlet web application and on `HandlerExceptionResolver`, and
-  on `map-exception` (read from the bound properties, not `@ConditionalOnProperty`, so `yes` and `on` work, as T015a of 004 found), a
-  package-private `DeadlineExceptionResolver` with `Ordered.LOWEST_PRECEDENCE`. `DispatcherServlet` sorts it after Boot's
-  `HandlerExceptionResolverComposite` (order 0), which holds the `@ExceptionHandler` resolver. It handles only `ex instanceof
+- **Exception mapping (DL-08).** In a nested configuration conditional on a servlet web application and on `HandlerExceptionResolver`, a
+  package-private `DeadlineExceptionResolver`, inert when `map-exception` is off (read from the bound properties, as 004 T015a). Since T009a
+  it is appended to MVC's resolver chain by a `WebMvcConfigurer`'s `extendHandlerExceptionResolvers`, after the `@ExceptionHandler`
+  resolver, instead of being a `HandlerExceptionResolver` bean: a lone bean of that type stops `DispatcherServlet` from installing its
+  default resolvers when MVC is not configured by `WebMvcConfigurationSupport`. It handles only `ex instanceof
   DeadlineExceededException` and an uncommitted response, calls `response.sendError(expiredStatus)` and returns an empty `ModelAndView`;
   otherwise it returns `null`. A `Callable` whose result is the exception reaches it on the async dispatch.
 - **`Callable` expiry (EXE-08, G2).** A check-only `CallableProcessingInterceptor` whose `preProcess` throws

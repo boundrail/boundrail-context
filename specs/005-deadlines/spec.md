@@ -209,10 +209,12 @@ clients declared internal and on clients that reach hosts matched by an internal
 **DL-08** `[M4]` WHERE `boundrail.context.deadline.map-exception=true` (default), a `DeadlineExceededException` escaping a request handler SHALL
 produce the `expired-status` response, through a `HandlerExceptionResolver` of lowest precedence that calls `sendError(expired-status)`, as Spring
 does for `ResponseStatusException`. It SHALL run after the application's `@ExceptionHandler` methods, so an application handler for the exception
-wins. Only the exception itself SHALL be mapped, not one found as the cause of another exception, and nothing SHALL be mapped once the response
-is committed (DESIGN D53). `map-exception` SHALL be bound as a boolean with Spring Boot's binding, which accepts `true`, `on`, `yes` and `1` and
-their opposites in any case; IF it is a value Boot cannot convert to a boolean, THEN application startup SHALL fail, even when
-`spring.main.lazy-initialization` is `true`. Verified by IT-3.2, IT-3.3 and unit tests.
+wins. Only the exception itself SHALL be mapped, not one found as the cause of another exception, and nothing SHALL be mapped once the response is
+committed (DESIGN D53). The resolver SHALL be added to Spring MVC's own resolver chain through a `WebMvcConfigurer`, after the resolvers MVC
+configures, so it never replaces `DispatcherServlet`'s default resolvers; a `DispatcherServlet` not configured by `WebMvcConfigurationSupport` does
+not get it, and the `BoundrailClients` Javadoc SHALL say so. `map-exception` SHALL be bound as a boolean with Spring Boot's binding, which accepts
+`true`, `on`, `yes` and `1` and their opposites in any case; IF it is a value Boot cannot convert to a boolean, THEN application startup SHALL fail,
+even when `spring.main.lazy-initialization` is `true`. Verified by IT-3.2, IT-3.3 and unit tests.
 
 **DL-09** `[M4]` WHERE the application context has a unique or primary `MeterRegistry` bean, the Spring module SHALL count deadline expiries in the
 counter `boundrail.context.deadline.exceeded` in that registry, tagged with `stage` in lowercase, and never in Micrometer's global registry, as
