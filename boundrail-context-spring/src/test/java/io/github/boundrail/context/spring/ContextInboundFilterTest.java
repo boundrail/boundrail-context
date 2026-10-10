@@ -231,18 +231,16 @@ class ContextInboundFilterTest {
     }
 
     @Test
-    @DisplayName("IN-02 a trusted request binds no deadline and no authority from headers")
-    void aTrustedRequestBindsNoDeadlineAndNoAuthorityFromHeaders() {
+    @DisplayName("IN-02 a trusted request binds no authority from headers")
+    void aTrustedRequestBindsNoAuthorityFromHeaders() {
         runner.withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
             Filter filter = inboundRegistration(context).getFilter();
             Consumer<MockHttpServletRequest> headers = request -> {
                 request.addHeader("Boundrail-Initiator", "service:edge");
-                request.addHeader("Boundrail-Deadline-Ms", "5000");
                 request.addHeader("Authorization", "Bearer token");
             };
 
             assertThat(observe(filter, BuiltInKeys.INITIATOR, headers)).contains(Initiator.of("service:edge"));
-            assertThat(observe(filter, BuiltInKeys.DEADLINE, headers)).isEmpty();
             assertThat(observe(filter, BuiltInKeys.AUTHORITY, headers)).isEmpty();
         });
     }

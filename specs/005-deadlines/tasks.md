@@ -124,19 +124,18 @@ if one is needed, is added in the green step of the first task whose test needs 
 
 **Independent Test**: IT-3.1, IT-3.5 and IT-3.6 in the IT command.
 
-- [ ] T004 [US1] Inbound deadline from a trusted header, the cap and the default; enable IT-3.5 and IT-3.6.
+- [x] T004 [US1] Inbound deadline from a trusted header, the cap and the default; enable IT-3.5 and IT-3.6.
   - Red:
     - in `springtest/InboundDeadlineTest.java` (`WebApplicationContextRunner` with the library's filter, as `ContextInboundFilterTest` does;
       the chain records `Deadlines.current()`):
       - `DL-03 a trusted Boundrail-Deadline-Ms binds Deadline.after(value)`: `2000` gives a remaining time above 1.5s and at most 2s;
       - `DL-03 a trusted value is capped by max-inbound, also when it is too large for a long`: `600000` and `99999999999999999999` give at
         most 30s, and at most 1s with `max-inbound=1s`;
-      - `DL-03 with no header, default-inbound is bound, and may exceed max-inbound`: `default-inbound=60s`, `max-inbound=30s`: more than
-        30s remaining;
+      - `DL-03 with no header, default-inbound is bound if set, and may exceed max-inbound; otherwise no deadline is bound`:
+        `default-inbound=60s`, `max-inbound=30s`: more than 30s remaining; without `default-inbound` no deadline is bound;
       - `DL-03 an untrusted Boundrail-Deadline-Ms is ignored and reported once as UNTRUSTED_HEADER, and default-inbound applies if set`: with
         `default-inbound=500ms`, `Boundrail-Deadline-Ms: 5` from an untrusted caller gives more than 5ms and at most 500ms; without a default
         no deadline is bound; one `UNTRUSTED_HEADER` for `boundrail.deadline` in each case;
-      - `DL-03 with no header and no default-inbound no deadline is bound`;
       - `DL-03 the deadline is bound in the same scope as the IN-02 keys, so the stored snapshot holds it`: the snapshot under
         `SNAPSHOT_ATTRIBUTE` holds both the deadline and `tenant`, and an `ASYNC` dispatch (`DeferredResult`, `asyncDispatch`) sees the same
         `Deadline` instance;

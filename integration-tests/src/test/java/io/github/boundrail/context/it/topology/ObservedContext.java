@@ -1,9 +1,11 @@
 package io.github.boundrail.context.it.topology;
 
+import io.github.boundrail.context.Deadlines;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
@@ -19,6 +21,8 @@ public final class ObservedContext {
     public static final String TENANT = "ctx.tenant";
     /** Observation entry holding the {@code priority} the handler found bound; absent if unbound. */
     public static final String PRIORITY = "ctx.priority";
+    /** Observation entry holding the remaining time of the deadline the handler found bound, in nanoseconds; absent if unbound. */
+    public static final String DEADLINE_REMAINING_NANOS = "ctx.deadline-remaining-nanos";
 
     private final Map<String, List<Map<String, String>>> observations = new ConcurrentHashMap<>();
 
@@ -31,9 +35,14 @@ public final class ObservedContext {
         return List.copyOf(observations.getOrDefault(service, List.of()));
     }
 
-    /** What a {@code /ping} handler observed: its request headers, and the {@code tenant} and {@code priority} it found bound. */
+    /**
+     * What a {@code /ping} handler observed: the remaining time of the deadline it found bound, read first so that it is the time on
+     * arrival, its request headers, and the {@code tenant} and {@code priority} it found bound.
+     */
     static Map<String, String> ping(HttpHeaders headers) {
+        Optional<Long> remainingNanos = Deadlines.current().map(deadline -> deadline.remaining().toNanos());
         Map<String, String> observation = new HashMap<>(headers(headers));
+        remainingNanos.ifPresent(nanos -> observation.put(DEADLINE_REMAINING_NANOS, nanos.toString()));
         AppKeys.TENANT.find().ifPresent(tenant -> observation.put(TENANT, tenant));
         AppKeys.PRIORITY.find().ifPresent(priority -> observation.put(PRIORITY, priority.toString()));
         return observation;

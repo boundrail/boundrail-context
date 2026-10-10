@@ -1,15 +1,60 @@
 package io.github.boundrail.context.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.github.boundrail.context.it.topology.EdgeApp;
+import io.github.boundrail.context.it.topology.ObservedContext;
+import io.github.boundrail.context.it.topology.Topology;
+import io.github.boundrail.context.it.topology.Topology.Service;
+import io.github.boundrail.context.test.TestInboundTrustVerifier;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.web.client.RestClient;
 
 /**
  * Deadline propagation suite (IT-3): the remaining budget shrinks across hops, expired work fails fast, and deadlines stop at detached
  * boundaries. Scenarios come from specs/005-deadlines (IT-3.1 – IT-3.7) and specs/007-kafka (IT-3.8); each body is written test-first when
  * that feature enables it (BLD-10).
  */
+@ExtendWith(Topology.class)
 class DeadlinePropagationIT {
+
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+
+    /**
+     * This class's own edge, with a 500ms {@code default-inbound} and {@code attachedExecutor} in attached mode (G5): the shared edge has no
+     * default, so other suites' requests carry no deadline.
+     */
+    private static ConfigurableApplicationContext edge;
+
+    @BeforeAll
+    static void startEdge(Topology.Running topology) throws Exception {
+        edge = topology.startEdge("boundrail.context.deadline.default-inbound=500ms",
+                "boundrail.context.executors.modes.attachedExecutor=attached");
+        // Warm-up: class loading and the first JWT verification must not eat the timed requests' budget.
+        pingEdge(topology, UUID.randomUUID().toString());
+    }
+
+    @AfterAll
+    static void closeEdge() {
+        if (edge != null) {
+            edge.close();
+        }
+    }
 
     @Test
     @Disabled("Pending: M4")
@@ -49,19 +94,42 @@ class DeadlinePropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M4")
     @DisplayName("IT-3.5 Inbound cap")
-    void it35InboundCap() {
+    void it35InboundCap(Topology.Running topology) {
         // IT-3.5: When a trusted caller sends `Boundrail-Deadline-Ms: 600000` to orders, then orders records a deadline with at most 30s
         // remaining. *(DL-03)*
+        String marker = UUID.randomUUID().toString();
+        // A trusted caller: the test's own client, with the test peer header (TEST-01).
+        RestClient orders = RestClient.builder().baseUrl(topology.uri(Service.ORDERS).toString())
+                .apply(TestInboundTrustVerifier.peer()).build();
+
+        orders.get().uri("/ping").header(EdgeApp.MARKER, marker).header("Boundrail-Deadline-Ms", "600000").retrieve().toBodilessEntity();
+
+        assertThat(observed(topology, "orders", marker)).hasEntrySatisfying(ObservedContext.DEADLINE_REMAINING_NANOS,
+                nanos -> assertThat(Long.parseLong(nanos)).isPositive().isLessThanOrEqualTo(30_000_000_000L));
     }
 
     @Test
-    @Disabled("Pending: M4")
     @DisplayName("IT-3.6 Untrusted deadline ignored")
-    void it36UntrustedDeadlineIgnored() {
+    void it36UntrustedDeadlineIgnored(Topology.Running topology) throws Exception {
         // IT-3.6: When a public caller sends `Boundrail-Deadline-Ms: 5` to edge, then edge reports an `UNTRUSTED_HEADER` violation for it,
         // records a deadline with more than 5ms and at most 500ms remaining (the default), and the request succeeds. *(DL-03, IN-02)*
+        String marker = UUID.randomUUID().toString();
+        // The JVM is shared, so the count is a delta around this request on this class's own edge.
+        double before = untrustedDeadlineHeaders();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(edge).resolve("/ping"))
+                        .header("Authorization", "Bearer " + topology.jwts().alice())
+                        .header(EdgeApp.MARKER, marker)
+                        .header("Boundrail-Deadline-Ms", "5")
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        // Nanoseconds, recorded on arrival: above the ignored 5ms, at most the 500ms default.
+        assertThat(observed(topology, "edge", marker)).hasEntrySatisfying(ObservedContext.DEADLINE_REMAINING_NANOS,
+                nanos -> assertThat(Long.parseLong(nanos)).isGreaterThan(5_000_000L).isLessThanOrEqualTo(500_000_000L));
+        assertThat(untrustedDeadlineHeaders()).isEqualTo(before + 1);
     }
 
     @Test
@@ -85,5 +153,32 @@ class DeadlinePropagationIT {
         // IT-3.8: When edge publishes an event to `orders.events` during a request with a 500ms deadline, and billing's listener starts
         // processing it at least 4 seconds later, then processing succeeds, and billing observes no deadline, `tenant=acme` and
         // `initiator=user:alice`. *(KAF-01, KAF-02, KAF-04)*
+    }
+
+    /** Calls this class's edge {@code /ping} as alice with the marker, and returns the status. */
+    private static int pingEdge(Topology.Running topology, String marker) throws Exception {
+        return HTTP.send(HttpRequest.newBuilder(topology.uri(edge).resolve("/ping"))
+                        .header("Authorization", "Bearer " + topology.jwts().alice())
+                        .header(EdgeApp.MARKER, marker)
+                        .build(),
+                HttpResponse.BodyHandlers.discarding()).statusCode();
+    }
+
+    /** This class's edge's {@code boundrail.context.violations{kind=untrusted_header,key=boundrail.deadline}} count. */
+    private static double untrustedDeadlineHeaders() {
+        return edge.getBean(MeterRegistry.class).find("boundrail.context.violations")
+                .tags("kind", "untrusted_header", "key", "boundrail.deadline")
+                .counters().stream()
+                .mapToDouble(Counter::count)
+                .sum();
+    }
+
+    /** The single request a service observed with this marker. */
+    private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
+        List<Map<String, String>> marked = topology.observed().of(service).stream()
+                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
+                .toList();
+        assertThat(marked).as("%s requests marked %s", service, marker).hasSize(1);
+        return marked.getFirst();
     }
 }
