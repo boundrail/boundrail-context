@@ -88,12 +88,19 @@ class DeadlinePropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M4")
     @DisplayName("IT-3.3 Expired before send")
-    void it33ExpiredBeforeSend() {
+    void it33ExpiredBeforeSend(Topology.Running topology) throws Exception {
         // IT-3.3: When an edge handler serving a request authenticated as alice sleeps past its deadline and then calls orders, then
         // `DeadlineExceededException` (stage `BEFORE_SEND`) is thrown, orders receives no request, and edge responds with 504.
         // *(DL-06, DL-08)*
+        String marker = UUID.randomUUID().toString();
+
+        int status = callEdge(topology, "/deadline/sleep-then-call-orders", marker);
+
+        assertThat(status).isEqualTo(504);
+        assertThat(observed(topology, "edge-deadline", marker)).containsEntry("stage", "BEFORE_SEND");
+        assertThat(topology.observed().of("orders")).as("orders receives no request")
+                .noneMatch(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))));
     }
 
     @Test

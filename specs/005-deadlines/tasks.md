@@ -236,7 +236,7 @@ if one is needed, is added in the green step of the first task whose test needs 
   - Green: the check at the start of `ContextClientInterceptor.intercept` ([plan.md](plan.md#spring-wiring)).
   - Completes: DL-06.
   - Verify: Unit `OutboundDeadlineTest`.
-- [ ] T009 [US2] Map an escaping `DeadlineExceededException`; enable IT-3.3.
+- [x] T009 [US2] Map an escaping `DeadlineExceededException`; enable IT-3.3.
   - Red:
     - in `springtest/DeadlineExceptionMappingTest.java` (`MockMvc` on a `WebApplicationContextRunner` with the auto-configuration):
       - `DL-08 a DeadlineExceededException escaping a handler gets expired-status through sendError`: status 504, set through

@@ -32,6 +32,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
@@ -151,6 +152,19 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         static MvcAsyncExecutorPostProcessor boundrailMvcAsyncExecutorPostProcessor(ObjectProvider<EffectivePolicy> policy) {
             return new MvcAsyncExecutorPostProcessor(policy);
+        }
+    }
+
+    /** Maps an escaping {@code DeadlineExceededException} to {@code expired-status} in a servlet application with Spring MVC (DL-08). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnClass(HandlerExceptionResolver.class)
+    static class DeadlineExceptionConfiguration {
+
+        /** Inert when {@code map-exception} is off: read from the bound properties, so Boot's boolean forms such as {@code yes} work. */
+        @Bean
+        DeadlineExceptionResolver boundrailDeadlineExceptionResolver(BoundrailContextProperties properties) {
+            return new DeadlineExceptionResolver(properties.deadline());
         }
     }
 

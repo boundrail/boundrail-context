@@ -5,6 +5,9 @@ import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextViolationException;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
+import io.github.boundrail.context.Deadlines;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.it.topology.Topology.Service;
@@ -168,6 +171,24 @@ public class EdgeApp {
     String ping(@RequestHeader HttpHeaders headers) {
         observed.record("edge", ObservedContext.ping(headers));
         return "edge";
+    }
+
+    /**
+     * Sleeps until the request's deadline has expired, then calls orders' {@code /ping} through the internal client with the marker; on
+     * {@code DeadlineExceededException} records its stage under {@code edge-deadline} with the marker, and rethrows it (IT-3.3).
+     */
+    @GetMapping("/deadline/sleep-then-call-orders")
+    String sleepThenCallOrders(@RequestHeader HttpHeaders headers) throws InterruptedException {
+        String marker = headers.getFirst(MARKER);
+        Deadline deadline = Deadlines.current().orElseThrow();
+        Thread.sleep(deadline.remaining().plusMillis(20));
+        try {
+            ping(internalOrders, Service.ORDERS, marker);
+            return "sent";
+        } catch (DeadlineExceededException e) {
+            observed.record("edge-deadline", Map.of(MARKER.toLowerCase(Locale.ROOT), marker, "stage", e.stage().name()));
+            throw e;
+        }
     }
 
     /** Records on arrival, then calls orders' {@code /call-billing} through the internal client with the same marker (IT-3.1). */
