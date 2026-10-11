@@ -7,13 +7,22 @@ public final class DeadlineExceededException extends RuntimeException {
 
     private final Stage stage;
 
-    /** Creates the exception with the message {@code Deadline exceeded at stage <STAGE>} and no cause (DL-12). */
+    /**
+     * Creates the exception with the message {@code Deadline exceeded at stage <STAGE>} and no cause (DL-12).
+     *
+     * @param stage where the deadline was found expired
+     */
     public DeadlineExceededException(Stage stage) {
         super(message(stage));
         this.stage = stage;
     }
 
-    /** Creates the exception with the same message as {@link #DeadlineExceededException(Stage)} and the given cause (DL-12). */
+    /**
+     * Creates the exception with the same message as {@link #DeadlineExceededException(Stage)} and the given cause (DL-12).
+     *
+     * @param stage where the deadline was found expired
+     * @param cause the exception that made the deadline observable, for example the client's exception after the timer fired
+     */
     public DeadlineExceededException(Stage stage, Throwable cause) {
         super(message(stage), Objects.requireNonNull(cause, "cause"));
         this.stage = stage;

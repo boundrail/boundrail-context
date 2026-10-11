@@ -415,7 +415,7 @@ if one is needed, is added in the green step of the first task whose test needs 
 
 ## Phase 7: Close
 
-- [ ] T016 Verify each requirement one by one against the code and its tests, using the coverage table in
+- [x] T016 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-15, DL-03 – DL-09, DL-12, OUT-05 and EXE-08.
   - SC-001: DeadlinePropagationIT has no `@Disabled` left except IT-3.8 (`Pending: M6`); IT-3.1 – IT-3.7 pass in `integrationTestJdk21` and
@@ -450,9 +450,9 @@ if one is needed, is added in the green step of the first task whose test needs 
 ## Exit Checklist
 
 - [x] T001's outcome recorded in plan.md, and G1 – G6 settled by the user
-- [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.1 – IT-3.7
-- [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M4): CORE-15, DL-03 – DL-09, DL-12, EXE-08; the
+- [x] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.1 – IT-3.7
+- [x] Requirements implemented with tests named after their IDs (roadmap traceability row M4): CORE-15, DL-03 – DL-09, DL-12, EXE-08; the
   Javadoc statements of DL-07, OUT-05 and EXE-08 checked by inspection (TDD exceptions)
-- [ ] Guard tests (T010 and T012) shown red against their temporary change, and the change reverted
-- [ ] `boundrail-context-core` still has no runtime dependencies; Micrometer, Spring MVC and Boot's HTTP client are `compileOnly` in `-spring`
-- [ ] `./gradlew check` green
+- [x] Guard tests (T010 and T012) shown red against their temporary change, and the change reverted
+- [x] `boundrail-context-core` still has no runtime dependencies; Micrometer, Spring MVC and Boot's HTTP client are `compileOnly` in `-spring`
+- [x] `./gradlew check` green

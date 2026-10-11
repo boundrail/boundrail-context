@@ -24,7 +24,7 @@ A request's time budget travels, shrinks and is enforced, and it stops at detach
   - `ContextClientInterceptor` fails fast on an expired deadline before anything else, writes the remaining milliseconds to internal calls,
     and caps the response timeout on the JDK `HttpClient` request factory (DL-05 – DL-07); a startup WARN when Boot's auto-configured
     factory is another one; the `BoundrailClients` Javadoc for DL-07 and OUT-05;
-  - a lowest-precedence `HandlerExceptionResolver` mapping an escaping `DeadlineExceededException` to `expired-status` (DL-08);
+  - a `HandlerExceptionResolver`, last in Spring MVC's resolver chain, mapping an escaping `DeadlineExceededException` to `expired-status` (DL-08);
   - an expired MVC `Callable` is not called, and its request completes with the exception (EXE-08, a check-only `preProcess`, G2);
   - the counter `boundrail.context.deadline.exceeded`, tagged by stage (DL-09).
 
@@ -188,7 +188,7 @@ last interceptor, and request attributes are ignored, so Spring has no per-reque
   at startup, and logs one WARN through `LogFactory` when it is not a `JdkClientHttpRequestFactoryBuilder`: timeout capping is not
   guaranteed, naming the property to change. No WARN when no such bean exists (no Boot HTTP client auto-configuration). A builder wrapped by
   an application customizer can give a false WARN; the `BoundrailClients` Javadoc says so.
-- **Exception mapping (DL-08).** In a nested configuration conditional on a servlet web application and on `HandlerExceptionResolver`, a
+- **Exception mapping (DL-08).** In a nested configuration conditional on a servlet web application and on `WebMvcConfigurer`, a
   package-private `DeadlineExceptionResolver`, inert when `map-exception` is off (read from the bound properties, as 004 T015a). Since T009a
   it is appended to MVC's resolver chain by a `WebMvcConfigurer`'s `extendHandlerExceptionResolvers`, after the `@ExceptionHandler`
   resolver, instead of being a `HandlerExceptionResolver` bean: a lone bean of that type stops `DispatcherServlet` from installing its

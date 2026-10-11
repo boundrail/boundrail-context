@@ -31,8 +31,8 @@ import org.springframework.web.client.RestClient;
  *
  * <h2>Expired deadlines in request handlers (DL-08)</h2>
  * A {@code DeadlineExceededException} escaping a handler is mapped to {@code boundrail.context.deadline.expired-status} by a resolver the
- * library appends to Spring MVC's own resolver chain; a {@code DispatcherServlet} whose MVC is not configured by
- * {@code WebMvcConfigurationSupport} (for example through {@code @EnableWebMvc} or Spring Boot's MVC auto-configuration) does not get it.
+ * library appends to Spring MVC's own resolver chain. MVC configured by {@code WebMvcConfigurationSupport}, as {@code @EnableWebMvc} and
+ * Spring Boot's MVC auto-configuration do, gets it; a {@code DispatcherServlet} without it does not.
  *
  * <h2>Redirects (OUT-05)</h2>
  * A 3xx redirect that the HTTP client follows is not classified again: the redirected request may carry the context headers written for
