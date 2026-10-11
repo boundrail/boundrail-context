@@ -13,17 +13,21 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Named;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.autoconfigure.HttpClientAutoConfiguration;
 import org.springframework.boot.http.client.autoconfigure.imperative.ImperativeHttpClientAutoConfiguration;
 import org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
 /** The startup WARN when Boot's auto-configured request factory is not the JDK {@code HttpClient} one (DL-07). */
@@ -75,5 +79,32 @@ class RequestFactoryCheckTest {
 
         assertThat(warnings(output)).hasSize(expectedWarnings);
         warnings(output).forEach(warning -> assertThat(warning).contains("timeout capping is not guaranteed"));
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class TwoBuilders {
+
+        @Bean
+        ClientHttpRequestFactoryBuilder<?> firstBuilder() {
+            return ClientHttpRequestFactoryBuilder.simple();
+        }
+
+        @Bean
+        ClientHttpRequestFactoryBuilder<?> secondBuilder() {
+            return ClientHttpRequestFactoryBuilder.simple();
+        }
+    }
+
+    @Test
+    @DisplayName("DL-07 several request factory builders with none primary give no WARN and do not fail startup")
+    void severalRequestFactoryBuildersWithNonePrimaryGiveNoWarnAndDoNotFailStartup(CapturedOutput output) {
+        new ApplicationContextRunner().withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class))
+                .withUserConfiguration(TwoBuilders.class)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(RequestFactoryCheck.class);
+                });
+
+        assertThat(warnings(output)).isEmpty();
     }
 }

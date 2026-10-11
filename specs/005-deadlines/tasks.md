@@ -268,7 +268,9 @@ if one is needed, is added in the green step of the first task whose test needs 
 - [x] T010 [US2] Cap the response timeout on the JDK `HttpClient` factory until the response headers arrive (option A); enable IT-3.2.
   - Red:
     - in `springtest/DeadlineTimeoutTest.java` (auto-configured builder with `spring.http.clients.imperative.factory=jdk`; `RecordingServer`
-      with a delayed response, and one that sends its headers at once and its body later, added to `support/RecordingServer.java`):
+      with a delayed response, and one that sends its headers at once and its body later, added to `support/RecordingServer.java`). The
+      `TIMEOUT`, client-timeout and body cases below are named cases of one parametrized test, `DL-07 the effective timeout is the smaller of
+      the configured timeout and the remaining time, until the response headers arrive`:
       - `DL-07 a call whose remaining time is shorter than the configured timeout fails with DeadlineExceededException at TIMEOUT within the
         remaining time plus 200ms, with the client's interrupt exception as the cause`: `read-timeout=10s`, a 300ms deadline, a 3s delay;
         internal and external destinations; the cause is the JDK client's `IOException` for the interrupt, not `HttpTimeoutException`; the
@@ -433,6 +435,13 @@ if one is needed, is added in the green step of the first task whose test needs 
     `CallableProcessingInterceptor` (G2); `DEADLINE` is still never written to the MDC (LOG-02).
 
   Run `./gradlew check` fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run. With the CI run green, this closes the feature.
+- [x] T016a [US2] Close-review follow-ups (after the T016 review).
+  - Red, in `springtest/RequestFactoryCheckTest.java`: `DL-07 several request factory builders with none primary give no WARN and do not fail
+    startup` (red: `getIfAvailable()` threw `NoUniqueBeanDefinitionException` and failed startup).
+  - Green: the check reads the builder with `getIfUnique()`. Spec text only: DL-05 says a kept application value is sent as written, leading
+    zeros included; T010's entry names its parametrized test.
+  - Completes: DL-07 (several builders).
+  - Verify: Unit `RequestFactoryCheckTest`.
 
 ## Dependencies & Execution Order
 

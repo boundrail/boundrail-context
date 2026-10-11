@@ -239,7 +239,7 @@ public class BoundrailContextAutoConfiguration {
             @Bean
             @Lazy(false)
             RequestFactoryCheck boundrailRequestFactoryCheck(ObjectProvider<ClientHttpRequestFactoryBuilder<?>> builders) {
-                return new RequestFactoryCheck(builders.getIfAvailable(), LogFactory.getLog(RequestFactoryCheck.class));
+                return new RequestFactoryCheck(builders.getIfUnique(), LogFactory.getLog(RequestFactoryCheck.class));
             }
         }
 

@@ -166,14 +166,14 @@ fail, even when `spring.main.lazy-initialization` is `true`. Verified by IT-3.4 
 ### Outbound HTTP
 
 **DL-05** `[M4]` WHEN the library's interceptor (OUT-01) sends a request to an `INTERNAL` destination with a deadline bound, it SHALL set
-`Boundrail-Deadline-Ms` to the remaining milliseconds, computed immediately before sending and rounded down to a whole millisecond, so a
-receiver's budget is never longer than the sender's (DESIGN §4.8). IF application code has already set `Boundrail-Deadline-Ms` on that request,
-THEN, as an exception to OUT-04, the interceptor SHALL replace it with the smaller of the application's value and the remaining milliseconds when
-the application's value is one header value that is valid as DL-03 defines, and with the remaining milliseconds otherwise. With no deadline
-bound, an application's header is left unchanged (OUT-04). IF the value to write is longer than `wire.max-value-length` (WIRE-04), THEN the
-interceptor SHALL remove `Boundrail-Deadline-Ms` from the request, including a header application code set, and SHALL report one
-`OVERSIZED_VALUE` violation, so a receiver never gets a longer budget than the sender's (DESIGN D50, D57). Verified by IT-3.1, IT-3.2 and unit
-tests.
+`Boundrail-Deadline-Ms` to the remaining milliseconds, computed immediately before sending and rounded down to a whole millisecond, so a receiver's
+budget is never longer than the sender's (DESIGN §4.8). IF application code has already set `Boundrail-Deadline-Ms` on that request, THEN, as an
+exception to OUT-04, the interceptor SHALL replace it with the smaller of the application's value and the remaining milliseconds when the
+application's value is one header value that is valid as DL-03 defines, and with the remaining milliseconds otherwise; a kept application value is
+sent as written, leading zeros included. With no deadline bound, an application's header is left unchanged (OUT-04). IF the value to write is longer
+than `wire.max-value-length` (WIRE-04), THEN the interceptor SHALL remove `Boundrail-Deadline-Ms` from the request, including a header application
+code set, and SHALL report one `OVERSIZED_VALUE` violation, so a receiver never gets a longer budget than the sender's (DESIGN D50, D57). Verified
+by IT-3.1, IT-3.2 and unit tests.
 
 **DL-06** `[M4]` IF the deadline is expired when the library's interceptor is about to send a request to any destination, THEN it SHALL throw
 `DeadlineExceededException` (stage `BEFORE_SEND`) and SHALL NOT send the request. This check SHALL come first, before the required-key check
@@ -190,15 +190,16 @@ interrupt that arrives at the moment the timer fires is cleared too; an interrup
 fails at once and the interceptor rethrows its exception unchanged. A call made while or after its application context closes, when the timer can no
 longer be armed, SHALL run without the cap; DL-05 and DL-06 still apply (DESIGN D51).
 
-v0.1 SHALL support the JDK `HttpClient`-based request factory. The interceptor SHALL arm its timer for every client; the call is cut off where
-the request factory honours interrupts: the JDK one; Jetty and Reactor Netty (Jetty only gives up the wait); and the Simple and Apache
-HttpComponents factories on virtual threads. The Simple and Apache HttpComponents factories on platform threads are not capped. WHERE the request
-factory Spring Boot auto-configures for `RestClient.Builder` and `RestTemplateBuilder` is not the JDK `HttpClient` one, the Spring module SHALL log
-one WARN entry at startup stating that timeout capping is not guaranteed, and SHALL still apply DL-05 and DL-06. The WARN reads Boot's
-auto-configured `ClientHttpRequestFactoryBuilder`, so it can be wrong when a customizer wraps that builder or the application defines its own
-builder for the JDK factory, and a client given its own request factory in code is not checked. The Javadoc of `BoundrailClients` SHALL state
-that timeout capping is guaranteed only with the JDK `HttpClient` request factory, which other factories it works with, and these limits of the
-WARN (DESIGN D51). Verified by IT-3.2 and unit tests.
+v0.1 SHALL support the JDK `HttpClient`-based request factory. The interceptor SHALL arm its timer for every client; the call is cut off where the
+request factory honours interrupts: the JDK one; Jetty and Reactor Netty (Jetty only gives up the wait); and the Simple and Apache HttpComponents
+factories on virtual threads. The Simple and Apache HttpComponents factories on platform threads are not capped. WHERE the request factory Spring
+Boot auto-configures for `RestClient.Builder` and `RestTemplateBuilder` is not the JDK `HttpClient` one, the Spring module SHALL log one WARN entry
+at startup stating that timeout capping is not guaranteed, and SHALL still apply DL-05 and DL-06. The WARN reads Boot's auto-configured
+`ClientHttpRequestFactoryBuilder`, so it can be wrong when a customizer wraps that builder or the application defines its own builder for the JDK
+factory, and a client given its own request factory in code is not checked. IF the context holds several `ClientHttpRequestFactoryBuilder` beans and
+none is primary, THEN no WARN SHALL be logged and startup SHALL NOT fail because of the check. The Javadoc of `BoundrailClients` SHALL state that
+timeout capping is guaranteed only with the JDK `HttpClient` request factory, which other factories it works with, and these limits of the WARN
+(DESIGN D51). Verified by IT-3.2 and unit tests.
 
 **OUT-05** `[M4]` The Javadoc of `BoundrailClients` SHALL state that a 3xx redirect the HTTP client follows is not classified again, so the
 redirected request may carry the context headers written for the original destination, and that redirect following should be turned off on
