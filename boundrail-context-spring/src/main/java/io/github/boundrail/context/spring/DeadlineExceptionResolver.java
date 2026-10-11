@@ -1,0 +1,48 @@
+package io.github.boundrail.context.spring;
+
+import io.github.boundrail.context.DeadlineExceededException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.ModelAndView;
+
+/**
+ * Maps a {@code DeadlineExceededException} escaping a request handler to {@code expired-status} through {@code sendError}, as Spring does for
+ * {@code ResponseStatusException} (DL-08). Appended to the end of MVC's resolver chain, so the application's {@code @ExceptionHandler}
+ * methods run first.
+ */
+final class DeadlineExceptionResolver implements HandlerExceptionResolver {
+
+    private final boolean mapException;
+    private final int expiredStatus;
+    private final DeadlineCounter counter;
+
+    DeadlineExceptionResolver(BoundrailContextProperties.Deadline deadline, DeadlineCounter counter) {
+        this.mapException = deadline.mapException();
+        this.expiredStatus = deadline.expiredStatus();
+        this.counter = counter;
+    }
+
+    /**
+     * Calls {@code sendError(expired-status)} and returns an empty {@code ModelAndView} when {@code map-exception} is on, the exception
+     * itself is a {@code DeadlineExceededException}, not one found as a cause, and the response is not committed; otherwise returns
+     * {@code null}, so the exception propagates.
+     */
+    @Override
+    public ModelAndView resolveException(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        if (!mapException || !(ex instanceof DeadlineExceededException expired) || response.isCommitted()) {
+            return null;
+        }
+        try {
+            response.sendError(expiredStatus);
+        } catch (IOException e) {
+            return null;
+        }
+        // Counts only what it maps, and only APPLICATION: other stages were counted where they were detected (DL-09).
+        if (expired.stage() == DeadlineExceededException.Stage.APPLICATION) {
+            counter.increment(DeadlineExceededException.Stage.APPLICATION);
+        }
+        return new ModelAndView();
+    }
+}

@@ -8,6 +8,8 @@ import io.github.boundrail.context.ContextCodec;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.Violation;
 import jakarta.servlet.FilterChain;
@@ -15,6 +17,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -40,23 +43,35 @@ final class ContextInboundFilter extends OncePerRequestFilter {
     private final ContextPolicy policy;
     private final ViolationReporter reporter;
     private final int maxValueLength;
+    private final Optional<Duration> defaultInbound;
+    private final Duration maxInbound;
+    private final int expiredStatus;
+    private final DeadlineCounter counter;
 
-    ContextInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy, ViolationReporter reporter, int maxValueLength) {
+    ContextInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy, ViolationReporter reporter, int maxValueLength,
+            BoundrailContextProperties.Deadline deadline, DeadlineCounter counter) {
         this.verifier = verifier;
         this.policy = policy.policy();
         this.reporter = reporter;
         this.maxValueLength = maxValueLength;
+        this.defaultInbound = deadline.defaultInboundDuration();
+        this.maxInbound = deadline.maxInboundDuration();
+        this.expiredStatus = deadline.expiredStatus();
+        this.counter = counter;
     }
 
     /**
      * For a {@code TRUSTED_INTERNAL} request, binds each key that propagates to {@code INTERNAL_CALL} and whose wire header is present, decoded
      * with the key's codec (IN-02, WIRE-01); servlet header names are matched ignoring case (WIRE-06). The initiator is bound from
-     * {@code Boundrail-Initiator} with {@code Initiator.of} (WIRE-02); the deadline and authority are not bound (IN-02). A key whose wire
-     * header appears more than once is left unbound and reported as {@code INVALID_VALUE}, with none of its values decoded (IN-02). A value
-     * longer than {@code maxValueLength} is left unbound and reported as {@code OVERSIZED_VALUE}, without being decoded (WIRE-04). A value
-     * that fails to decode is left unbound and reported as {@code INVALID_VALUE} (WIRE-05). For an {@code UNTRUSTED} request, binds nothing
-     * and reports each policy wire header present (IN-02). Then runs the rest of the chain inside that scope and restores the previous
-     * snapshot, rethrowing the chain's exception unchanged (IN-01, CORE-08).
+     * {@code Boundrail-Initiator} with {@code Initiator.of} (WIRE-02); the authority is not bound (IN-02). A key whose wire header appears
+     * more than once is left unbound and reported as {@code INVALID_VALUE}, with none of its values decoded (IN-02). A value longer than
+     * {@code maxValueLength} is left unbound and reported as {@code OVERSIZED_VALUE}, without being decoded (WIRE-04). A value that fails to
+     * decode is left unbound and reported as {@code INVALID_VALUE} (WIRE-05). For an {@code UNTRUSTED} request, binds nothing and reports
+     * each policy wire header present (IN-02). In the same scope it binds the deadline: from a trusted request's single
+     * {@code Boundrail-Deadline-Ms} of ASCII digits, capped at {@code max-inbound}; otherwise from {@code default-inbound}, if set (DL-03).
+     * If that deadline has already expired, it sets {@code expired-status}, writes no body, does not call {@code sendError} and does not
+     * run the rest of the chain (DL-04); an {@code ASYNC} dispatch is not checked again. Otherwise it runs the rest of the chain inside
+     * that scope and restores the previous snapshot, rethrowing the chain's exception unchanged (IN-01, CORE-08).
      */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -66,14 +81,26 @@ final class ContextInboundFilter extends OncePerRequestFilter {
             return;
         }
         ContextBinding binding = null;
+        Optional<Duration> budget = Optional.empty();
         if (verifier.verify(request) == InboundTrustVerifier.Trust.TRUSTED_INTERNAL) {
             for (ContextKey<?> key : policy.keys()) {
                 if (key != BuiltInKeys.DEADLINE && key != BuiltInKeys.AUTHORITY && policy.propagates(key, Boundary.INTERNAL_CALL)) {
                     binding = bind(binding, key, request);
                 }
             }
+            budget = trustedBudget(request);
         } else {
             reportUntrusted(request);
+        }
+        budget = budget.or(() -> defaultInbound);
+        if (budget.isPresent()) {
+            Deadline deadline = Deadline.after(budget.get());
+            if (deadline.isExpired()) {
+                counter.increment(DeadlineExceededException.Stage.INBOUND);
+                response.setStatus(expiredStatus);
+                return;
+            }
+            binding = binding == null ? Context.with(BuiltInKeys.DEADLINE, deadline) : binding.with(BuiltInKeys.DEADLINE, deadline);
         }
         if (binding == null) {
             request.setAttribute(SNAPSHOT_ATTRIBUTE, Context.capture());
@@ -128,6 +155,61 @@ final class ContextInboundFilter extends OncePerRequestFilter {
                 reporter.report(reporter.violation(Violation.Kind.UNTRUSTED_HEADER, key.name(), Boundary.INTERNAL_CALL, Optional.empty()));
             }
         }
+    }
+
+    /**
+     * {@return the budget of a trusted request's {@code Boundrail-Deadline-Ms}, if it is carried on one header line and is one or more ASCII
+     * digits, capped at {@code max-inbound}; a value too large for a {@code long} is {@code max-inbound}} A header on several lines is
+     * reported once as {@code INVALID_VALUE}, with no line length-checked; otherwise a value longer than {@code maxValueLength} is reported
+     * as {@code OVERSIZED_VALUE} (WIRE-04), and a value that is not digits as {@code INVALID_VALUE}. Each gives no budget, so
+     * {@code default-inbound} applies (DL-03, DIAG-09: the value is never reported).
+     */
+    private Optional<Duration> trustedBudget(HttpServletRequest request) {
+        List<String> values = policy.wireName(BuiltInKeys.DEADLINE)
+                .<List<String>>map(name -> Collections.list(request.getHeaders(name)))
+                .orElse(List.of());
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+        // As IN-02 does for every key: several lines are one INVALID_VALUE, and no line is length-checked (D57).
+        if (values.size() > 1) {
+            reportDeadline(Violation.Kind.INVALID_VALUE);
+            return Optional.empty();
+        }
+        String value = values.getFirst();
+        if (value.length() > maxValueLength) {
+            reportDeadline(Violation.Kind.OVERSIZED_VALUE);
+            return Optional.empty();
+        }
+        if (!isDigits(value)) {
+            reportDeadline(Violation.Kind.INVALID_VALUE);
+            return Optional.empty();
+        }
+        // 18 digits always fit in a long. A practical bound: a longer value is at least 10^18 ms, about 31.7 million years, so it
+        // exceeds any realistic max-inbound and is capped to it.
+        if (value.length() > 18) {
+            return Optional.of(maxInbound);
+        }
+        Duration requested = Duration.ofMillis(Long.parseLong(value));
+        return Optional.of(requested.compareTo(maxInbound) < 0 ? requested : maxInbound);
+    }
+
+    private void reportDeadline(Violation.Kind kind) {
+        reporter.report(reporter.violation(kind, BuiltInKeys.DEADLINE.name(), Boundary.INTERNAL_CALL, Optional.empty()));
+    }
+
+    /** {@return whether the value is one or more ASCII digits} (DL-03) */
+    static boolean isDigits(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Rethrows {@code t} unchanged, checked or not, without declaring it. */

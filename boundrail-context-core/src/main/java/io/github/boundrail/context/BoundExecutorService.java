@@ -13,7 +13,10 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * An executor service returned by {@link BoundExecutors}: every task submitted through {@code execute}, {@code submit}, {@code invokeAll}
- * or {@code invokeAny} runs in the submitter's snapshot, filtered for the mode (EXE-02). Lifecycle methods delegate.
+ * or {@code invokeAny} runs in the submitter's snapshot, filtered for the mode (EXE-02). A task submitted with {@code submit},
+ * {@code invokeAll} or {@code invokeAny} whose captured deadline has expired when it starts is not run, and its future fails with
+ * {@code DeadlineExceededException} at {@code EXECUTOR}; one given to {@code execute} is not run either, and that exception goes to the
+ * worker thread's {@code UncaughtExceptionHandler} (EXE-08). Lifecycle methods delegate.
  */
 final class BoundExecutorService implements ExecutorService, ModeExecutor {
 
@@ -40,27 +43,63 @@ final class BoundExecutorService implements ExecutorService, ModeExecutor {
     /** {@return the tasks, each wrapped in one snapshot captured now; a {@code null} task throws NullPointerException} */
     private <T> List<Callable<T>> wrapped(Collection<? extends Callable<T>> tasks) {
         ContextSnapshot snapshot = captured();
-        return tasks.stream().map(task -> snapshot.wrap(task)).toList();
+        return tasks.stream().map(task -> refusingExpired(snapshot, snapshot.wrap(task))).toList();
+    }
+
+    /**
+     * {@return the wrapped task, which first throws {@code DeadlineExceededException} with stage {@code EXECUTOR}, without running the task,
+     * if the snapshot's deadline has expired when it starts} (EXE-08) A {@code DETACHED} snapshot holds no deadline (POL-04).
+     */
+    private static <T> Callable<T> refusingExpired(ContextSnapshot snapshot, Callable<T> wrapped) {
+        return () -> {
+            checkDeadline(snapshot);
+            return wrapped.call();
+        };
+    }
+
+    private static Runnable refusingExpired(ContextSnapshot snapshot, Runnable wrapped) {
+        return () -> {
+            checkDeadline(snapshot);
+            wrapped.run();
+        };
+    }
+
+    private static void checkDeadline(ContextSnapshot snapshot) {
+        if (BoundExecutor.isExpired(snapshot)) {
+            throw new DeadlineExceededException(DeadlineExceededException.Stage.EXECUTOR);
+        }
+    }
+
+    /** {@return the task wrapped in the snapshot captured now, refused if that snapshot's deadline has expired when it starts} */
+    private Runnable bound(Runnable task) {
+        ContextSnapshot snapshot = captured();
+        return refusingExpired(snapshot, snapshot.wrap(task));
+    }
+
+    private <T> Callable<T> bound(Callable<T> task) {
+        ContextSnapshot snapshot = captured();
+        return refusingExpired(snapshot, snapshot.wrap(task));
     }
 
     @Override
     public void execute(Runnable task) {
-        delegate.execute(captured().wrap(task));
+        ContextSnapshot snapshot = captured();
+        delegate.execute(BoundExecutor.handingOverExpired(snapshot, snapshot.wrap(task)));
     }
 
     @Override
     public Future<?> submit(Runnable task) {
-        return delegate.submit(captured().wrap(task));
+        return delegate.submit(bound(task));
     }
 
     @Override
     public <T> Future<T> submit(Runnable task, T result) {
-        return delegate.submit(captured().wrap(task), result);
+        return delegate.submit(bound(task), result);
     }
 
     @Override
     public <T> Future<T> submit(Callable<T> task) {
-        return delegate.submit(captured().wrap(task));
+        return delegate.submit(bound(task));
     }
 
     @Override

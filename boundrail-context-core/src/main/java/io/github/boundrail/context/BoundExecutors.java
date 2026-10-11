@@ -13,6 +13,17 @@ import java.util.concurrent.ExecutorService;
  * {@code ATTACHED} or {@code DETACHED} are not applied: an application key is then unregistered and propagates to both. To apply the
  * application's rules, pass its policy (EXE-04).
  *
+ * <p><b>Expired deadlines.</b> An executor returned by {@code attached} does not run a task whose captured deadline has expired when the
+ * task starts (EXE-08). A task submitted with {@code submit}, {@code invokeAll} or {@code invokeAny} completes its future exceptionally, so
+ * {@code get} throws {@code ExecutionException} whose cause is {@link DeadlineExceededException} with stage {@code EXECUTOR}; for a task
+ * given to {@code execute}, that exception is passed to the current thread's {@code UncaughtExceptionHandler} and {@code execute} returns
+ * normally, so a pool thread survives and an inline executor behaves the same. A {@code detached} executor's snapshot holds no deadline, so
+ * it always runs the task. Executor beans the Spring module decorates in {@code ATTACHED} mode carry the deadline but run the task whether or
+ * not it has expired, because their decorator cannot fail the future Spring created. In Spring MVC, a handler's {@code Callable} that starts
+ * after its deadline has expired is not called; that check is registered through a {@code WebMvcConfigurer}, so a
+ * {@code RequestMappingHandlerAdapter} not built by {@code WebMvcConfigurationSupport} does not get it. Expiries detected here, in
+ * {@code boundrail-context-core}, are not counted, because core has no meter registry (DL-09).
+ *
  * <p><b>Not covered.</b> {@code CompletableFuture.*Async} methods called without an explicit executor run on the common pool ({@link
  * java.util.concurrent.ForkJoinPool#commonPool()}) and are not covered; pass an executor returned by this class instead. {@code @Scheduled}
  * methods that return a reactive {@code Publisher}, and Kotlin {@code suspend} {@code @Scheduled} methods, are not given a system context

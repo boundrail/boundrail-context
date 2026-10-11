@@ -135,6 +135,11 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                 // Boot applies Micrometer's context-propagating decorator to edge's taskExecutor (IT-1.1).
                 properties.add("spring.task.execution.propagate-context=true");
             }
+            if (service == Service.BILLING) {
+                // IT-3.2: billing's clients use the JDK HttpClient request factory with a configured read timeout of 10s.
+                properties.add("spring.http.clients.imperative.factory=jdk");
+                properties.add("spring.http.clients.read-timeout=10s");
+            }
             properties.addAll(List.of(extraProperties));
             return new SpringApplicationBuilder(service.application)
                     .properties(properties.toArray(String[]::new))
@@ -146,8 +151,8 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                         context.getBeanFactory().registerSingleton("meterRegistry", new SimpleMeterRegistry());
                         // Every service trusts callers whose client applies TestInboundTrustVerifier.peer() (TEST-01).
                         context.getBeanFactory().registerSingleton("inboundTrustVerifier", new TestInboundTrustVerifier());
-                        if (service == Service.EDGE) {
-                            // Edge resolves the other services' URIs per request: they start after it, on random ports.
+                        if (service == Service.EDGE || service == Service.ORDERS || service == Service.BILLING) {
+                            // These services resolve the other services' URIs per request: those start later, on random ports.
                             context.getBeanFactory().registerSingleton("topology", this);
                         }
                     })

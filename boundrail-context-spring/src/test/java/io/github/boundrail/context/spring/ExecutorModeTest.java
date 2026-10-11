@@ -5,12 +5,17 @@ import static io.github.boundrail.context.Boundary.DETACHED;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.boundrail.context.BoundExecutors;
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.Deadlines;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -97,6 +102,20 @@ class ExecutorModeTest {
         runner.withUserConfiguration(TwoPools.class).withPropertyValues(MODES + ".attachedPool=attached").run(context -> {
             assertThat(submittedFromBinding(context.getBean("attachedPool", ThreadPoolTaskExecutor.class))).isEqualTo(ATTACHED_SEES);
             assertThat(submittedFromBinding(context.getBean("otherPool", ThreadPoolTaskExecutor.class))).isEqualTo(DETACHED_SEES);
+        });
+    }
+
+    @Test
+    @DisplayName("EXE-08 a decorated executor in attached mode runs a task whose deadline has expired, and the task sees the deadline")
+    void aDecoratedExecutorInAttachedModeRunsATaskWhoseDeadlineHasExpired() {
+        runner.withUserConfiguration(TwoPools.class).withPropertyValues(MODES + ".attachedPool=attached").run(context -> {
+            ThreadPoolTaskExecutor attachedPool = context.getBean("attachedPool", ThreadPoolTaskExecutor.class);
+            Deadline expired = Deadline.after(Duration.ZERO);
+
+            Optional<Deadline> seen = Context.with(BuiltInKeys.DEADLINE, expired)
+                    .call(() -> attachedPool.submit(Deadlines::current)).get(5, TimeUnit.SECONDS);
+
+            assertThat(seen).as("the task ran and saw the captured deadline").containsSame(expired);
         });
     }
 

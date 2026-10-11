@@ -231,18 +231,16 @@ class ContextInboundFilterTest {
     }
 
     @Test
-    @DisplayName("IN-02 a trusted request binds no deadline and no authority from headers")
-    void aTrustedRequestBindsNoDeadlineAndNoAuthorityFromHeaders() {
+    @DisplayName("IN-02 a trusted request binds no authority from headers")
+    void aTrustedRequestBindsNoAuthorityFromHeaders() {
         runner.withBean(InboundTrustVerifier.class, () -> TRUSTING).run(context -> {
             Filter filter = inboundRegistration(context).getFilter();
             Consumer<MockHttpServletRequest> headers = request -> {
                 request.addHeader("Boundrail-Initiator", "service:edge");
-                request.addHeader("Boundrail-Deadline-Ms", "5000");
                 request.addHeader("Authorization", "Bearer token");
             };
 
             assertThat(observe(filter, BuiltInKeys.INITIATOR, headers)).contains(Initiator.of("service:edge"));
-            assertThat(observe(filter, BuiltInKeys.DEADLINE, headers)).isEmpty();
             assertThat(observe(filter, BuiltInKeys.AUTHORITY, headers)).isEmpty();
         });
     }
@@ -350,24 +348,6 @@ class ContextInboundFilterTest {
 
         assertThat(filtered.violations()).as("the violation is reported").hasSize(1);
         assertThat(filtered.observed().priority()).as("the chain ran, with the rest of the context bound").contains(5L);
-    }
-
-    @Test
-    @DisplayName("IN-02 a repeated Boundrail-Deadline-Ms on a trusted request is skipped, not reported")
-    void aRepeatedBoundrailDeadlineMsOnATrustedRequestIsSkippedNotReported() {
-        List<Violation> violations = new CopyOnWriteArrayList<>();
-        runner.withClassLoader(new FilteredClassLoader(MeterRegistry.class))
-                .withBean(InboundTrustVerifier.class, () -> TRUSTING)
-                .withBean(ViolationReporter.Counter.class, () -> violations::add)
-                .run(context -> {
-                    Optional<?> deadline = observe(inboundRegistration(context).getFilter(), BuiltInKeys.DEADLINE, request -> {
-                        request.addHeader("Boundrail-Deadline-Ms", "5000");
-                        request.addHeader("Boundrail-Deadline-Ms", "6000");
-                    });
-
-                    assertThat(deadline).isEmpty();
-                    assertThat(violations).isEmpty();
-                });
     }
 
     @Test
@@ -498,7 +478,9 @@ class ContextInboundFilterTest {
         assertThat(initiator.observed().initiator()).as("checked before Initiator.of").isEmpty();
         assertThat(initiator.violations()).containsExactly(new Violation(Violation.Kind.OVERSIZED_VALUE, "boundrail.initiator",
                 INTERNAL_CALL, Optional.empty(), Thread.currentThread().getName(), Optional.empty(), Optional.empty()));
-        assertThat(deadline.violations()).as("the deadline is skipped before the length check").isEmpty();
+        assertThat(deadline.violations()).as("the deadline is length-checked too (DL-03)").containsExactly(new Violation(
+                Violation.Kind.OVERSIZED_VALUE, "boundrail.deadline", INTERNAL_CALL, Optional.empty(), Thread.currentThread().getName(),
+                Optional.empty(), Optional.empty()));
         assertThat(output.getOut()).contains("OVERSIZED_VALUE").contains("key tenant").doesNotContain("acme-")
                 .doesNotContain("qqqqqqqqqq");
     }

@@ -7,11 +7,15 @@ import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.ContextViolationException;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
+import io.github.boundrail.context.Deadlines;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.OutboundRequest;
 import io.github.boundrail.context.Violation;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.http.HttpRequest;
@@ -27,23 +31,34 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
     private final ViolationReporter reporter;
     private final BoundrailContextProperties.Violations.Mode mode;
     private final int maxValueLength;
+    private final DeadlineTimer timer;
+    private final DeadlineCounter counter;
 
     ContextClientInterceptor(DestinationClassifier classifier, EffectivePolicy policy, ViolationReporter reporter,
-            BoundrailContextProperties.Violations.Mode mode, int maxValueLength) {
+            BoundrailContextProperties.Violations.Mode mode, int maxValueLength, DeadlineTimer timer, DeadlineCounter counter) {
         this.classifier = classifier;
         this.policy = policy.policy();
         this.reporter = reporter;
         this.mode = mode;
         this.maxValueLength = maxValueLength;
+        this.timer = timer;
+        this.counter = counter;
     }
 
     /**
-     * Classifies the request URI and the client's declaration, if any (OUT-02), checks the required keys (POL-08), writes the wire headers
-     * of the bound keys that propagate to the boundary (OUT-04), strips forbidden headers from an external or unknown request (WIRE-07),
-     * then executes the request once.
+     * Throws {@code DeadlineExceededException} with stage {@code BEFORE_SEND}, without sending, if the bound deadline has expired (DL-06).
+     * Otherwise classifies the request URI and the client's declaration, if any (OUT-02), checks the required keys (POL-08), writes the
+     * wire headers of the bound keys that propagate to the boundary (OUT-04), strips forbidden headers from an external or unknown request
+     * (WIRE-07), writes the remaining time of a bound deadline to an internal request (DL-05), then executes the request once; with a
+     * deadline bound, under a timer that stops the call if the remaining time runs out before the response headers arrive (DL-07).
      */
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
+        // DL-06: first, before the required-key check, so an expired call reports no violation and writes no header.
+        if (Deadlines.current().filter(Deadline::isExpired).isPresent()) {
+            counter.increment(DeadlineExceededException.Stage.BEFORE_SEND);
+            throw new DeadlineExceededException(DeadlineExceededException.Stage.BEFORE_SEND);
+        }
         Optional<Destination> declared = Optional.ofNullable((Destination) request.getAttributes().get(BoundrailClients.DESTINATION_ATTRIBUTE));
         Destination destination = classifier.classify(new OutboundRequest(request.getURI(), declared));
         // DEST-03: UNKNOWN is treated exactly like EXTERNAL.
@@ -53,7 +68,49 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         if (boundary == Boundary.EXTERNAL_CALL) {
             stripForbiddenHeaders(request, destination);
         }
-        return execution.execute(request, body);
+        Optional<Deadline> deadline = Deadlines.current();
+        if (deadline.isEmpty()) {
+            return execution.execute(request, body);
+        }
+        // Read last: the header carries it, and the timer is armed for it right before execute (DL-05, DL-07).
+        Duration remaining = deadline.get().remaining();
+        if (boundary == Boundary.INTERNAL_CALL) {
+            writeDeadline(request, remaining, destination);
+        }
+        return timer.execute(remaining, request, body, execution);
+    }
+
+    /**
+     * Sets {@code Boundrail-Deadline-Ms} on an internal call to the remaining time in whole milliseconds, or to an
+     * application-set value that is one header value of ASCII digits and smaller (DL-05, an exception to OUT-04). A value longer than
+     * {@code maxValueLength} is not written, any application-set value is removed too, and one {@code OVERSIZED_VALUE} is reported, so the
+     * receiver never gets a longer budget than the sender's (WIRE-04, DESIGN D50, D57).
+     */
+    private void writeDeadline(HttpRequest request, Duration remaining, Destination destination) {
+        String wireName = policy.wireName(BuiltInKeys.DEADLINE).orElseThrow();
+        List<String> application = request.getHeaders().getOrEmpty(wireName);
+        String value = headerValue(remaining);
+        if (application.size() == 1 && ContextInboundFilter.isDigits(application.getFirst()) && isSmaller(application.getFirst(), value)) {
+            value = application.getFirst();
+        }
+        if (value.length() > maxValueLength) {
+            request.getHeaders().remove(wireName);
+            reporter.report(reporter.violation(Violation.Kind.OVERSIZED_VALUE, BuiltInKeys.DEADLINE.name(), Boundary.INTERNAL_CALL,
+                    Optional.of(destination)));
+            return;
+        }
+        request.getHeaders().set(wireName, value);
+    }
+
+    /** {@return the remaining time in whole milliseconds, rounded down} (DL-05) */
+    static String headerValue(Duration remaining) {
+        return Long.toString(remaining.toMillis());
+    }
+
+    /** {@return whether the digits {@code candidate} are a smaller number than the digits {@code remaining}} */
+    private static boolean isSmaller(String candidate, String remaining) {
+        String digits = candidate.replaceFirst("^0+(?=.)", "");
+        return digits.length() != remaining.length() ? digits.length() < remaining.length() : digits.compareTo(remaining) < 0;
     }
 
     /**

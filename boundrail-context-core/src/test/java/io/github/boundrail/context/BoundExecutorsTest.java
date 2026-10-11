@@ -2,7 +2,9 @@ package io.github.boundrail.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -10,11 +12,15 @@ import java.util.Optional;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -249,6 +255,162 @@ class BoundExecutorsTest {
             assertThatNullPointerException().isThrownBy(() -> bound.invokeAll(withNull, 5, TimeUnit.SECONDS));
         } finally {
             service.shutdownNow();
+        }
+    }
+
+    /** A binding of a deadline that has already expired. */
+    private static ContextBinding expired() {
+        return Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ZERO));
+    }
+
+    /** Asserts that the future fails with {@code ExecutionException} caused by {@code DeadlineExceededException} at {@code EXECUTOR}. */
+    private static void assertRefused(Future<?> future, String description) {
+        Throwable thrown = catchThrowable(() -> future.get(5, TimeUnit.SECONDS));
+        assertThat(thrown).as(description).isInstanceOf(ExecutionException.class);
+        assertThat(thrown.getCause()).as(description).isInstanceOf(DeadlineExceededException.class);
+        assertThat(((DeadlineExceededException) thrown.getCause()).stage()).as(description).isEqualTo(DeadlineExceededException.Stage.EXECUTOR);
+    }
+
+    @Test
+    @DisplayName("EXE-08 a task submitted to an attached executor service after its deadline has expired is not run, and its future fails with"
+            + " DeadlineExceededException at EXECUTOR")
+    void aTaskSubmittedAfterItsDeadlineHasExpiredIsNotRun() throws Exception {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            ExecutorService attached = BoundExecutors.attached(pool, POLICY);
+            AtomicBoolean callableRan = new AtomicBoolean();
+            AtomicBoolean runnableRan = new AtomicBoolean();
+            AtomicBoolean runnableWithResultRan = new AtomicBoolean();
+
+            List<Future<?>> refused = expired().call(() -> List.of(
+                    attached.submit(() -> callableRan.getAndSet(true)),
+                    attached.submit(() -> runnableRan.set(true)),
+                    attached.submit(() -> runnableWithResultRan.set(true), "result")));
+
+            assertRefused(refused.get(0), "submit(Callable)");
+            assertRefused(refused.get(1), "submit(Runnable)");
+            assertRefused(refused.get(2), "submit(Runnable, result)");
+            assertThat(List.of(callableRan.get(), runnableRan.get(), runnableWithResultRan.get())).as("no task ran").containsOnly(false);
+
+            CountDownLatch release = new CountDownLatch(1);
+            AtomicBoolean lateRan = new AtomicBoolean();
+            pool.submit(() -> release.await(5, TimeUnit.SECONDS));
+            Deadline shortDeadline = Deadline.after(Duration.ofMillis(50));
+            Future<?> late = Context.with(BuiltInKeys.DEADLINE, shortDeadline).call(() -> attached.submit(() -> lateRan.set(true)));
+            while (!shortDeadline.isExpired()) {
+                Thread.sleep(5);
+            }
+            release.countDown();
+
+            assertRefused(late, "submitted before expiry, started after it");
+            assertThat(lateRan).as("the late task did not run").isFalse();
+
+            AtomicBoolean liveRan = new AtomicBoolean();
+            Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofSeconds(10))).call(() -> attached.submit(() -> liveRan.set(true)))
+                    .get(5, TimeUnit.SECONDS);
+            assertThat(liveRan).as("a task with time left runs").isTrue();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("EXE-08 invokeAll and invokeAny refuse expired tasks")
+    void invokeAllAndInvokeAnyRefuseExpiredTasks() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            ExecutorService attached = BoundExecutors.attached(pool, POLICY);
+            AtomicInteger ran = new AtomicInteger();
+            List<Callable<String>> tasks = List.of(() -> "a" + ran.incrementAndGet(), () -> "b" + ran.incrementAndGet());
+
+            List<Future<String>> all = expired().call(() -> attached.invokeAll(tasks));
+            Throwable any = expired().call(() -> catchThrowable(() -> attached.invokeAny(tasks)));
+
+            assertThat(all).hasSize(2);
+            all.forEach(future -> assertRefused(future, "invokeAll"));
+            assertThat(any).as("invokeAny").isInstanceOf(ExecutionException.class);
+            assertThat(any.getCause()).isInstanceOf(DeadlineExceededException.class);
+            assertThat(((DeadlineExceededException) any.getCause()).stage()).isEqualTo(DeadlineExceededException.Stage.EXECUTOR);
+            assertThat(ran).as("no task ran").hasValue(0);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("EXE-08 a detached executor service runs the task, because its snapshot holds no deadline")
+    void aDetachedExecutorServiceRunsTheTask() throws Exception {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<Optional<Deadline>> detached = expired().call(() -> BoundExecutors.detached(pool, POLICY).submit(Deadlines::current));
+            Future<Optional<Deadline>> attached = expired().call(() -> BoundExecutors.attached(pool, POLICY).submit(Deadlines::current));
+
+            assertThat(detached.get(5, TimeUnit.SECONDS)).as("detached: runs, and sees no deadline").isEmpty();
+            assertRefused(attached, "attached");
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /** What an {@code UncaughtExceptionHandler} received, and on which thread. */
+    private record Uncaught(String thread, Throwable exception) {
+    }
+
+    @Test
+    @DisplayName("EXE-08 an expired task passed to execute is not run, its exception goes to the current thread's UncaughtExceptionHandler,"
+            + " and execute returns normally")
+    void anExpiredTaskPassedToExecuteGoesToTheUncaughtExceptionHandler() throws Exception {
+        for (String variant : List.of("attached(Executor)", "attached(ExecutorService)")) {
+            List<Uncaught> uncaught = new CopyOnWriteArrayList<>();
+            AtomicInteger threads = new AtomicInteger();
+            ExecutorService pool = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "pool-" + threads.incrementAndGet());
+                thread.setUncaughtExceptionHandler((t, e) -> uncaught.add(new Uncaught(t.getName(), e)));
+                return thread;
+            });
+            try {
+                Executor attached = variant.equals("attached(Executor)")
+                        ? BoundExecutors.attached((Executor) pool, POLICY)
+                        : BoundExecutors.attached(pool, POLICY);
+                AtomicBoolean ran = new AtomicBoolean();
+
+                expired().run(() -> attached.execute(() -> ran.set(true)));
+                String nextThread = pool.submit(() -> Thread.currentThread().getName()).get(5, TimeUnit.SECONDS);
+
+                assertThat(ran).as("%s: the expired task did not run", variant).isFalse();
+                assertThat(uncaught).as(variant).singleElement().satisfies(received -> {
+                    assertThat(received.thread()).as("on the pool thread").isEqualTo("pool-1");
+                    assertThat(received.exception()).isInstanceOf(DeadlineExceededException.class);
+                    assertThat(((DeadlineExceededException) received.exception()).stage()).isEqualTo(DeadlineExceededException.Stage.EXECUTOR);
+                });
+                assertThat(nextThread).as("%s: the same pool thread runs the next task", variant).isEqualTo("pool-1");
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("EXE-08 with an inline executor the caller's handler receives it and execute returns")
+    void withAnInlineExecutorTheCallersHandlerReceivesIt() {
+        Thread caller = Thread.currentThread();
+        Thread.UncaughtExceptionHandler previous = caller.getUncaughtExceptionHandler();
+        List<Uncaught> uncaught = new CopyOnWriteArrayList<>();
+        caller.setUncaughtExceptionHandler((t, e) -> uncaught.add(new Uncaught(t.getName(), e)));
+        try {
+            AtomicBoolean ran = new AtomicBoolean();
+
+            Throwable thrown = catchThrowable(() -> expired().run(() -> BoundExecutors.attached(Runnable::run, POLICY).execute(() -> ran.set(true))));
+
+            assertThat(thrown).as("execute returns normally").isNull();
+            assertThat(ran).as("the expired task did not run").isFalse();
+            assertThat(uncaught).singleElement().satisfies(received -> {
+                assertThat(received.thread()).isEqualTo(caller.getName());
+                assertThat(received.exception()).isInstanceOf(DeadlineExceededException.class);
+                assertThat(((DeadlineExceededException) received.exception()).stage()).isEqualTo(DeadlineExceededException.Stage.EXECUTOR);
+            });
+        } finally {
+            caller.setUncaughtExceptionHandler(previous == caller.getThreadGroup() ? null : previous);
         }
     }
 }

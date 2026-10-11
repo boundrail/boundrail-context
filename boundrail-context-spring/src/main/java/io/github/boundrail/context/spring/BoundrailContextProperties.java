@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.boot.convert.ApplicationConversionService;
@@ -18,10 +19,12 @@ import org.springframework.boot.convert.ApplicationConversionService;
  * @param wire limits on wire values
  * @param executors how Spring's task executors are decorated
  * @param audit the startup executor audit
+ * @param deadline inbound deadlines and their expiry
  */
 @ConfigurationProperties("boundrail.context")
 public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Inbound inbound,
-        @DefaultValue Destinations destinations, @DefaultValue Wire wire, @DefaultValue Executors executors, @DefaultValue Audit audit) {
+        @DefaultValue Destinations destinations, @DefaultValue Wire wire, @DefaultValue Executors executors, @DefaultValue Audit audit,
+        @DefaultValue Deadline deadline) {
 
     /**
      * Violation handling (DIAG-02) and reporting (DIAG-03).
@@ -151,6 +154,63 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
         public Wire {
             if (maxValueLength < 1) {
                 throw new IllegalArgumentException("boundrail.context.wire.max-value-length must be at least 1: " + maxValueLength);
+            }
+        }
+    }
+
+    /**
+     * Deadlines (DL-03, DL-04, DL-08). The durations are bound as strings, because Spring Boot fails on a duration that is only
+     * whitespace, and converted with {@code ApplicationConversionService}, which accepts the same formats as Boot's duration binding; the
+     * library reads them through {@code defaultInboundDuration()} and {@code maxInboundDuration()}.
+     *
+     * @param defaultInbound the budget bound when no trusted deadline is present; {@code null} when not set, which a blank value also means
+     * @param maxInbound the cap on trusted inbound deadlines; blank means {@code 30s}
+     * @param expiredStatus the status of a request whose deadline has expired, from 400 to 599
+     * @param mapException whether an escaping {@code DeadlineExceededException} is mapped to {@code expiredStatus}
+     */
+    public record Deadline(String defaultInbound, @DefaultValue("30s") String maxInbound, @DefaultValue("504") int expiredStatus,
+            @DefaultValue("true") boolean mapException) {
+
+        /**
+         * Converts and checks the values.
+         *
+         * @throws org.springframework.core.convert.ConversionFailedException if a duration cannot be converted
+         * @throws IllegalArgumentException if a duration is zero or negative, or {@code expiredStatus} is outside 400 – 599
+         */
+        public Deadline {
+            if (defaultInbound != null && defaultInbound.isBlank()) {
+                defaultInbound = null;
+            }
+            if (maxInbound == null || maxInbound.isBlank()) {
+                maxInbound = "30s";
+            }
+            duration(defaultInbound).ifPresent(duration -> requirePositive("default-inbound", duration));
+            requirePositive("max-inbound", duration(maxInbound).orElseThrow());
+            if (expiredStatus < 400 || expiredStatus > 599) {
+                throw new IllegalArgumentException("boundrail.context.deadline.expired-status must be from 400 to 599: " + expiredStatus);
+            }
+        }
+
+        /** {@return the budget bound when no trusted deadline is present, if set} */
+        Optional<Duration> defaultInboundDuration() {
+            return duration(defaultInbound);
+        }
+
+        /** {@return the cap on trusted inbound deadlines} */
+        Duration maxInboundDuration() {
+            return duration(maxInbound).orElseThrow();
+        }
+
+        private static Optional<Duration> duration(String value) {
+            if (value == null || value.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(ApplicationConversionService.getSharedInstance().convert(value, Duration.class));
+        }
+
+        private static void requirePositive(String property, Duration value) {
+            if (value.isNegative() || value.isZero()) {
+                throw new IllegalArgumentException("boundrail.context.deadline." + property + " must be greater than zero: " + value);
             }
         }
     }

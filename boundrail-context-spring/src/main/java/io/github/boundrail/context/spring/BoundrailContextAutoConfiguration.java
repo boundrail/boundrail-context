@@ -9,6 +9,7 @@ import jakarta.servlet.DispatcherType;
 import java.time.Clock;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
@@ -22,6 +23,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.restclient.RestClientCustomizer;
 import org.springframework.boot.restclient.RestTemplateCustomizer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -32,6 +34,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 /** Spring Boot auto-configuration for Boundrail Context. */
@@ -141,7 +145,7 @@ public class BoundrailContextAutoConfiguration {
 
     /**
      * Runs a handler's {@code Callable}, or a {@code WebAsyncTask} without an executor of its own, in the request's snapshot filtered for
-     * {@code ATTACHED}, where Spring MVC is present (EXE-09).
+     * {@code ATTACHED}, where Spring MVC is present (EXE-09), and refuses it if its deadline has expired when it would start (EXE-08).
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(RequestMappingHandlerAdapter.class)
@@ -152,12 +156,58 @@ public class BoundrailContextAutoConfiguration {
         static MvcAsyncExecutorPostProcessor boundrailMvcAsyncExecutorPostProcessor(ObjectProvider<EffectivePolicy> policy) {
             return new MvcAsyncExecutorPostProcessor(policy);
         }
+
+        /** Refuses a {@code Callable} whose captured deadline has expired when it would start; registered last (EXE-08). */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnClass(WebMvcConfigurer.class)
+        static class DeadlineCallableConfiguration {
+
+            @Bean
+            DeadlineCallableInterceptor.Registration boundrailDeadlineCallableRegistration(ObjectProvider<DeadlineCounter> counters) {
+                return new DeadlineCallableInterceptor.Registration(counters.getIfAvailable(() -> stage -> { }));
+            }
+        }
+    }
+
+    /**
+     * Maps an escaping {@code DeadlineExceededException} to {@code expired-status} in a servlet application with Spring MVC (DL-08). The
+     * resolver is appended to the resolvers MVC configures, after the application's {@code @ExceptionHandler} methods, and is never a
+     * {@code HandlerExceptionResolver} bean, which would stop {@code DispatcherServlet} from installing its default resolvers.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnClass(WebMvcConfigurer.class)
+    static class DeadlineExceptionConfiguration {
+
+        /** Inert when {@code map-exception} is off: read from the bound properties, so Boot's boolean forms such as {@code yes} work. */
+        @Bean
+        WebMvcConfigurer boundrailDeadlineExceptionMvcConfigurer(BoundrailContextProperties properties,
+                ObjectProvider<DeadlineCounter> counters) {
+            DeadlineExceptionResolver resolver = new DeadlineExceptionResolver(properties.deadline(), counters.getIfAvailable(() -> stage -> { }));
+            return new WebMvcConfigurer() {
+                @Override
+                public void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers) {
+                    resolvers.add(resolver);
+                }
+            };
+        }
     }
 
     /** Counts violations in the application's unique or primary {@code MeterRegistry} bean, never the global registry (DIAG-03). */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(MeterRegistry.class)
     static class MicrometerConfiguration {
+
+        /** Counts deadline expiries by stage, in the unique or primary registry, never the global one (DL-09). */
+        @Bean
+        DeadlineCounter boundrailDeadlineCounter(ObjectProvider<MeterRegistry> registries) {
+            return stage -> {
+                MeterRegistry registry = registries.getIfUnique();
+                if (registry != null) {
+                    registry.counter("boundrail.context.deadline.exceeded", "stage", stage.name().toLowerCase(Locale.ROOT)).increment();
+                }
+            };
+        }
 
         @Bean
         ViolationReporter.Counter boundrailViolationCounter(ObjectProvider<MeterRegistry> registries) {
@@ -181,14 +231,34 @@ public class BoundrailContextAutoConfiguration {
     @ConditionalOnClass({ClientHttpRequestInterceptor.class, RestClientCustomizer.class, RestTemplateCustomizer.class})
     static class ClientConfiguration {
 
+        /** Warns once at startup when Boot's auto-configured request factory is not the JDK {@code HttpClient} one (DL-07). */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnClass(ClientHttpRequestFactoryBuilder.class)
+        static class RequestFactoryCheckConfiguration {
+
+            @Bean
+            @Lazy(false)
+            RequestFactoryCheck boundrailRequestFactoryCheck(ObjectProvider<ClientHttpRequestFactoryBuilder<?>> builders) {
+                return new RequestFactoryCheck(builders.getIfUnique(), LogFactory.getLog(RequestFactoryCheck.class));
+            }
+        }
+
+        /** The timer that stops calls whose deadline runs out (DL-07); one per context, shut down when it closes (RT-09). */
+        @Bean(destroyMethod = "close")
+        DeadlineTimer boundrailDeadlineTimer(ObjectProvider<DeadlineCounter> counters) {
+            return new DeadlineTimer(counters.getIfAvailable(() -> stage -> { }));
+        }
+
         @Bean
         @Lazy(false)
         RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties) {
+                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer,
+                ObjectProvider<DeadlineCounter> counters) {
+            DeadlineCounter counter = counters.getIfAvailable(() -> stage -> { });
             return builder -> builder.requestInterceptors(interceptors -> {
                 if (interceptors.stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     interceptors.add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength()));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter));
                 }
             });
         }
@@ -196,11 +266,13 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         @Lazy(false)
         RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties) {
+                ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer,
+                ObjectProvider<DeadlineCounter> counters) {
+            DeadlineCounter counter = counters.getIfAvailable(() -> stage -> { });
             return restTemplate -> {
                 if (restTemplate.getInterceptors().stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength()));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter));
                 }
             };
         }
@@ -236,9 +308,10 @@ public class BoundrailContextAutoConfiguration {
         @Bean
         @Lazy(false)
         FilterRegistrationBean<ContextInboundFilter> boundrailInboundFilter(InboundTrustVerifier verifier, EffectivePolicy policy,
-                ViolationReporter reporter, BoundrailContextProperties properties, Environment environment) {
-            FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(
-                    new ContextInboundFilter(verifier, policy, reporter, properties.wire().maxValueLength()));
+                ViolationReporter reporter, BoundrailContextProperties properties, Environment environment,
+                ObjectProvider<DeadlineCounter> counters) {
+            FilterRegistrationBean<ContextInboundFilter> registration = new FilterRegistrationBean<>(new ContextInboundFilter(verifier, policy,
+                    reporter, properties.wire().maxValueLength(), properties.deadline(), counters.getIfAvailable(() -> stage -> { })));
             int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
                     ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
             if (securityOrder == Integer.MIN_VALUE) {
