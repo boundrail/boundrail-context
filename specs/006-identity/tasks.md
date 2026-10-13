@@ -95,7 +95,7 @@ disabled scenarios. The one build change, Jackson 3 in `-spring`, is part of T01
   - Green: the third field, the factory and the accessor in `core/Authority.java` ([plan.md](plan.md#core)).
   - Completes: ID-10; CORE-16 (`Authority.of`).
   - Verify: Unit `AuthorityTest` in `:boundrail-context-core`.
-- [ ] T003 [P] The `authority.*` properties: binding, relaxed enum, and a `toString()` without the client secret.
+- [x] T003 [P] The `authority.*` properties: binding, relaxed enum, and a `toString()` without the client secret.
   - Red, in `springtest/AuthorityPropertiesTest.java` (`ApplicationContextRunner`, reading `BoundrailContextProperties.authority()`):
     - `ID-04 authority.propagation defaults to forward and the exchange properties to unset`;
     - `ID-04 authority.propagation is matched with relaxed enum binding, and an empty or blank value means forward` (parametrized):
