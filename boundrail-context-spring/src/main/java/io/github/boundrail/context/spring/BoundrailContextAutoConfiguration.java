@@ -1,5 +1,6 @@
 package io.github.boundrail.context.spring;
 
+import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.DestinationClassifier;
@@ -12,6 +13,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.commons.logging.LogFactory;
 import org.slf4j.MDC;
@@ -34,6 +36,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.AbstractOAuth2TokenAuthenticationToken;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
@@ -335,9 +338,11 @@ public class BoundrailContextAutoConfiguration {
             @Bean
             @Lazy(false)
             FilterRegistrationBean<ContextAuthenticationFilter> boundrailAuthenticationFilter(
-                    ObjectProvider<ContextContributor> contributors, ViolationReporter reporter, Environment environment) {
-                FilterRegistrationBean<ContextAuthenticationFilter> registration =
-                        new FilterRegistrationBean<>(new ContextAuthenticationFilter(contributors, reporter));
+                    ObjectProvider<ContextContributor> contributors, ObjectProvider<AuthorityExtraction> extraction,
+                    ViolationReporter reporter, Environment environment) {
+                FilterRegistrationBean<ContextAuthenticationFilter> registration = new FilterRegistrationBean<>(
+                        new ContextAuthenticationFilter(contributors, extraction.getIfAvailable(() -> authentication -> Optional.empty()),
+                                reporter));
                 int securityOrder = environment.getProperty("spring.security.filter.order", Integer.class,
                         ContextInboundFilter.SECURITY_FILTER_ORDER_DEFAULT);
                 if (securityOrder == Integer.MAX_VALUE) {
@@ -345,6 +350,29 @@ public class BoundrailContextAutoConfiguration {
                 }
                 registration.setOrder(securityOrder + 1);
                 return registration;
+            }
+
+            /** Extracts the authority from an OAuth2 token authentication, where Spring Security's resource server is present (ID-02). */
+            @Configuration(proxyBeanMethods = false)
+            @ConditionalOnClass(AbstractOAuth2TokenAuthenticationToken.class)
+            static class OAuth2AuthorityConfiguration {
+
+                /**
+                 * {@code Authority.of(getName(), token value, expiry)} for an {@code AbstractOAuth2TokenAuthenticationToken}, without the expiry
+                 * when the token has none (ID-10); empty for any other authentication.
+                 */
+                @Bean
+                AuthorityExtraction boundrailAuthorityExtraction() {
+                    return authentication -> {
+                        if (!(authentication instanceof AbstractOAuth2TokenAuthenticationToken<?> oauth2)) {
+                            return Optional.empty();
+                        }
+                        String credential = oauth2.getToken().getTokenValue();
+                        return Optional.of(oauth2.getToken().getExpiresAt() == null
+                                ? Authority.of(oauth2.getName(), credential)
+                                : Authority.of(oauth2.getName(), credential, oauth2.getToken().getExpiresAt()));
+                    };
+                }
             }
         }
     }

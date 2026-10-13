@@ -123,7 +123,7 @@ application set its own.
 
 **Independent Test**: IT-4.1, IT-4.2, IT-4.4 and IT-4.7 in the IT command (IT-4.5 of US3 is enabled here too, in T006).
 
-- [ ] T004 [US1] Bind `AUTHORITY` from an `AbstractOAuth2TokenAuthenticationToken`.
+- [x] T004 [US1] Bind `AUTHORITY` from an `AbstractOAuth2TokenAuthenticationToken`.
   - Red, in `springtest/AuthorityBindingTest.java` (`WebApplicationContextRunner` with the auto-configuration, the filter driven as
     `ContextAuthenticationFilterTest` does; the chain records the bound `AUTHORITY`):
     - `ID-02 a JwtAuthenticationToken binds AUTHORITY with its name, token value and expiry`: subject `alice`, the JWT's token value,

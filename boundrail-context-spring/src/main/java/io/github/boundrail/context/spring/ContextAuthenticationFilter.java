@@ -1,6 +1,8 @@
 package io.github.boundrail.context.spring;
 
+import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.Boundary;
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextBinding;
 import io.github.boundrail.context.ContextKey;
@@ -23,9 +25,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Binds the values the {@link ContextContributor} beans contribute from the authentication of a request, for the rest of the chain (IN-04,
- * IN-05), and reports one {@code INVALID_VALUE} for each key a contributor reports as invalid (IN-07). Inside its scope it replaces the
- * snapshot stored for the request's {@code ASYNC} dispatches. It does not run on {@code ASYNC} dispatches, so contributors are invoked once
- * per request (IN-09).
+ * IN-05), and {@code AUTHORITY} from a verified OAuth2 token authentication, whether or not it is already bound (ID-02); and reports one
+ * {@code INVALID_VALUE} for each key a contributor reports as invalid (IN-07). Inside its scope it replaces the snapshot stored for the
+ * request's {@code ASYNC} dispatches. It does not run on {@code ASYNC} dispatches, so contributors are invoked once per request (IN-09).
  */
 final class ContextAuthenticationFilter extends OncePerRequestFilter {
 
@@ -33,10 +35,13 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
     private static final AuthenticationTrustResolver TRUST_RESOLVER = new AuthenticationTrustResolverImpl();
 
     private final ObjectProvider<ContextContributor> contributors;
+    private final AuthorityExtraction extraction;
     private final ViolationReporter reporter;
 
-    ContextAuthenticationFilter(ObjectProvider<ContextContributor> contributors, ViolationReporter reporter) {
+    ContextAuthenticationFilter(ObjectProvider<ContextContributor> contributors, AuthorityExtraction extraction,
+            ViolationReporter reporter) {
         this.contributors = contributors;
+        this.extraction = extraction;
         this.reporter = reporter;
     }
 
@@ -55,6 +60,11 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
         }
         Contributions contributions = new Contributions(reporter);
         contributors.orderedStream().forEach(contributor -> contributor.contribute(authentication, contributions));
+        Optional<Authority> authority = extraction.from(authentication);
+        if (authority.isPresent()) {
+            contributions.binding = contributions.binding == null ? Context.with(BuiltInKeys.AUTHORITY, authority.get())
+                    : contributions.binding.with(BuiltInKeys.AUTHORITY, authority.get());
+        }
         if (contributions.binding == null) {
             chain.doFilter(request, response);
             return;
