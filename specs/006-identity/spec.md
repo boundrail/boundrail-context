@@ -120,10 +120,14 @@ Authority never reaches external calls, detached work, messages, logs, the MDC o
   (`TokenExchangeException`; the call is not sent).
 - The token endpoint is slower than the remaining deadline: ID-12 (`DeadlineExceededException`, stage `TIMEOUT`, counted; its cause is
   the `HttpTimeoutException`). The deadline runs out between DL-06's check and the exchange: ID-12 (`TIMEOUT`, counted; no exchange request
-  and no call). The calling thread is interrupted during the exchange: ID-12 (`TokenExchangeException`; the interrupt status is restored).
-- `expires_in` is `3600.0` or `1e3`: ID-11 (valid). It is `"3600"`, `null`, `1.5` or `-1`: ID-11 (invalid response, ID-12). It is too large
-  for a `long`: ID-11 (valid; the cache lifetime is capped). The response has an unexpected `Content-Type`: ID-11 (not checked). Slower than 10s
-  with no deadline bound: ID-12 (`TokenExchangeException`).
+  and no call). The calling thread is interrupted during the exchange: ID-12 (`TokenExchangeException`; the library restores the interrupt
+  status, which the JDK client clears). Slower than 10s with no deadline bound: ID-12 (`TokenExchangeException`).
+- `expires_in` is `3600.0` or `1e3`: ID-11 (valid). It is `"3600"`, `null`, `1.5`, `-1` or NaN: ID-11 (invalid response, ID-12). It is too
+  large for a `long`, or infinite: ID-11 (valid; the cache lifetime is capped). The response has an unexpected `Content-Type`: ID-11 (not
+  checked).
+- A response body with trailing content after the JSON object, a malformed escape, or an `access_token` that is JSON `null`: ID-11 (invalid
+  response, ID-12; Jackson 3 parses strictly). The parse error is neither the cause nor part of the message of the `TokenExchangeException`
+  (ID-12).
 - The exchange response has no `expires_in`: ID-11 (the token is used for that call and not cached). An `expires_in` of 30 seconds or less:
   ID-11 (not cached). An authority with no expiry: ID-11 (only the exchanged token's expiry limits the cache).
 - More than 10,000 cached exchanged tokens: ID-11 (the oldest entry is evicted). Two concurrent calls with the same credential and audience
@@ -132,8 +136,8 @@ Authority never reaches external calls, detached work, messages, logs, the MDC o
 - `authority.propagation` is `EXCHANGE`, blank or `bogus`: ID-04 (relaxed binding means `exchange`; blank means `forward`; `bogus` fails
   startup, even under lazy initialization).
 - `authority.propagation=exchange` with a missing, blank, relative, hostless or non-HTTP `authority.exchange.token-uri`, or a missing or
-  blank client id or secret: ID-11 (startup fails, even under lazy initialization); with an `AuthorityPropagator` bean, the
-  `authority.exchange.*` properties are not validated.
+  blank client id or secret, or without Jackson 3 on the classpath: ID-11 (startup fails, even under lazy initialization); with an
+  `AuthorityPropagator` bean, the `authority.exchange.*` properties are not validated.
 - A `null` argument passed to the M5 contract: CORE-16.
 
 ## Requirements *(mandatory)*
@@ -211,29 +215,33 @@ Verified by IT-4.8 and unit tests.
 `application/x-www-form-urlencoded` body holding `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token` (the authority's
 credential), `subject_token_type=urn:ietf:params:oauth:token-type:access_token` and `audience` (the destination's service name), and SHALL
 authenticate with HTTP Basic using `authority.exchange.client-id` and `authority.exchange.client-secret`, each encoded as RFC 6749 §2.3.1 defines. A
-valid response SHALL have status 200 and a JSON object body whose `access_token` is a non-empty string, which SHALL be the returned credential;
-`token_type` and the response's `Content-Type` SHALL NOT be checked. `expires_in`, when present, SHALL be a JSON number with a whole value of zero or
-more, such as `3600`, `3600.0` or `1e3`, giving seconds counted from when the response is received; a string, `null`, a fraction or a negative number
-is not valid. A whole value too large for a `long` is valid, and the cache lifetime it gives is capped as ID-04 already caps it, and at the largest
-instant the implementation can represent. The exchanged token SHALL be cached as ID-04 defines; IF the response has no `expires_in`, THEN the token
-SHALL be returned and not cached, and a token whose cache lifetime would be zero or less is not cached either. The cache SHALL hold at most 10,000
-entries; adding an entry to a full cache SHALL first evict the entry added earliest. A cached entry SHALL NOT be used once its lifetime has passed.
-Two concurrent calls for the same key with nothing cached MAY both exchange. The cache key SHALL hold a SHA-256 hash of the credential, never the
-credential. WHERE the built-in `exchange` propagator is selected and no `AuthorityPropagator` bean replaces it, IF `authority.exchange.token-uri` is
-not set, is blank, or is not an absolute URI with the scheme `http` or `https` and a host, or `client-id` or `client-secret` is not set or is blank,
-THEN application startup SHALL fail, even when `spring.main.lazy-initialization` is `true` (DESIGN D61). Verified by IT-4.3 and unit tests.
+valid response SHALL have status 200 and a body that is exactly one JSON object, parsed strictly with a Jackson 3 `ObjectMapper`
+(`tools.jackson.databind`), with nothing after it and no key repeated (Jackson's strict duplicate detection), whose `access_token` is a non-empty
+string, which SHALL be the returned credential; `token_type` and the response's `Content-Type` SHALL NOT be checked. `expires_in`, when present,
+SHALL be a JSON number with a whole value of zero or more, such as `3600`, `3600.0` or `1e3`, giving seconds counted from when the response is
+received; a string, `null`, a fraction, a negative number or NaN is not valid. Numbers SHALL be read exactly, not through a `double`, so a fraction
+is never rounded to a whole value. A whole value too large for a `long`, or an infinite value, is valid, and the cache lifetime it gives is capped
+as ID-04 already caps it, and at the largest instant the implementation can represent. The exchanged token SHALL be cached as ID-04 defines; IF the
+response has no `expires_in`, THEN the token SHALL be returned and not cached, and a token whose cache lifetime would be zero or less is not cached
+either. The cache SHALL hold at most 10,000 entries; adding an entry to a full cache SHALL first evict the entry added earliest. A cached entry
+SHALL NOT be used once its lifetime has passed. Two concurrent calls for the same key with nothing cached MAY both exchange. The cache key SHALL
+hold a SHA-256 hash of the credential, never the credential. WHERE the built-in `exchange` propagator is selected and no `AuthorityPropagator` bean
+replaces it, IF `authority.exchange.token-uri` is not set, is blank, or is not an absolute URI with the scheme `http` or `https` and a host, or
+`client-id` or `client-secret` is not set or is blank, or Jackson 3 (`tools.jackson.databind`) is not on the classpath, THEN application startup
+SHALL fail, even when `spring.main.lazy-initialization` is `true` (DESIGN D61). Verified by IT-4.3 and unit tests.
 
-**ID-12** `[M5]` IF the token endpoint cannot be reached, does not answer in time, answers with a status other than 200, or answers with a body
-that is not valid as ID-11 defines, THEN the `exchange` propagator SHALL throw `TokenExchangeException` and the interceptor SHALL NOT send the
-request; no violation is reported. WHERE a deadline is bound when the exchange starts, its request timeout SHALL be the remaining time, and IF
-it times out, THEN the propagator SHALL throw `DeadlineExceededException` (stage `TIMEOUT`) instead, with the client's
-`HttpTimeoutException` as its cause, as DL-07 does, counted once as DL-09 defines. IF the deadline passed DL-06's check but has run out when
-the exchange is about to start, THEN the propagator SHALL throw `DeadlineExceededException` (stage `TIMEOUT`), counted once as DL-09 defines,
-without sending the exchange request, and the interceptor SHALL NOT send the call. With no deadline bound, the request timeout SHALL be a
-fixed 10 seconds, with no property. IF the calling thread is interrupted during the exchange, THEN the propagator SHALL throw
-`TokenExchangeException` and SHALL restore the thread's interrupt status. The message of a `TokenExchangeException` SHALL name the
-audience and, where there is one, the response status, and SHALL contain no credential, exchanged token, client secret or response body; its
-cause MAY be the I/O exception that failed the exchange (DESIGN D62). Verified by unit tests.
+**ID-12** `[M5]` IF the token endpoint cannot be reached, does not answer in time, answers with a status other than 200, or answers with a body that
+is not valid as ID-11 defines, THEN the `exchange` propagator SHALL throw `TokenExchangeException` and the interceptor SHALL NOT send the request; no
+violation is reported. WHERE a deadline is bound when the exchange starts, its request timeout SHALL be the remaining time, and IF it times out, THEN
+the propagator SHALL throw `DeadlineExceededException` (stage `TIMEOUT`) instead, with the client's `HttpTimeoutException` as its cause, as DL-07
+does, counted once as DL-09 defines. IF the deadline passed DL-06's check but has run out when the exchange is about to start, THEN the propagator
+SHALL throw `DeadlineExceededException` (stage `TIMEOUT`), counted once as DL-09 defines, without sending the exchange request, and the interceptor
+SHALL NOT send the call. With no deadline bound, the request timeout SHALL be a fixed 10 seconds, with no property. IF the calling thread is
+interrupted during the exchange, THEN the propagator SHALL throw `TokenExchangeException` and SHALL itself restore the thread's interrupt status,
+because the JDK client clears it. The message of a `TokenExchangeException` SHALL name the audience and, where there is one, the response status, and
+SHALL contain no credential, exchanged token, client secret or response body; its cause MAY be the I/O exception that failed the exchange, but an
+exception from parsing the response SHALL be neither its cause nor part of its message, because parsers can echo body content (DESIGN D62, D65).
+Verified by unit tests.
 
 ### Redaction
 
@@ -254,10 +262,10 @@ caller awaits the result, and a service credential obtained by the task itself o
 
 Properties use the prefix `boundrail.context.`.
 
-Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: an `authority.propagation`
-that is neither `forward` nor `exchange` (ID-04); while the built-in `exchange` propagator is selected, an `authority.exchange.token-uri` that is
-missing, blank or not an absolute `http` or `https` URI with a host, or a missing or blank `client-id` or `client-secret` (ID-11); and,
-while HTTP client support is active, several `AuthorityPropagator` beans with none primary (ID-04).
+Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: an `authority.propagation` that is
+neither `forward` nor `exchange` (ID-04); while the built-in `exchange` propagator is selected, an `authority.exchange.token-uri` that is missing,
+blank or not an absolute `http` or `https` URI with a host, or a missing or blank `client-id` or `client-secret`, or Jackson 3 missing from the
+classpath (ID-11); and, while HTTP client support is active, several `AuthorityPropagator` beans with none primary (ID-04).
 
 | Property | Default | Meaning |
 |---|---|---|
@@ -288,5 +296,7 @@ while HTTP client support is active, several `AuthorityPropagator` beans with no
 - Spring Security stays optional: without it, `ContextAuthenticationFilter` is not registered (IN-04), so no authority or initiator is bound
   from authentication. Binding an authority also needs Spring Security's OAuth2 resource server on the classpath (ID-02).
 - The `AUTHORITY` clause that IN-05 defers to M5 is delivered by ID-02.
-- The token-exchange client is minimal: client credentials, audience and caching only (DESIGN D61).
+- The token-exchange client is minimal: client credentials, audience and caching only (DESIGN D61). It needs Jackson 3
+  (`tools.jackson.databind`), which `boundrail-context-spring` declares `compileOnly`; Spring Boot's `BasicJsonParser` is too lenient
+  (spike T001, DESIGN D65).
 - Authority behaviour for Kafka messages belongs to [007-kafka](../007-kafka/spec.md) (IT-4.9).

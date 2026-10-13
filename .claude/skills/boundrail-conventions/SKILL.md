@@ -22,7 +22,7 @@ When this skill and a generic skill (`java`, `spring-boot`) disagree, this one w
 | Module | Dependency limits |
 |---|---|
 | `boundrail-context-core` | JDK only — zero runtime dependencies (BLD-03) |
-| `boundrail-context-spring` | Spring Boot 4; Spring Security and Micrometer only as `compileOnly` + conditional auto-config (BLD-05) |
+| `boundrail-context-spring` | Spring Boot 4; Spring Security, Micrometer and Jackson 3 (`tools.jackson.databind`, for the token exchange, ID-11, D65) only as `compileOnly` + conditional auto-config (BLD-05) |
 | `boundrail-context-kafka` | the only module allowed Kafka dependencies (BLD-05) |
 | `boundrail-context-test` | `boundrail-context-spring` as `api`; `spring-web` and `jakarta.servlet-api` `compileOnly` (TEST-01, D37) |
 | `integration-tests`, `examples/propagation-demo` | not published |

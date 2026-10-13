@@ -16,9 +16,10 @@ with the requirement or scenario ID it covers.
 - Approved by the user on 2026-10-13: these tasks, the plan, the TDD exception for the ID-09 Javadoc (T006), and the guard scenarios
   IT-4.4 (T007), IT-4.7 (T008) and IT-4.6 with its two reds (T015) ([plan.md](plan.md#tdd-exceptions), [plan.md](plan.md#guard-tests)).
 - Q1 – Q8 are closed with the recommended answers, which the spec-creator writes into spec.md and design.md
-  ([plan.md](plan.md#spec-gaps)). No task is blocked by a gap.
-- T001, the spike, is still to run; T010 and T013 wait on its outcome, which may raise one more choice for the user: accepting
-  `BasicJsonParser`'s leniency or adding a `compileOnly` Jackson 3 parser with a conditional fallback ([plan.md](plan.md#spike-t001)).
+  ([plan.md](plan.md#spec-gaps)). Q9 (duplicate keys in the token response) came from T001 and is closed: a repeated key makes
+  the response invalid (D65).
+- T001, the spike, ran on 2026-10-13; on its outcome the user chose B2: the built-in exchange propagator requires Jackson 3
+  (`compileOnly` in `-spring`) and fails startup without it ([plan.md](plan.md#spike-t001)).
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it. A negative assertion in the same test as a positive assertion that is red before the task is not a guard.
@@ -62,20 +63,21 @@ marker and assert deltas, never totals, because the topology is shared. "Alice's
 
 ## Phase 0: Spike
 
-- [ ] T001 Spike: token response parsing per JSON parser, and the JDK `HttpClient`'s failure modes.
+- [x] T001 Spike: token response parsing per JSON parser, and the JDK `HttpClient`'s failure modes.
   - On a scratch classpath, run the ID-11 validity table of [plan.md](plan.md#spike-t001) through Jackson 3's, Gson's and Boot's basic
     parser via `JsonParserFactory`; record which parser `-spring`'s test classpath and the `integration-tests` runtime select; record the
     JDK client's exceptions for a refused connection, a request timeout, a zero `timeout`, and `HttpRequest.newBuilder` on `http:foo` and
     `http:///x`.
   - Outcome into plan.md (Spike), with a recommendation for Q3 and Q5 and, if `BasicJsonParser` accepts non-object bodies, the choice
     between accepting it and a `compileOnly` Jackson 3 parser. No code kept, nothing committed.
+  - Done 2026-10-13: outcome in [plan.md](plan.md#spike-t001); the user chose B2 (Jackson 3 required).
 
 ---
 
 ## Phase 1: Setup
 
 None. 001 – 005 built the projects, the integration test tasks, the topology (including `TokenExchangeApp`), the auto-configuration and the
-disabled scenarios. Nothing new is added to any build script.
+disabled scenarios. The one build change, Jackson 3 in `-spring`, is part of T010's red step (its tests need it to compile).
 
 ---
 
@@ -254,8 +256,11 @@ application set its own.
 
 **Independent Test**: IT-4.3 and IT-4.8 in the IT command.
 
-- [ ] T010 [US2] The exchange request and a valid response (waits on T001).
+- [ ] T010 [US2] The exchange request and a valid response.
   - Red:
+    - Jackson 3 for `-spring` (decision B2): the catalog alias `jackson-databind = { module = "tools.jackson.core:jackson-databind" }`
+      (no version, BOM-managed) in `gradle/libs.versions.toml`, and `compileOnly(libs.jackson.databind)` and
+      `testImplementation(libs.jackson.databind)` in `boundrail-context-spring/build.gradle.kts`;
     - in `springtest/support/RecordingServer.java`: answering with a given status, body and `Content-Type`, and recording request bodies
       (test support);
     - in `springtest/TokenExchangeTest.java` (one `RecordingServer` as the token endpoint answering `{"access_token":"exchanged-orders"}`
@@ -270,24 +275,34 @@ application set its own.
         give the token;
       - `ID-11 the exchange request carries no context headers and does not pass through the library's interceptor`: the token endpoint
         received no `Tenant-Id`, `Boundrail-Initiator` or `Boundrail-Deadline-Ms`, and no `Authorization: Bearer`;
+      - `ID-11 a body that is JSON null is not a token: the call is not sent`: the token endpoint answers 200 with `null` (Jackson gives
+        a `null` map, T001); the client call throws and orders receives nothing, never `Bearer null` (T013 pins the exception type);
       - `CORE-16 the exchange propagator rejects a null authority or destination with NullPointerException`;
       - `RT-09 the exchange propagator's HTTP client is closed when the context closes`: after the context's `close()`, the propagator's
         `HttpClient` reports `isTerminated()`.
-  - Green: `spring/ExchangeAuthorityPropagator.java` (request, response parsing through `JsonParserFactory` per T001, no cache yet), its
-    selection by `authority.propagation=exchange` in `spring/BoundrailContextAutoConfiguration.java` ([plan.md](plan.md#spring-wiring)).
-  - Completes: ID-11 (request, valid response); ID-04 (`exchange` selection); CORE-16 (exchange).
+  - Green: `spring/ExchangeAuthorityPropagator.java` (request; response parsed with its own strict Jackson 3 `JsonMapper` with
+    `USE_BIG_DECIMAL_FOR_FLOATS` and `USE_BIG_INTEGER_FOR_INTS`, not the application's mapper; a non-object result rejected; no cache yet),
+    its selection by `authority.propagation=exchange` in `spring/BoundrailContextAutoConfiguration.java` ([plan.md](plan.md#spring-wiring)).
+  - Completes: ID-11 (request, valid response, whole-body `null`); ID-04 (`exchange` selection); CORE-16 (exchange).
   - Verify: Unit `TokenExchangeTest`.
 - [ ] T011 [US2] Exchange settings are validated at startup.
   - Red, in `springtest/TokenExchangeConfigurationTest.java`:
     - `ID-11 with the built-in exchange propagator a missing, blank, relative, non-HTTP or host-less token-uri fails startup, also with lazy
-      initialization` (parametrized): unset, ``, `   `, `/token`, `ftp://h/token`, `http:foo` (Q5), `not a uri`; `HTTPS://h/token` starts;
+      initialization` (parametrized): unset, ``, `   `, `/token`, `ftp://h/token`, `http:foo` and `http:///x` (Q5), `not a uri`;
+      `HTTPS://h/token` starts;
     - `ID-11 a missing or blank client-id or client-secret fails startup, also with lazy initialization`;
     - `ID-06 the startup failure names the property and never contains the client secret`: the failure's message chain lacks the secret;
     - `ID-04 with an AuthorityPropagator bean, or with forward, the exchange properties are not validated`: both start with
-      `token-uri=/relative` and no client id.
-  - Green: the validation in the `boundrailAuthorityPropagator` bean method, `@Lazy(false)` ([plan.md](plan.md#spring-wiring)).
-  - Completes: ID-11 (startup validation); ID-04 (not validated when replaced); ID-06 (startup messages); the Configuration section's
-    exchange failures.
+      `token-uri=/relative` and no client id;
+    - `ID-11 with the built-in exchange propagator and no Jackson 3, startup fails naming Jackson 3, also with lazy initialization; forward or
+      an AuthorityPropagator bean start without it`: `FilteredClassLoader("tools.jackson")` with valid exchange properties: the failure's
+      message names Jackson 3 (`tools.jackson.databind`) and not the secret, with and without lazy initialization; with `forward`, and with
+      `exchange` plus a replacing bean, the same class loader starts (one test, so the negatives sit with the red failure).
+  - Green: the validation in the `boundrailAuthorityPropagator` bean method, `@Lazy(false)`: the Jackson 3 presence check through the bean
+    class loader before `ExchangeAuthorityPropagator` is loaded, and `getHost() == null` for Q5 rather than `HttpRequest.newBuilder` (whose
+    message echoes the URI and its userinfo) ([plan.md](plan.md#spring-wiring)).
+  - Completes: ID-11 (startup validation, Jackson 3 required); ID-04 (not validated when replaced); ID-06 (startup messages); the
+    Configuration section's exchange failures.
   - Verify: Unit `TokenExchangeConfigurationTest`.
 - [ ] T012 [US2] Cache exchanged tokens; enable IT-4.3.
   - Red:
@@ -299,6 +314,9 @@ application set its own.
         again at +60s; an authority without expiry is limited by `expires_in` only (ID-10);
       - `ID-11 a response without expires_in, or one whose lifetime is 30 seconds or less, is used and not cached`: `expires_in` absent,
         `30`, `0`: each call exchanges; and a source expiry already passed: not cached;
+      - `ID-11 an expires_in too large for the clock is valid and the cache end is capped` (Q3, B2): `1e400` and
+        `99999999999999999999` with an authority expiring in 60s: cached, exchanged again at +60s; with an authority without expiry: cached,
+        no exception (end `Instant.MAX`);
       - `ID-11 the cache holds at most 10,000 entries and evicts the entry added earliest`: 10,001 audiences; the first is exchanged again,
         the second is not; an expired entry replaced by a new exchange counts as added last;
       - `ID-11 cache keys hold the SHA-256 hash of the credential, never the credential`: `cacheKeys()` holds the hex SHA-256 and the
@@ -311,33 +329,45 @@ application set its own.
     `topology/EdgeApp.java`; the exchange edge in `it/AuthorityPropagationIT.java` ([plan.md](plan.md#integration-tests)).
   - Completes: ID-04 (cache); ID-11 (cache lifetime, size, keys); IT-4.3; SC-003.
   - Verify: Unit `TokenExchangeCacheTest`; IT+.
-- [ ] T013 [US2] Failed exchanges throw `TokenExchangeException` (waits on T001).
+- [ ] T013 [US2] Failed exchanges throw `TokenExchangeException`.
   - Red, in `springtest/TokenExchangeFailureTest.java` (`OutputCaptureExtension`):
     - `ID-12 a status other than 200, or a body that is not valid, throws TokenExchangeException and the request is not sent` (parametrized
-      over T001's table): 201, 302, 400, 500; an empty body, `not json`, a JSON array, no `access_token`, `""`, a number, `expires_in` of
-      `-1`, `1.5`, `"3600"`, `null`; orders receives nothing; `expires_in` of `3600.0` and `1e3` are valid (Q3);
-    - `ID-12 an unreachable token endpoint throws TokenExchangeException with the I/O exception as its cause, and the request is not sent`;
-    - `ID-12 an interrupted exchange throws TokenExchangeException and keeps the interrupt status` (Q6);
+      over T001's findings): 201, 302, 400, 500; an empty body, `not json`, a whole-body `null`, a JSON array, a truncated
+      `{"access_token":"t`, trailing garbage `{"access_token":"t"} trailing`; `access_token` missing, `null`, `""`, `42`, `["t"]`;
+      `expires_in` of `-1`, `1.5`, `"3600"`, `null`, `true`, `NaN`; a duplicate `access_token` key (Q9, D65);
+      orders receives nothing; the exception has no cause (the parse exception is dropped, B2); `expires_in` of `3600.0` and `1e3` are
+      valid (Q3);
+    - `ID-12 an unreachable token endpoint throws TokenExchangeException with the I/O exception as its cause, and the request is not sent`:
+      a refused port (`ConnectException`);
+    - `ID-12 an interrupted exchange throws TokenExchangeException and keeps the interrupt status` (Q6): the calling thread is interrupted
+      before the call; the cause is the `InterruptedException`, `Thread.interrupted()` is `true` afterwards (which also clears it for the
+      next test), and orders receives nothing;
     - `ID-12 no violation is reported for a failed exchange`;
     - `ID-12 the message names the audience and the status, and contains no credential, exchanged token, client secret or body`: for a 500
-      whose body holds a token-like string and for an invalid 200 body; and `ID-06` in the same test: the captured output contains none of
-      them;
+      whose body holds a token-like string, and for a 200 body whose parse error would echo a secret (an unquoted
+      `{"access_token":SECRET-xyz}`, which Jackson reports as `Unrecognized token 'SECRET-xyz'`); and `ID-06` in the same test: the
+      exception's message, every message in its cause chain, and the captured output contain none of them;
     - `ID-12 TokenExchangeException has no public constructor and reaches RestClient and RestTemplate callers unwrapped`.
-  - Green: `spring/TokenExchangeException.java`; the validity checks and failure paths in `spring/ExchangeAuthorityPropagator.java`.
+  - Green: `spring/TokenExchangeException.java`; the validity checks and failure paths in `spring/ExchangeAuthorityPropagator.java`
+    (`IOException` and `InterruptedException` mapped here; `HttpTimeoutException` gets its own branch, before `IOException`, in T014).
   - Completes: ID-12 (failures, message); ID-11 (response validity); ID-06 (exception messages, logs).
   - Verify: Unit `TokenExchangeFailureTest`.
 - [ ] T014 [US2] The exchange's timeout.
-  - Red, in `springtest/TokenExchangeFailureTest.java` (a `RecordingServer` with a delayed response; the no-deadline timeout passed to the
-    package-private constructor as 300ms):
+  - Red, in `springtest/TokenExchangeFailureTest.java` (a slow `RecordingServer`: it accepts and delays its response, so the JDK client
+    throws `HttpTimeoutException`, T001; the no-deadline timeout passed to the package-private constructor as 300ms):
     - `ID-12 with a deadline bound, an exchange slower than the remaining time throws DeadlineExceededException at TIMEOUT, counted once,
       and the request is not sent`: a 200ms deadline and a 3s delay: `TIMEOUT` within 200ms plus 200ms, cause `HttpTimeoutException` (Q7),
       `boundrail.context.deadline.exceeded{stage=timeout}` at 1;
     - `ID-12 a deadline that has run out when the exchange starts throws TIMEOUT without calling the token endpoint` (Q2): the endpoint
-      received nothing, counter at 1;
-    - `ID-12 with no deadline bound, an exchange slower than the fixed timeout throws TokenExchangeException`: 300ms timeout, 3s delay; no
-      counter;
+      received nothing, counter at 1, and no `IllegalArgumentException` from the request builder;
+    - `ID-12 with no deadline bound, an exchange slower than the fixed timeout throws TokenExchangeException`: 300ms timeout, 3s delay;
+      cause `HttpTimeoutException`; no counter;
+    - only if the sandbox lets a connect to a non-routable address hang (try `10.255.255.1` first; otherwise leave the test out and say so
+      in the task report): `ID-12 a connect slower than the timeout is a timeout`: with a deadline bound, `TIMEOUT` with an
+      `HttpConnectTimeoutException` cause;
     - `ID-12 the fixed timeout is 10 seconds and has no property`: the bean the auto-configuration creates reports 10s.
-  - Green: the timeout selection and the `HttpTimeoutException` mapping in `spring/ExchangeAuthorityPropagator.java`.
+  - Green: in `spring/ExchangeAuthorityPropagator.java`, the timeout selection with the "run out" check before `timeout(...)` is set (the
+    builder rejects zero and negative durations), and the `HttpTimeoutException` branch caught before the general `IOException`.
   - Completes: ID-12 (timeouts).
   - Verify: Unit `TokenExchangeFailureTest`.
 - [ ] T015 [US2] Exchange without an audience; enable IT-4.8 and IT-4.6.
@@ -381,9 +411,10 @@ messages, logs). The `MESSAGE` clause is IT-4.9 in 007-kafka.
     ID-09, word for word in meaning.
   - The Configuration section's startup failures each have a test with lazy initialization (T003, T008, T011).
   - `boundrail-context-core` still has no runtime dependencies
-    (`./gradlew :boundrail-context-core:dependencies --configuration runtimeClasspath`); Spring Security and Micrometer stay `compileOnly` in
-    `-spring` (`./gradlew :boundrail-context-spring:dependencies --configuration runtimeClasspath`).
-  - By inspection: only `AuthorityExtraction`'s implementation names an OAuth2 resource-server type; nothing new is static (RT-09); the
+    (`./gradlew :boundrail-context-core:dependencies --configuration runtimeClasspath`); Spring Security, Micrometer and Jackson 3 stay
+    `compileOnly` in `-spring` (`./gradlew :boundrail-context-spring:dependencies --configuration runtimeClasspath`).
+  - By inspection: only `AuthorityExtraction`'s implementation names an OAuth2 resource-server type, and only `ExchangeAuthorityPropagator`
+    imports `tools.jackson`; nothing new is static (RT-09); the
     exchange request never goes through a Spring client; no log statement or exception message in the new code takes a credential, token,
     secret or body; `AUTHORITY` is still never written to the MDC (LOG-02).
   - spec.md's Status, roadmap.md's M5 and the README, if it lists milestones, are updated by the spec-creator, not here.
@@ -392,7 +423,7 @@ messages, logs). The `MESSAGE` clause is IT-4.9 in 007-kafka.
 
 ## Dependencies & Execution Order
 
-- T001 comes first; T010 and T013 wait on its outcome. Q1 – Q8 are closed ([plan.md](plan.md#spec-gaps)).
+- T001 is done; decision B2 settles the parser (Jackson 3, required for `exchange`). Q1 – Q9 are closed ([plan.md](plan.md#spec-gaps)).
 - Foundational: T002 and T003 are independent of each other and of T001.
 - US1: T004 needs T002. T005 needs T004 (same file). T006 needs T004. T007 needs T006. T008 needs T002 and T006 (IT-4.2 checks the
   initiator). T009 needs T008.
@@ -407,10 +438,11 @@ messages, logs). The `MESSAGE` clause is IT-4.9 in 007-kafka.
 
 - [x] Q1 – Q8 settled by the user (2026-10-13)
 - [x] Q1 – Q8 written into spec.md and design.md by the spec-creator (D64)
-- [ ] T001's outcome recorded in plan.md, and any choice it raises settled by the user
+- [x] T001's outcome recorded in plan.md, and any choice it raises settled by the user (B2, 2026-10-13)
+- [x] Q9 settled by the user and written into spec.md (D65)
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-4.1 – IT-4.8
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M5): CORE-16, ID-02 – ID-06, ID-08, ID-10 – ID-12;
   the Javadoc statement of ID-09 checked by inspection (TDD exception)
 - [ ] Guard scenarios (IT-4.4 in T007, IT-4.7 in T008, IT-4.6 in T015) shown red against their temporary change, and the change reverted
-- [ ] `boundrail-context-core` still has no runtime dependencies; Spring Security and Micrometer are `compileOnly` in `-spring`
+- [ ] `boundrail-context-core` still has no runtime dependencies; Spring Security, Micrometer and Jackson 3 are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green
