@@ -150,7 +150,7 @@ application set its own.
   - Completes: ID-02 (binding, expiry, scope, IN-05 exception, non-OAuth2, without the resource server); ID-10 (from `getExpiresAt()`);
     ID-06 (MDC, `DETACHED`).
   - Verify: Unit `AuthorityBindingTest` and `ContextAuthenticationFilterTest`.
-- [ ] T005 [US1] `ContextContributions.put` rejects `AUTHORITY`.
+- [x] T005 [US1] `ContextContributions.put` rejects `AUTHORITY`.
   - Red, in `springtest/ContextAuthenticationFilterTest.java`:
     - `ID-02 ContextContributions.put throws IllegalArgumentException for AUTHORITY, after its null checks`: `put(AUTHORITY, authority)`
       throws `IllegalArgumentException`; `put(AUTHORITY, null)` throws `NullPointerException`; a raw `put(AUTHORITY, "text")` throws

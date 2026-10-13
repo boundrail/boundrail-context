@@ -87,9 +87,10 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Keeps the first contribution for each key that is not already bound (IN-05); rejects a {@code null} key or value and a value that is not
-     * an instance of the key's type (CORE-13). {@code invalid} reports one {@code INVALID_VALUE} with boundary {@code INTERNAL_CALL} and no
-     * destination, binds nothing and leaves the key's contributions unaffected (IN-07, DIAG-08); it rejects a {@code null} key (CORE-13).
+     * Keeps the first contribution for each key that is not already bound (IN-05); rejects a {@code null} key or value, then {@code AUTHORITY}
+     * (ID-02), then a value that is not an instance of the key's type (CORE-13). {@code invalid} reports one {@code INVALID_VALUE} with
+     * boundary {@code INTERNAL_CALL} and no destination, binds nothing and leaves the key's contributions unaffected (IN-07, DIAG-08); it
+     * rejects a {@code null} key (CORE-13).
      */
     private static final class Contributions implements ContextContributions {
 
@@ -105,6 +106,10 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
         public <T> void put(ContextKey<T> key, T value) {
             Objects.requireNonNull(key, "key");
             Objects.requireNonNull(value, "value");
+            if (key.equals(BuiltInKeys.AUTHORITY)) {
+                throw new IllegalArgumentException(
+                        "boundrail.authority cannot be contributed; it is bound only from the authentication (ID-02)");
+            }
             T checked = key.type().cast(value);
             if (!key.isBound() && contributed.add(key)) {
                 binding = binding == null ? Context.with(key, checked) : binding.with(key, checked);

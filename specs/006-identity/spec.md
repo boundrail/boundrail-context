@@ -160,9 +160,10 @@ Authority.of(authentication.getName(), token.getTokenValue(), token.getExpiresAt
 which it binds the contributed values (IN-04), so the snapshot stored for `ASYNC` dispatches (IN-09) holds it. As the exception to IN-05,
 `AUTHORITY` SHALL be bound from the authentication whether or not it is already bound. `ContextContributions.put` SHALL throw
 `IllegalArgumentException` when its key is `AUTHORITY`, after its `null` checks (CORE-13) and before its type check (CORE-04), so a value of the
-wrong type passed through a raw key also gives `IllegalArgumentException` (DESIGN D64). An authentication whose name is empty, such as a JWT with no
-`sub`, still binds the authority with an empty subject, so its credential is forwarded; ID-08 reports the derived initiator as invalid (DESIGN D66).
-Verified by IT-4.1, IT-4.4 and unit tests.
+wrong type passed through a raw key also gives `IllegalArgumentException` (DESIGN D64). An exception a contributor does not catch, such as that one,
+propagates from the filter unchanged and the rest of the chain does not run, as for any contributor error. An authentication whose name is empty,
+such as a JWT with no `sub`, still binds the authority with an empty subject, so its credential is forwarded; ID-08 reports the derived initiator as
+invalid (DESIGN D66). Verified by IT-4.1, IT-4.4 and unit tests.
 
 **ID-08** `[M5]` WHEN a request is authenticated, as IN-04 defines, and `INITIATOR` is neither already bound, for example from a trusted
 `Boundrail-Initiator` header, nor contributed by a `ContextContributor` (IN-05), the library SHALL bind `INITIATOR = "user:" +

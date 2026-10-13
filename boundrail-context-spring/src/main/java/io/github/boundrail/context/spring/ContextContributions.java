@@ -14,6 +14,8 @@ public interface ContextContributions {
      * @param value the value
      * @param <T> the value type
      * @throws NullPointerException if the key or the value is {@code null}
+     * @throws IllegalArgumentException if the key is {@code BuiltInKeys.AUTHORITY}, which is bound only from the authentication (ID-02);
+     *     checked before the value's type
      * @throws ClassCastException if the value is not an instance of the key's type
      */
     <T> void put(ContextKey<T> key, T value);
