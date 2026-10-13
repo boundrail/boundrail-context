@@ -227,8 +227,9 @@ either. The cache SHALL hold at most 10,000 entries; adding an entry to a full c
 SHALL NOT be used once its lifetime has passed. Two concurrent calls for the same key with nothing cached MAY both exchange. The cache key SHALL
 hold a SHA-256 hash of the credential, never the credential. WHERE the built-in `exchange` propagator is selected and no `AuthorityPropagator` bean
 replaces it, IF `authority.exchange.token-uri` is not set, is blank, or is not an absolute URI with the scheme `http` or `https` and a host, or
-`client-id` or `client-secret` is not set or is blank, or Jackson 3 (`tools.jackson.databind`) is not on the classpath, THEN application startup
-SHALL fail, even when `spring.main.lazy-initialization` is `true` (DESIGN D61). Verified by IT-4.3 and unit tests.
+carries userinfo (client credentials belong in `client-id` and `client-secret`, never in the URI), or `client-id` or `client-secret` is not set or
+is blank, or Jackson 3 (`tools.jackson.databind`) is not on the classpath, THEN application startup SHALL fail, even when
+`spring.main.lazy-initialization` is `true` (DESIGN D61). Verified by IT-4.3 and unit tests.
 
 **ID-12** `[M5]` IF the token endpoint cannot be reached, does not answer in time, answers with a status other than 200, or answers with a body that
 is not valid as ID-11 defines, THEN the `exchange` propagator SHALL throw `TokenExchangeException` and the interceptor SHALL NOT send the request; no
@@ -262,15 +263,16 @@ caller awaits the result, and a service credential obtained by the task itself o
 
 Properties use the prefix `boundrail.context.`.
 
-Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: an `authority.propagation` that is
-neither `forward` nor `exchange` (ID-04); while the built-in `exchange` propagator is selected, an `authority.exchange.token-uri` that is missing,
-blank or not an absolute `http` or `https` URI with a host, or a missing or blank `client-id` or `client-secret`, or Jackson 3 missing from the
-classpath (ID-11); and, while HTTP client support is active, several `AuthorityPropagator` beans with none primary (ID-04).
+Every startup failure caused by invalid configuration also occurs when `spring.main.lazy-initialization` is `true`: an `authority.propagation` that
+is neither `forward` nor `exchange` (ID-04); while the built-in `exchange` propagator is selected, an `authority.exchange.token-uri` that is
+missing, blank or not an absolute `http` or `https` URI with a host and no userinfo, or a missing or blank `client-id` or `client-secret`, or
+Jackson 3 missing from the classpath (ID-11); and, while HTTP client support is active, several `AuthorityPropagator` beans with none primary
+(ID-04).
 
 | Property | Default | Meaning |
 |---|---|---|
 | `authority.propagation` | `forward` | `forward` or `exchange`, matched with Spring Boot's relaxed enum binding; an empty or blank value means `forward`, and any value that matches neither, such as `bogus`, fails startup, even under lazy initialization; an `AuthorityPropagator` bean overrides it (ID-04) |
-| `authority.exchange.token-uri` | unset | RFC 8693 token endpoint, an absolute `http` or `https` URI with a host; required when the built-in `exchange` propagator is selected, and any other value fails startup, even under lazy initialization (ID-11) |
+| `authority.exchange.token-uri` | unset | RFC 8693 token endpoint, an absolute `http` or `https` URI with a host and no userinfo; required when the built-in `exchange` propagator is selected, and any other value fails startup, even under lazy initialization (ID-11) |
 | `authority.exchange.client-id` | unset | Client id for HTTP Basic authentication at the token endpoint; required, not blank, when the built-in `exchange` propagator is selected (ID-11) |
 | `authority.exchange.client-secret` | unset | Client secret for HTTP Basic authentication at the token endpoint; required, not blank, when the built-in `exchange` propagator is selected; never in a log entry, exception message or the properties' `toString()` (ID-11, ID-06) |
 

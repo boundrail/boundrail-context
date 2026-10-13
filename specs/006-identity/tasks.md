@@ -288,7 +288,8 @@ application set its own.
 - [ ] T011 [US2] Exchange settings are validated at startup.
   - Red, in `springtest/TokenExchangeConfigurationTest.java`:
     - `ID-11 with the built-in exchange propagator a missing, blank, relative, non-HTTP or host-less token-uri fails startup, also with lazy
-      initialization` (parametrized): unset, ``, `   `, `/token`, `ftp://h/token`, `http:foo` and `http:///x` (Q5), `not a uri`;
+      initialization` (parametrized): unset, ``, `   `, `/token`, `ftp://h/token`, `http:foo` and `http:///x` (Q5), `not a uri`,
+      `https://edge:pw@host/token` (userinfo, D66; the failure message never contains it);
       `HTTPS://h/token` starts;
     - `ID-11 a missing or blank client-id or client-secret fails startup, also with lazy initialization`;
     - `ID-06 the startup failure names the property and never contains the client secret`: the failure's message chain lacks the secret;
