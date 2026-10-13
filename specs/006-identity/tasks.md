@@ -189,6 +189,8 @@ application set its own.
       INVALID_VALUE for boundrail.initiator with boundary INTERNAL_CALL and no destination, and the request continues`: a 252-character
       name; a 251-character name binds (256 with `user:`); the violation holds no value (DIAG-09); the chain runs and the authority is still
       bound;
+    - in `springtest/InitiatorDerivationTest.java`: `ID-08 an empty name leaves INITIATOR unbound and reports one INVALID_VALUE for
+      boundrail.initiator, while the authority is still bound` (ID-02, D66): a JWT with no `sub`; the authority has an empty subject;
     - enable IT-4.4: a request without a token to edge `/public/ping` with `Boundrail-Initiator: user:mallory` and a marker; status 200;
       the observation has neither `ctx.authority-subject` nor `ctx.initiator`; edge's `untrusted_header` counter for key `boundrail.initiator`
       rose by exactly one. This is a guard: show it red with the derivation temporarily testing `authentication.isAuthenticated()` instead

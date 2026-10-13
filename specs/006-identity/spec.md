@@ -167,10 +167,10 @@ invalid (DESIGN D66). Verified by IT-4.1, IT-4.4 and unit tests.
 
 **ID-08** `[M5]` WHEN a request is authenticated, as IN-04 defines, and `INITIATOR` is neither already bound, for example from a trusted
 `Boundrail-Initiator` header, nor contributed by a `ContextContributor` (IN-05), the library SHALL bind `INITIATOR = "user:" +
-authentication.getName()`, in the scope of ID-02. A trusted inbound `Boundrail-Initiator` header SHALL take precedence over a contribution, and
-a contribution over the derived value (DESIGN D27, D59). IF the derived value is not a valid initiator (ID-07), THEN the filter SHALL leave
-`INITIATOR` unbound and SHALL report one `INVALID_VALUE` violation for `boundrail.initiator`, with the boundary and destination DIAG-08
-defines, and the request SHALL continue. Verified by IT-4.1, IT-4.4, IT-4.5 and unit tests.
+authentication.getName()`, in the scope of ID-02. A trusted inbound `Boundrail-Initiator` header SHALL take precedence over a contribution, and a
+contribution over the derived value (DESIGN D27, D59). IF `authentication.getName()` is empty, or the derived value is not a valid initiator
+(ID-07), THEN the filter SHALL leave `INITIATOR` unbound and SHALL report one `INVALID_VALUE` violation for `boundrail.initiator`, with the boundary
+and destination DIAG-08 defines, and the request SHALL continue. Verified by IT-4.1, IT-4.4, IT-4.5 and unit tests.
 
 **ID-10** `[M5]` `Authority` SHALL have the factory `of(String subject, String credential, Instant expiresAt)` and the accessor
 `Optional<Instant> expiresAt()` declared in [contracts/identity-api.md](contracts/identity-api.md). `expiresAt()` SHALL return the given
