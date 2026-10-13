@@ -160,7 +160,7 @@ application set its own.
   - Green: the check in `Contributions.put` in `spring/ContextAuthenticationFilter.java`; the `@throws` in `spring/ContextContributions.java`.
   - Completes: ID-02 (`put`); CORE-16 (contribution check order).
   - Verify: Unit `ContextAuthenticationFilterTest`.
-- [ ] T006 [US1] Derive the initiator; enable IT-4.1 and IT-4.5; the ID-09 Javadoc.
+- [x] T006 [US1] Derive the initiator; enable IT-4.1 and IT-4.5; the ID-09 Javadoc.
   - Red:
     - in `springtest/InitiatorDerivationTest.java`:
       - `ID-08 an authenticated request binds INITIATOR user:<name>`: a JWT authentication gives `user:alice`; so does

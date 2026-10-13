@@ -1,22 +1,48 @@
 package io.github.boundrail.context.it;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.github.boundrail.context.it.topology.EdgeApp;
+import io.github.boundrail.context.it.topology.ObservedContext;
+import io.github.boundrail.context.it.topology.Topology;
+import io.github.boundrail.context.it.topology.Topology.Service;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Authority propagation suite (IT-4): the edge establishes authority and initiator, authority reaches only internal calls (forwarded or
  * exchanged), and it never leaks to external calls, detached work, messages or outputs. Scenarios come from specs/006-identity (IT-4.1 –
  * IT-4.8) and specs/007-kafka (IT-4.9); each body is written test-first when that feature enables it (BLD-10).
  */
+@ExtendWith(Topology.class)
 class AuthorityPropagationIT {
 
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+
     @Test
-    @Disabled("Pending: M5")
     @DisplayName("IT-4.1 Edge establishes authority and initiator")
-    void it41EdgeEstablishesAuthorityAndInitiator() {
+    void it41EdgeEstablishesAuthorityAndInitiator(Topology.Running topology) throws Exception {
         // IT-4.1: When a public request authenticated as alice reaches an edge handler, then the handler observes
         // `authority.subject=alice` and `initiator=user:alice`. *(ID-02, ID-08)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(Service.EDGE).resolve("/ping"))
+                .header("Authorization", "Bearer " + topology.jwts().alice()).header(EdgeApp.MARKER, marker).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "edge", marker))
+                .containsEntry(ObservedContext.AUTHORITY_SUBJECT, "alice")
+                .containsEntry(ObservedContext.INITIATOR, "user:alice");
     }
 
     @Test
@@ -47,12 +73,22 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M5")
     @DisplayName("IT-4.5 Authority never leaves")
-    void it45AuthorityNeverLeaves() {
+    void it45AuthorityNeverLeaves(Topology.Running topology) throws Exception {
         // IT-4.5: Given a public request authenticated as alice, when edge calls partner through its `external()` client, then partner
         // receives no `Authorization` header. When edge runs work on `taskExecutor` (detached), then the task observes no authority and does
         // observe `initiator=user:alice`. *(ID-03, ID-06, POL-04)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(Service.EDGE)
+                        .resolve("/authority/detached?marker=" + marker)).header("Authorization", "Bearer " + topology.jwts().alice()).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "edge-authority", marker))
+                .containsEntry("detached-initiator", "user:alice")
+                .containsEntry("detached-authority", "false");
+        assertThat(observed(topology, "partner", marker)).doesNotContainKey("authorization");
     }
 
     @Test
@@ -87,5 +123,14 @@ class AuthorityPropagationIT {
     void it49MessagesCarryTheInitiatorNeverTheAuthority() {
         // IT-4.9: When edge publishes an event during alice's request, then billing's listener observes `initiator=user:alice`, no
         // authority, and no `Authorization` record header exists. *(ID-06, KAF-04)*
+    }
+
+    /** The single observation a service recorded with this marker. */
+    private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
+        List<Map<String, String>> marked = topology.observed().of(service).stream()
+                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
+                .toList();
+        assertThat(marked).as("%s observations marked %s", service, marker).hasSize(1);
+        return marked.getFirst();
     }
 }

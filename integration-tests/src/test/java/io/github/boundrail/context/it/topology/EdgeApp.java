@@ -252,6 +252,23 @@ public class EdgeApp {
         return stage;
     }
 
+    /**
+     * Calls partner's {@code /ping} through the {@code external()} client with the marker, then runs a task on {@code taskExecutor}
+     * (detached) and records under {@code edge-authority}, with the marker, whether the task found an authority bound and the initiator it
+     * found, or {@code -} (IT-4.5).
+     */
+    @GetMapping("/authority/detached")
+    String authorityDetached(@RequestParam("marker") String marker) throws Exception {
+        ping(externalPartner, Service.PARTNER, marker);
+        Map<String, String> observation = new HashMap<>();
+        observation.put(MARKER.toLowerCase(Locale.ROOT), marker);
+        observation.put("detached-authority", taskExecutor.submit(() -> BuiltInKeys.AUTHORITY.isBound()).get(5, TimeUnit.SECONDS).toString());
+        observation.put("detached-initiator", taskExecutor.submit(() -> BuiltInKeys.INITIATOR.find().map(Initiator::value).orElse("-"))
+                .get(5, TimeUnit.SECONDS));
+        observed.record("edge-authority", observation);
+        return "edge";
+    }
+
     /** Records on arrival, then calls orders' {@code /call-billing} through the internal client with the same marker (IT-3.1). */
     @GetMapping("/deadline/chain")
     String deadlineChain(@RequestHeader HttpHeaders headers) {
