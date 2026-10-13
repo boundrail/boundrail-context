@@ -83,7 +83,7 @@ disabled scenarios. The one build change, Jackson 3 in `-spring`, is part of T01
 
 ## Phase 2: Foundational
 
-- [ ] T002 [P] `Authority` expiry.
+- [x] T002 [P] `Authority` expiry.
   - Red, in `coretest/AuthorityTest.java`:
     - `ID-10 Authority.of with an expiry returns it from expiresAt, and of(subject, credential) has none`: the given `Instant`; empty for the
       two-argument factory; `subject()` and `credential()` as given;

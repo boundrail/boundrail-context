@@ -1,6 +1,8 @@
 package io.github.boundrail.context;
 
+import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * The caller's authority: a subject and its credential (ID-01).
@@ -12,17 +14,27 @@ public final class Authority {
 
     private final String subject;
     private final String credential;
+    private final Instant expiresAt;
 
-    private Authority(String subject, String credential) {
+    private Authority(String subject, String credential, Instant expiresAt) {
         this.subject = subject;
         this.credential = credential;
+        this.expiresAt = expiresAt;
     }
 
     /** {@return an authority for {@code subject} holding {@code credential}} */
     public static Authority of(String subject, String credential) {
         Objects.requireNonNull(subject, "subject");
         Objects.requireNonNull(credential, "credential");
-        return new Authority(subject, credential);
+        return new Authority(subject, credential, null);
+    }
+
+    /** {@return an authority for {@code subject} holding {@code credential} that expires at {@code expiresAt}} */
+    public static Authority of(String subject, String credential, Instant expiresAt) {
+        Objects.requireNonNull(subject, "subject");
+        Objects.requireNonNull(credential, "credential");
+        Objects.requireNonNull(expiresAt, "expiresAt");
+        return new Authority(subject, credential, expiresAt);
     }
 
     /** {@return the subject} */
@@ -33,6 +45,11 @@ public final class Authority {
     /** {@return the credential} */
     public String credential() {
         return credential;
+    }
+
+    /** {@return the credential's expiry, or empty for an authority made with {@link #of(String, String)}} */
+    public Optional<Instant> expiresAt() {
+        return Optional.ofNullable(expiresAt);
     }
 
     /** {@return the subject with the credential redacted} */
