@@ -183,7 +183,7 @@ application set its own.
     - the ID-09 paragraph in the Javadoc of `core/BoundExecutors.java`: TDD exception, reviewed ([plan.md](plan.md#tdd-exceptions)).
   - Completes: ID-08 (derivation, precedence, non-OAuth2, `Callable`); ID-09 (Javadoc); IT-4.1; IT-4.5 (with ID-06 and POL-04).
   - Verify: Unit `InitiatorDerivationTest`, `ContextAuthenticationFilterTest` and `AsyncDispatchTest`; IT+.
-- [ ] T007 [US1] An invalid derived initiator; enable IT-4.4.
+- [x] T007 [US1] An invalid derived initiator; enable IT-4.4.
   - Red:
     - in `springtest/InitiatorDerivationTest.java`: `ID-08 a name longer than 251 characters leaves INITIATOR unbound, reports one
       INVALID_VALUE for boundrail.initiator with boundary INTERNAL_CALL and no destination, and the request continues`: a 252-character
@@ -192,8 +192,8 @@ application set its own.
     - in `springtest/InitiatorDerivationTest.java`: `ID-08 an empty name leaves INITIATOR unbound and reports one INVALID_VALUE for
       boundrail.initiator, while the authority is still bound` (ID-02, D66): a JWT with no `sub`; the authority has an empty subject;
     - enable IT-4.4: a request without a token to edge `/public/ping` with `Boundrail-Initiator: user:mallory` and a marker; status 200;
-      the observation has neither `ctx.authority-subject` nor `ctx.initiator`; edge's `untrusted_header` counter for key `boundrail.initiator`
-      rose by exactly one. This is a guard: show it red with the derivation temporarily testing `authentication.isAuthenticated()` instead
+      the observation has neither `ctx.authority-subject` nor `ctx.initiator`; edge's `untrusted_header` counter rose by exactly one, both in
+      total and for key `boundrail.initiator`. This is a guard: show it red with the derivation temporarily testing `authentication.isAuthenticated()` instead
       of the trust resolver (the anonymous token then gives `user:anonymousUser`), then revert ([plan.md](plan.md#guard-tests)).
   - Green: the `Initiator.of` failure path in `spring/ContextAuthenticationFilter.java`; topology test code: edge's `SecurityFilterChain`
     (`/public/**` permitted, the rest authenticated, JWT resource server) and `/public/ping` in `topology/EdgeApp.java`; a per-key violation

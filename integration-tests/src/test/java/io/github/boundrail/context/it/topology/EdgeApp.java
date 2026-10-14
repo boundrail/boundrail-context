@@ -37,8 +37,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -104,6 +107,18 @@ public class EdgeApp {
     @Bean
     static JwtDecoder jwtDecoder(TestJwts jwts) {
         return NimbusJwtDecoder.withPublicKey(jwts.publicKey()).build();
+    }
+
+    /**
+     * Permits unauthenticated requests to {@code /public/**} (IT-4.4) and requires authentication everywhere else; a JWT resource server,
+     * as Boot's default chain is.
+     */
+    @Bean
+    static SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .authorizeHttpRequests(requests -> requests.requestMatchers("/public/**").permitAll().anyRequest().authenticated())
+                .oauth2ResourceServer(resourceServer -> resourceServer.jwt(Customizer.withDefaults()))
+                .build();
     }
 
     /**
@@ -201,6 +216,12 @@ public class EdgeApp {
     String ping(@RequestHeader HttpHeaders headers) {
         observed.record("edge", ObservedContext.ping(headers));
         return "edge";
+    }
+
+    /** Records like {@link #ping}; permitted without authentication (IT-4.4). */
+    @GetMapping("/public/ping")
+    String publicPing(@RequestHeader HttpHeaders headers) {
+        return ping(headers);
     }
 
     /**

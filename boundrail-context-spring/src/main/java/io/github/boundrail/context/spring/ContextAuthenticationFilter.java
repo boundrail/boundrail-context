@@ -27,8 +27,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Binds the values the {@link ContextContributor} beans contribute from the authentication of a request, for the rest of the chain (IN-04,
  * IN-05), {@code AUTHORITY} from a verified OAuth2 token authentication, whether or not it is already bound (ID-02), and {@code INITIATOR =
  * user:<name>} when it is neither bound nor contributed (ID-08); and reports one {@code INVALID_VALUE} for each key a contributor reports
- * as invalid (IN-07). Inside its scope it replaces the snapshot stored for the request's {@code ASYNC} dispatches. It does not run on
- * {@code ASYNC} dispatches, so contributors are invoked once per request (IN-09).
+ * as invalid (IN-07), and for {@code INITIATOR} when the name is empty or the derived value is not a valid initiator (ID-08). Inside its
+ * scope it replaces the snapshot stored for the request's {@code ASYNC} dispatches. It does not run on {@code ASYNC} dispatches, so
+ * contributors are invoked once per request (IN-09).
  */
 final class ContextAuthenticationFilter extends OncePerRequestFilter {
 
@@ -63,7 +64,9 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
         contributors.orderedStream().forEach(contributor -> contributor.contribute(authentication, contributions));
         extraction.from(authentication).ifPresent(authority -> contributions.bind(BuiltInKeys.AUTHORITY, authority));
         if (!BuiltInKeys.INITIATOR.isBound() && !contributions.contributed.contains(BuiltInKeys.INITIATOR)) {
-            contributions.bind(BuiltInKeys.INITIATOR, Initiator.of("user:" + authentication.getName()));
+            derivedInitiator(authentication.getName()).ifPresentOrElse(
+                    initiator -> contributions.bind(BuiltInKeys.INITIATOR, initiator),
+                    () -> contributions.invalid(BuiltInKeys.INITIATOR));
         }
         if (contributions.binding == null) {
             chain.doFilter(request, response);
@@ -77,6 +80,18 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
             });
         } catch (Exception e) {
             ContextAuthenticationFilter.<RuntimeException>sneakyThrow(e);
+        }
+    }
+
+    /** {@return {@code user:<name>}, or empty if {@code name} is empty or the result is not a valid initiator (ID-07, ID-08)} */
+    private static Optional<Initiator> derivedInitiator(String name) {
+        if (name.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Initiator.of("user:" + name));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
         }
     }
 

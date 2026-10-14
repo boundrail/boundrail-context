@@ -2,6 +2,7 @@ package io.github.boundrail.context.it;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.ObservedContext;
 import io.github.boundrail.context.it.topology.Topology;
@@ -64,12 +65,23 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M5")
     @DisplayName("IT-4.4 No verified credential, no authority")
-    void it44NoVerifiedCredentialNoAuthority() {
+    void it44NoVerifiedCredentialNoAuthority(Topology.Running topology) throws Exception {
         // IT-4.4: When a public caller without a token calls an edge endpoint that permits unauthenticated requests and sends
         // `Boundrail-Initiator: user:mallory`, then the handler observes neither an authority nor an initiator, and exactly one
         // `UNTRUSTED_HEADER` violation is reported, for the key `boundrail.initiator`. *(ID-02, ID-08, IN-02)*
+        String marker = UUID.randomUUID().toString();
+        double total = topology.violations(Service.EDGE, Violation.Kind.UNTRUSTED_HEADER);
+        double before = topology.violations(Service.EDGE, Violation.Kind.UNTRUSTED_HEADER, "boundrail.initiator");
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(Service.EDGE).resolve("/public/ping"))
+                .header("Boundrail-Initiator", "user:mallory").header(EdgeApp.MARKER, marker).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "edge", marker)).doesNotContainKeys(ObservedContext.AUTHORITY_SUBJECT, ObservedContext.INITIATOR);
+        assertThat(topology.violations(Service.EDGE, Violation.Kind.UNTRUSTED_HEADER, "boundrail.initiator")).isEqualTo(before + 1);
+        assertThat(topology.violations(Service.EDGE, Violation.Kind.UNTRUSTED_HEADER)).isEqualTo(total + 1);
     }
 
     @Test
