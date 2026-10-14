@@ -1,6 +1,7 @@
 package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Authority;
+import io.github.boundrail.context.AuthorityPropagator;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.DestinationClassifier;
@@ -134,6 +135,18 @@ public class BoundrailContextAutoConfiguration {
         return HostPatternClassifier.of(properties.destinations().internalHosts(), properties.destinations().externalHosts());
     }
 
+    /**
+     * The built-in {@code forward} propagator, unless an {@code AuthorityPropagator} bean replaces it (ID-04). {@code @Lazy(false)}, so that
+     * once the built-in {@code exchange} propagator can be selected here, its settings are validated at startup, also under lazy
+     * initialization (ID-11).
+     */
+    @Bean
+    @Lazy(false)
+    @ConditionalOnMissingBean(AuthorityPropagator.class)
+    AuthorityPropagator boundrailAuthorityPropagator() {
+        return new ForwardAuthorityPropagator();
+    }
+
     /** Mirrors loggable keys into SLF4J's MDC for each scope, where SLF4J is present (LOG-01, LOG-02). */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(MDC.class)
@@ -256,12 +269,12 @@ public class BoundrailContextAutoConfiguration {
         @Lazy(false)
         RestClientCustomizer boundrailRestClientCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
                 ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer,
-                ObjectProvider<DeadlineCounter> counters) {
+                ObjectProvider<DeadlineCounter> counters, AuthorityPropagator propagator) {
             DeadlineCounter counter = counters.getIfAvailable(() -> stage -> { });
             return builder -> builder.requestInterceptors(interceptors -> {
                 if (interceptors.stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     interceptors.add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter, propagator));
                 }
             });
         }
@@ -270,12 +283,12 @@ public class BoundrailContextAutoConfiguration {
         @Lazy(false)
         RestTemplateCustomizer boundrailRestTemplateCustomizer(DestinationClassifier classifier, EffectivePolicy policy,
                 ViolationReporter reporter, BoundrailContextProperties properties, DeadlineTimer timer,
-                ObjectProvider<DeadlineCounter> counters) {
+                ObjectProvider<DeadlineCounter> counters, AuthorityPropagator propagator) {
             DeadlineCounter counter = counters.getIfAvailable(() -> stage -> { });
             return restTemplate -> {
                 if (restTemplate.getInterceptors().stream().noneMatch(ContextClientInterceptor.class::isInstance)) {
                     restTemplate.getInterceptors().add(new ContextClientInterceptor(classifier, policy, reporter,
-                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter));
+                            properties.violations().mode(), properties.wire().maxValueLength(), timer, counter, propagator));
                 }
             };
         }

@@ -290,6 +290,16 @@ public class EdgeApp {
         return "edge";
     }
 
+    /** Calls orders' {@code /ping} through the internal client with the marker and {@code Authorization: Bearer service-token} (IT-4.7). */
+    @GetMapping("/authority/call-orders/service-token")
+    String authorityCallOrdersWithServiceToken(@RequestParam("marker") String marker) {
+        internalOrders.get().uri(topology.uri(Service.ORDERS).resolve("/ping"))
+                .header(MARKER, marker)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer service-token")
+                .retrieve().toBodilessEntity();
+        return "edge";
+    }
+
     /** Records on arrival, then calls orders' {@code /call-billing} through the internal client with the same marker (IT-3.1). */
     @GetMapping("/deadline/chain")
     String deadlineChain(@RequestHeader HttpHeaders headers) {

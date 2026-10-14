@@ -203,7 +203,7 @@ application set its own.
     helper in `topology/Topology.java`.
   - Completes: ID-08 (invalid derived value, unauthenticated); IT-4.4 (with ID-02, IN-02).
   - Verify: Unit `InitiatorDerivationTest`; IT+, plus `--tests '*TopologySmokeIT'` on both tasks (the chain changed).
-- [ ] T008 [US1] `AuthorityPropagator`, the forward propagator and the interceptor's ID-03 step; enable IT-4.2 and IT-4.7.
+- [x] T008 [US1] `AuthorityPropagator`, the forward propagator and the interceptor's ID-03 step; enable IT-4.2 and IT-4.7.
   - Red:
     - in `springtest/AuthorityPropagationTest.java` (`RecordingServer`, clients from the auto-configured `RestClient.Builder` and
       `RestTemplateBuilder`, an authority bound around the call):

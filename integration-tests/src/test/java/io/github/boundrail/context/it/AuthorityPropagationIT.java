@@ -47,12 +47,22 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M5")
     @DisplayName("IT-4.2 Forward mode")
-    void it42ForwardMode() {
+    void it42ForwardMode(Topology.Running topology) throws Exception {
         // IT-4.2: Given a public request authenticated as alice and `authority.propagation=forward`, when edge calls orders through its
         // `internal("orders")` client, then orders receives `Authorization: Bearer <alice's token>` and observes `initiator=user:alice`.
         // *(ID-03, ID-04)*
+        String marker = UUID.randomUUID().toString();
+        String token = topology.jwts().alice();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(Service.EDGE)
+                        .resolve("/call-orders/as-caller?marker=" + marker)).header("Authorization", "Bearer " + token).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "orders", marker))
+                .containsEntry("authorization", "Bearer " + token)
+                .containsEntry(ObservedContext.INITIATOR, "user:alice");
     }
 
     @Test
@@ -112,11 +122,19 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M5")
     @DisplayName("IT-4.7 Application-set Authorization is respected")
-    void it47ApplicationSetAuthorizationIsRespected() {
+    void it47ApplicationSetAuthorizationIsRespected(Topology.Running topology) throws Exception {
         // IT-4.7: Given a public request authenticated as alice, when edge application code sets `Authorization: Bearer service-token` on a
         // call through its `internal("orders")` client, then orders receives exactly `Authorization: Bearer service-token`. *(ID-03)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(Service.EDGE)
+                        .resolve("/authority/call-orders/service-token?marker=" + marker))
+                        .header("Authorization", "Bearer " + topology.jwts().alice()).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "orders", marker)).containsEntry("authorization", "Bearer service-token");
     }
 
     @Test
