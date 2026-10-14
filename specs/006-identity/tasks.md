@@ -243,7 +243,7 @@ application set its own.
     primary, lazy, without client support); ID-06 (external, unknown); CORE-16 (forward); the Configuration section's propagator failure;
     IT-4.2; IT-4.7.
   - Verify: Unit `AuthorityPropagationTest` and `ContextClientInterceptorTest`; IT+.
-- [ ] T009 [US1] WIRE-08 applies to the `Authorization` value.
+- [x] T009 [US1] WIRE-08 applies to the `Authorization` value.
   - Red, in `springtest/AuthorityPropagationTest.java`:
     - `ID-03 an Authorization value that is not a valid field value is not written, is reported once as INVALID_VALUE for boundrail.authority
       with INTERNAL_CALL and the destination, and the call continues` (parametrized): credentials with CR, LF, `é`, a trailing space, and

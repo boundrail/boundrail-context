@@ -2,9 +2,11 @@ package io.github.boundrail.context.spring;
 
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Destination.Kind.INTERNAL;
+import static io.github.boundrail.context.Violation.Kind.INVALID_VALUE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.AuthorityPropagator;
@@ -29,8 +31,12 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -249,6 +255,38 @@ class AuthorityPropagationTest {
             });
             assertThat(header(server.requests().getFirst(), "Authorization")).containsExactly("Bearer " + credential);
             assertThat(violations).isEmpty();
+        }
+    }
+
+    static Stream<Named<String>> invalidCredentials() {
+        return Stream.of(
+                Named.of("CR", "secret\r-token"),
+                Named.of("LF", "secret\n-token"),
+                Named.of("\u00e9 (U+00E9)", "secr\u00E9t-token"),
+                Named.of("a trailing space", "secret-token "),
+                Named.of("empty, giving a trailing space", ""));
+    }
+
+    @ParameterizedTest(name = "[{index}] {0}")
+    @MethodSource("invalidCredentials")
+    @DisplayName("ID-03 an Authorization value that is not a valid field value is not written, is reported once as INVALID_VALUE for "
+            + "boundrail.authority with INTERNAL_CALL and the destination, and the call continues")
+    void anAuthorizationValueThatIsNotAValidFieldValueIsNotWrittenAndIsReported(String credential) {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        try (RecordingServer server = RecordingServer.start("ok")) {
+            recording(violations).run(context -> {
+                RestClient internal = context.getBean(RestClient.Builder.class).baseUrl(server.uri())
+                        .apply(BoundrailClients.internal("orders")).build();
+
+                Context.with(BuiltInKeys.AUTHORITY, Authority.of("alice", credential)).run(() -> get(internal, NO_HEADERS));
+            });
+            assertThat(server.requests()).as("the call continues").hasSize(1);
+            assertThat(header(server.requests().getFirst(), "Authorization")).isEmpty();
+            assertThat(violations)
+                    .extracting(Violation::kind, Violation::key, Violation::boundary, Violation::destination)
+                    .containsExactly(tuple(INVALID_VALUE, "boundrail.authority", INTERNAL_CALL,
+                            Optional.of(new Destination(INTERNAL, Optional.of("orders")))));
+            assertThat(violations.getFirst().toString()).as("no value (DIAG-09)").doesNotContain("Bearer").doesNotContain("secr");
         }
     }
 

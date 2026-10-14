@@ -94,7 +94,8 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
      * Sets {@code Authorization: Bearer <credential>} on an internal call from the effective propagator, when {@code AUTHORITY} is in the
      * snapshot filtered for {@code INTERNAL_CALL} and application code has not set {@code Authorization} with at least one value, compared
      * as OUT-04 and WIRE-06 define; otherwise the propagator is not called. An empty result writes nothing. WIRE-04's length limit does not
-     * apply to the value (ID-03, DESIGN D60).
+     * apply to the value (ID-03, DESIGN D60); WIRE-08 does: a value that is not a valid field value is not written and is reported as
+     * {@code INVALID_VALUE} for {@code boundrail.authority}, and the call continues.
      */
     private void writeAuthorization(HttpRequest request, ContextSnapshot snapshot, Destination destination) {
         if (!request.getHeaders().getOrEmpty(HttpHeaders.AUTHORIZATION).isEmpty()) {
@@ -104,8 +105,17 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         if (authority.isEmpty()) {
             return;
         }
-        propagator.outboundCredential(authority.get(), destination)
-                .ifPresent(credential -> request.getHeaders().set(HttpHeaders.AUTHORIZATION, "Bearer " + credential));
+        Optional<String> credential = propagator.outboundCredential(authority.get(), destination);
+        if (credential.isEmpty()) {
+            return;
+        }
+        String value = "Bearer " + credential.get();
+        if (!isFieldValue(value)) {
+            reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, BuiltInKeys.AUTHORITY.name(), Boundary.INTERNAL_CALL,
+                    Optional.of(destination)));
+            return;
+        }
+        request.getHeaders().set(HttpHeaders.AUTHORIZATION, value);
     }
 
     /**
