@@ -151,26 +151,25 @@ unit tests.
 
 ### Authority and initiator at the edge
 
-**ID-02** `[M5]` No adapter other than `ContextAuthenticationFilter` (IN-04) SHALL bind `AUTHORITY`, and it SHALL bind it only from a verified
-Spring Security `Authentication`. No adapter SHALL bind `AUTHORITY` from an HTTP context header or a Kafka header. Application code MAY bind
-`AUTHORITY` itself (DESIGN D58). WHEN the request is authenticated, as IN-04 defines, and its `Authentication` is an
-`AbstractOAuth2TokenAuthenticationToken` (such as `JwtAuthenticationToken` or `BearerTokenAuthentication`), the filter SHALL bind `AUTHORITY =
-Authority.of(authentication.getName(), token.getTokenValue(), token.getExpiresAt())`, where `token` is `getToken()`, or
-`Authority.of(authentication.getName(), token.getTokenValue())` when `getExpiresAt()` is `null` (ID-10). It SHALL bind it in the nested scope in
-which it binds the contributed values (IN-04), so the snapshot stored for `ASYNC` dispatches (IN-09) holds it. As the exception to IN-05,
-`AUTHORITY` SHALL be bound from the authentication whether or not it is already bound. `ContextContributions.put` SHALL throw
-`IllegalArgumentException` when its key is `AUTHORITY`, after its `null` checks (CORE-13) and before its type check (CORE-04), so a value of the
-wrong type passed through a raw key also gives `IllegalArgumentException` (DESIGN D64). An exception a contributor does not catch, such as that one,
-propagates from the filter unchanged and the rest of the chain does not run, as for any contributor error. An authentication whose name is empty,
-such as a JWT with no `sub`, still binds the authority with an empty subject, so its credential is forwarded; ID-08 reports the derived initiator as
-invalid (DESIGN D66). Verified by IT-4.1, IT-4.4 and unit tests.
+**ID-02** `[M5]` No adapter other than `ContextAuthenticationFilter` (IN-04) SHALL bind `AUTHORITY`, and it SHALL bind it only from a verified Spring
+Security `Authentication`. No adapter SHALL bind `AUTHORITY` from an HTTP context header or a Kafka header. Application code MAY bind `AUTHORITY`
+itself (DESIGN D58). WHEN the request is authenticated, as IN-04 defines, and its `Authentication` is an `AbstractOAuth2TokenAuthenticationToken`
+(such as `JwtAuthenticationToken` or `BearerTokenAuthentication`), the filter SHALL bind `AUTHORITY = Authority.of(authentication.getName(),
+token.getTokenValue(), token.getExpiresAt())`, where `token` is `getToken()`, or `Authority.of(authentication.getName(), token.getTokenValue())` when
+`getExpiresAt()` is `null` (ID-10). It SHALL bind it in the nested scope in which it binds the contributed values (IN-04), so the snapshot stored for
+`ASYNC` dispatches (IN-09) holds it. As the exception to IN-05, `AUTHORITY` SHALL be bound from the authentication whether or not it is already
+bound. `ContextContributions.put` SHALL throw `IllegalArgumentException` when its key is `AUTHORITY`, after its `null` checks (CORE-13) and before
+its type check (CORE-04), so a value of the wrong type passed through a raw key also gives `IllegalArgumentException` (DESIGN D64). An exception a
+contributor does not catch, such as that one, propagates from the filter unchanged and the rest of the chain does not run, as for any contributor
+error. An authentication whose name is `null` or empty, such as a JWT with no `sub`, still binds the authority with an empty subject, so its
+credential is forwarded; ID-08 reports the derived initiator as invalid (DESIGN D66). Verified by IT-4.1, IT-4.4 and unit tests.
 
 **ID-08** `[M5]` WHEN a request is authenticated, as IN-04 defines, and `INITIATOR` is neither already bound, for example from a trusted
 `Boundrail-Initiator` header, nor contributed by a `ContextContributor` (IN-05), the library SHALL bind `INITIATOR = "user:" +
 authentication.getName()`, in the scope of ID-02. A trusted inbound `Boundrail-Initiator` header SHALL take precedence over a contribution, and a
-contribution over the derived value (DESIGN D27, D59). IF `authentication.getName()` is empty, or the derived value is not a valid initiator
-(ID-07), THEN the filter SHALL leave `INITIATOR` unbound and SHALL report one `INVALID_VALUE` violation for `boundrail.initiator`, with the boundary
-and destination DIAG-08 defines, and the request SHALL continue. Verified by IT-4.1, IT-4.4, IT-4.5 and unit tests.
+contribution over the derived value (DESIGN D27, D59). IF `authentication.getName()` is `null` or empty, or the derived value is not a valid
+initiator (ID-07), THEN the filter SHALL leave `INITIATOR` unbound and SHALL report one `INVALID_VALUE` violation for `boundrail.initiator`, with the
+boundary and destination DIAG-08 defines, and the request SHALL continue. Verified by IT-4.1, IT-4.4, IT-4.5 and unit tests.
 
 **ID-10** `[M5]` `Authority` SHALL have the factory `of(String subject, String credential, Instant expiresAt)` and the accessor
 `Optional<Instant> expiresAt()` declared in [contracts/identity-api.md](contracts/identity-api.md). `expiresAt()` SHALL return the given

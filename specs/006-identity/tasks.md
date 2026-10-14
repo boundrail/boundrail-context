@@ -191,6 +191,9 @@ application set its own.
       bound;
     - in `springtest/InitiatorDerivationTest.java`: `ID-08 an empty name leaves INITIATOR unbound and reports one INVALID_VALUE for
       boundrail.initiator, while the authority is still bound` (ID-02, D66): a JWT with no `sub`; the authority has an empty subject;
+    - in `springtest/InitiatorDerivationTest.java`: `ID-08 a null name is treated as empty: INITIATOR is unbound with one INVALID_VALUE
+      for boundrail.initiator, and the authority has an empty subject` (ID-02, D66): a `BearerTokenAuthentication` subclass whose `getName()`
+      returns `null`; added after T007's review;
     - enable IT-4.4: a request without a token to edge `/public/ping` with `Boundrail-Initiator: user:mallory` and a marker; status 200;
       the observation has neither `ctx.authority-subject` nor `ctx.initiator`; edge's `untrusted_header` counter rose by exactly one, both in
       total and for key `boundrail.initiator`. This is a guard: show it red with the derivation temporarily testing `authentication.isAuthenticated()` instead
