@@ -83,9 +83,9 @@ final class ContextAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
-    /** {@return {@code user:<name>}, or empty if {@code name} is empty or the result is not a valid initiator (ID-07, ID-08)} */
+    /** {@return {@code user:<name>}, or empty if {@code name} is {@code null} or empty or the result is not a valid initiator (ID-07, ID-08)} */
     private static Optional<Initiator> derivedInitiator(String name) {
-        if (name.isEmpty()) {
+        if (name == null || name.isEmpty()) {
             return Optional.empty();
         }
         try {

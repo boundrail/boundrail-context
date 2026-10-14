@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -37,7 +38,10 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.DefaultOAuth2AuthenticatedPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -139,6 +143,34 @@ class InitiatorDerivationTest {
         assertThat(recorded.observed().authority()).as("the authority, with an empty subject").hasValueSatisfying(authority -> {
             assertThat(authority.subject()).isEmpty();
             assertThat(authority.credential()).isEqualTo("no-subject-jwt");
+        });
+        assertThat(recorded.violations()).singleElement().satisfies(violation -> {
+            assertThat(violation.kind()).isEqualTo(Violation.Kind.INVALID_VALUE);
+            assertThat(violation.key()).isEqualTo("boundrail.initiator");
+            assertThat(violation.boundary()).isEqualTo(INTERNAL_CALL);
+            assertThat(violation.destination()).isEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("ID-08 a null name is treated as empty: INITIATOR is unbound with one INVALID_VALUE for boundrail.initiator, and the "
+            + "authority has an empty subject")
+    void aNullNameIsTreatedAsEmpty() {
+        BearerTokenAuthentication nullName = new BearerTokenAuthentication(
+                new DefaultOAuth2AuthenticatedPrincipal(Map.of("scope", "read"), List.of()),
+                new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "null-name-token", null, null), List.of()) {
+            @Override
+            public String getName() {
+                return null;
+            }
+        };
+
+        Recorded recorded = filterRecording(nullName);
+
+        assertThat(recorded.observed().initiator()).isEmpty();
+        assertThat(recorded.observed().authority()).as("the authority, with an empty subject").hasValueSatisfying(authority -> {
+            assertThat(authority.subject()).isEmpty();
+            assertThat(authority.credential()).isEqualTo("null-name-token");
         });
         assertThat(recorded.violations()).singleElement().satisfies(violation -> {
             assertThat(violation.kind()).isEqualTo(Violation.Kind.INVALID_VALUE);

@@ -359,7 +359,8 @@ public class BoundrailContextAutoConfiguration {
 
                 /**
                  * {@code Authority.of(getName(), token value, expiry)} for an {@code AbstractOAuth2TokenAuthenticationToken}, without the expiry
-                 * when the token has none (ID-10); empty for any other authentication.
+                 * when the token has none (ID-10), and with an empty subject when the name is {@code null} (ID-02); empty for any other
+                 * authentication.
                  */
                 @Bean
                 AuthorityExtraction boundrailAuthorityExtraction() {
@@ -367,10 +368,11 @@ public class BoundrailContextAutoConfiguration {
                         if (!(authentication instanceof AbstractOAuth2TokenAuthenticationToken<?> oauth2)) {
                             return Optional.empty();
                         }
+                        String subject = Objects.requireNonNullElse(oauth2.getName(), "");
                         String credential = oauth2.getToken().getTokenValue();
                         return Optional.of(oauth2.getToken().getExpiresAt() == null
-                                ? Authority.of(oauth2.getName(), credential)
-                                : Authority.of(oauth2.getName(), credential, oauth2.getToken().getExpiresAt()));
+                                ? Authority.of(subject, credential)
+                                : Authority.of(subject, credential, oauth2.getToken().getExpiresAt()));
                     };
                 }
             }
