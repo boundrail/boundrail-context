@@ -87,7 +87,10 @@ class AuthorityPropertiesTest {
     @MethodSource("propagationValues")
     @DisplayName("ID-04 authority.propagation is matched with relaxed enum binding, and an empty or blank value means forward")
     void propagationIsMatchedWithRelaxedEnumBinding(String value, Propagation expected) {
-        BoundrailContextProperties properties = bound(withProperties(runner, Map.of(PREFIX + "propagation", value)));
+        // Valid exchange settings, so that a value selecting the built-in exchange propagator starts (ID-11).
+        BoundrailContextProperties properties = bound(withProperties(runner, Map.of(PREFIX + "propagation", value,
+                PREFIX + "exchange.token-uri", "http://token-exchange.svc.test/token", PREFIX + "exchange.client-id", "edge",
+                PREFIX + "exchange.client-secret", "s3cr3t")));
 
         assertThat(properties.authority().propagation()).isEqualTo(expected);
     }

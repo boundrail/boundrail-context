@@ -8,6 +8,7 @@ import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.HostPatternClassifier;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.DispatcherType;
+import java.net.URI;
 import java.time.Clock;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -136,15 +137,20 @@ public class BoundrailContextAutoConfiguration {
     }
 
     /**
-     * The built-in {@code forward} propagator, unless an {@code AuthorityPropagator} bean replaces it (ID-04). {@code @Lazy(false)}, so that
-     * once the built-in {@code exchange} propagator can be selected here, its settings are validated at startup, also under lazy
+     * The built-in propagator selected by {@code authority.propagation}, unless an {@code AuthorityPropagator} bean replaces it (ID-04).
+     * {@code @Lazy(false)}, so that the built-in {@code exchange} propagator's settings are validated at startup, also under lazy
      * initialization (ID-11).
      */
     @Bean
     @Lazy(false)
     @ConditionalOnMissingBean(AuthorityPropagator.class)
-    AuthorityPropagator boundrailAuthorityPropagator() {
-        return new ForwardAuthorityPropagator();
+    AuthorityPropagator boundrailAuthorityPropagator(BoundrailContextProperties properties) {
+        BoundrailContextProperties.Authority authority = properties.authority();
+        return switch (authority.propagation()) {
+            case FORWARD -> new ForwardAuthorityPropagator();
+            case EXCHANGE -> new ExchangeAuthorityPropagator(URI.create(authority.exchange().tokenUri()), authority.exchange().clientId(),
+                    authority.exchange().clientSecret());
+        };
     }
 
     /** Mirrors loggable keys into SLF4J's MDC for each scope, where SLF4J is present (LOG-01, LOG-02). */

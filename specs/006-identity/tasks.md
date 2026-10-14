@@ -261,7 +261,7 @@ application set its own.
 
 **Independent Test**: IT-4.3 and IT-4.8 in the IT command.
 
-- [ ] T010 [US2] The exchange request and a valid response.
+- [x] T010 [US2] The exchange request and a valid response.
   - Red:
     - Jackson 3 for `-spring` (decision B2): the catalog alias `jackson-databind = { module = "tools.jackson.core:jackson-databind" }`
       (no version, BOM-managed) in `gradle/libs.versions.toml`, and `compileOnly(libs.jackson.databind)` and
@@ -285,8 +285,8 @@ application set its own.
       - `CORE-16 the exchange propagator rejects a null authority or destination with NullPointerException`;
       - `RT-09 the exchange propagator's HTTP client is closed when the context closes`: after the context's `close()`, the propagator's
         `HttpClient` reports `isTerminated()`.
-  - Green: `spring/ExchangeAuthorityPropagator.java` (request; response parsed with its own strict Jackson 3 `JsonMapper` with
-    `USE_BIG_DECIMAL_FOR_FLOATS` and `USE_BIG_INTEGER_FOR_INTS`, not the application's mapper; a non-object result rejected; no cache yet),
+  - Green: `spring/ExchangeAuthorityPropagator.java` (request; response parsed with its own strict Jackson 3 `JsonMapper`, not the application's
+    mapper (`USE_BIG_DECIMAL_FOR_FLOATS` and `USE_BIG_INTEGER_FOR_INTS` come with `expires_in` in T012); a non-object result rejected; no cache yet),
     its selection by `authority.propagation=exchange` in `spring/BoundrailContextAutoConfiguration.java` ([plan.md](plan.md#spring-wiring)).
   - Completes: ID-11 (request, valid response, whole-body `null`); ID-04 (`exchange` selection); CORE-16 (exchange).
   - Verify: Unit `TokenExchangeTest`.
@@ -330,7 +330,8 @@ application set its own.
     - enable IT-4.3: alice's request to the exchange edge `/authority/call-orders/twice` with a marker; orders' two observations both have
       `authorization=Bearer ` + the stub's `issued` token for audience `orders`, never alice's token; the stub's calls rose by exactly one,
       and its recording has `form.audience=orders`, `form.subject_token=<alice's token>` and `authorization=Basic <edge:edge-secret>`.
-  - Green: the cache in `spring/ExchangeAuthorityPropagator.java` ([plan.md](plan.md#spring-wiring)); topology test code: the stub's JSON
+  - Green: the cache in `spring/ExchangeAuthorityPropagator.java`, and its mapper's `USE_BIG_DECIMAL_FOR_FLOATS` and
+    `USE_BIG_INTEGER_FOR_INTS` for `expires_in` ([plan.md](plan.md#spring-wiring)); topology test code: the stub's JSON
     answer and recordings in `topology/TokenExchangeApp.java`; `jti` in `topology/TestJwts.java`; `/authority/call-orders/twice` in
     `topology/EdgeApp.java`; the exchange edge in `it/AuthorityPropagationIT.java` ([plan.md](plan.md#integration-tests)).
   - Completes: ID-04 (cache); ID-11 (cache lifetime, size, keys); IT-4.3; SC-003.

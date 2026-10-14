@@ -16,6 +16,7 @@ dependencies {
     compileOnly(libs.jakarta.servlet.api)
     compileOnly(libs.slf4j.api)
     compileOnly(libs.spring.webmvc)
+    compileOnly(libs.jackson.databind)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.micrometer.core)
@@ -28,4 +29,5 @@ dependencies {
     testImplementation(libs.spring.security.web)
     testImplementation(libs.spring.security.oauth2.resource.server)
     testImplementation(libs.spring.security.oauth2.jose)
+    testImplementation(libs.jackson.databind)
 }

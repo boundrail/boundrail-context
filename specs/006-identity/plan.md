@@ -235,7 +235,7 @@ propagator catches `HttpTimeoutException` before the general `IOException`. Q3 a
     expired entry is removed on lookup, so its replacement counts as newly added. Entry end = `min(received + expires_in − 30s,
     authority.expiresAt())`, with an `expires_in` beyond `long` seconds or past `Instant.MAX` capped at the source expiry or `Instant.MAX`
     (B2); not cached if `expires_in` is absent or the end is not after `received` (ID-11). Two concurrent misses may both
-    exchange. A package-private `cacheKeys()` exposes the keys to tests.
+    exchange. A package-private `cacheKeys()` exposes the keys to tests, and `httpClient()` the client (RT-09).
 - **`TokenExchangeException`.** Public final class in `io.github.boundrail.context.spring`, `extends RuntimeException`, package-private
   constructors `(String audience, int status)`, `(String audience, String reason)` and `(String audience, String reason, Throwable cause)`.
 - **RT-09.** Nothing new is static; the cache and client are per bean.

@@ -18,8 +18,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * A JDK {@link HttpServer} on a free loopback port that records every request and answers each with status 200 and a fixed body, optionally
- * after a delay before the headers or before the body.
+ * A JDK {@link HttpServer} on a free loopback port that records every request and answers each with a fixed status, {@code Content-Type}
+ * and body (by default 200 and {@code text/plain}), optionally after a delay before the headers or before the body.
  */
 public final class RecordingServer implements AutoCloseable {
 
@@ -29,9 +29,12 @@ public final class RecordingServer implements AutoCloseable {
      * @param method the request method
      * @param uri the request URI, as received
      * @param headers the request headers, by name as the JDK server reports them
+     * @param body the request body, decoded as UTF-8
      */
-    public record Request(String method, URI uri, Map<String, List<String>> headers) {
+    public record Request(String method, URI uri, Map<String, List<String>> headers, String body) {
     }
+
+    private static final String TEXT_PLAIN = "text/plain; charset=UTF-8";
 
     private final HttpServer server;
     private final List<Request> requests = new CopyOnWriteArrayList<>();
@@ -43,10 +46,11 @@ public final class RecordingServer implements AutoCloseable {
     });
 
     /**
-     * Records each request, waits {@code headerDelay}, sends the status and headers, waits {@code bodyDelay}, then sends the body. Handlers
-     * run on their own threads, so a waiting response does not block other requests, and {@link #close} interrupts them.
+     * Records each request, waits {@code headerDelay}, sends the status and headers, waits {@code bodyDelay}, then sends the body. A
+     * {@code null} {@code contentType} sends no {@code Content-Type}. Handlers run on their own threads, so a waiting response does not
+     * block other requests, and {@link #close} interrupts them.
      */
-    private RecordingServer(String responseBody, Duration headerDelay, Duration bodyDelay) {
+    private RecordingServer(int status, String contentType, String responseBody, Duration headerDelay, Duration bodyDelay) {
         try {
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         } catch (IOException e) {
@@ -56,11 +60,14 @@ public final class RecordingServer implements AutoCloseable {
         server.setExecutor(handlers);
         server.createContext("/", exchange -> {
             try (exchange; InputStream in = exchange.getRequestBody()) {
-                in.readAllBytes();
-                requests.add(new Request(exchange.getRequestMethod(), exchange.getRequestURI(), Map.copyOf(exchange.getRequestHeaders())));
+                String requestBody = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                requests.add(new Request(exchange.getRequestMethod(), exchange.getRequestURI(), Map.copyOf(exchange.getRequestHeaders()),
+                        requestBody));
                 sleep(headerDelay);
-                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
-                exchange.sendResponseHeaders(200, body.length);
+                if (contentType != null) {
+                    exchange.getResponseHeaders().set("Content-Type", contentType);
+                }
+                exchange.sendResponseHeaders(status, body.length);
                 try (OutputStream out = exchange.getResponseBody()) {
                     out.flush();
                     sleep(bodyDelay);
@@ -85,17 +92,25 @@ public final class RecordingServer implements AutoCloseable {
 
     /** {@return a started server answering every request with {@code responseBody}} */
     public static RecordingServer start(String responseBody) {
-        return new RecordingServer(responseBody, Duration.ZERO, Duration.ZERO);
+        return new RecordingServer(200, TEXT_PLAIN, responseBody, Duration.ZERO, Duration.ZERO);
+    }
+
+    /**
+     * {@return a started server answering every request with {@code status}, {@code contentType} and {@code responseBody}} A {@code null}
+     * {@code contentType} sends no {@code Content-Type}.
+     */
+    public static RecordingServer start(int status, String contentType, String responseBody) {
+        return new RecordingServer(status, contentType, responseBody, Duration.ZERO, Duration.ZERO);
     }
 
     /** {@return a started server answering every request with {@code responseBody}, after waiting {@code delay} before the headers} */
     public static RecordingServer startDelayed(String responseBody, Duration delay) {
-        return new RecordingServer(responseBody, delay, Duration.ZERO);
+        return new RecordingServer(200, TEXT_PLAIN, responseBody, delay, Duration.ZERO);
     }
 
     /** {@return a started server that sends the headers at once and {@code responseBody} after {@code bodyDelay}} */
     public static RecordingServer startWithSlowBody(String responseBody, Duration bodyDelay) {
-        return new RecordingServer(responseBody, Duration.ZERO, bodyDelay);
+        return new RecordingServer(200, TEXT_PLAIN, responseBody, Duration.ZERO, bodyDelay);
     }
 
     /** {@return the base URI, such as {@code http://127.0.0.1:54321}, with an IPv6 host in brackets} */
