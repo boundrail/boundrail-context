@@ -4,16 +4,26 @@ import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.AuthorityPropagator;
 import io.github.boundrail.context.Destination;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Base64;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -25,16 +35,38 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
 
     private static final String GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
     private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
+    private static final int CACHE_CAPACITY = 10_000;
+    private static final long CACHE_MARGIN_SECONDS = 30;
 
     private final URI tokenUri;
     private final String basicCredentials;
     private final HttpClient client = HttpClient.newHttpClient();
 
-    /** Its own mapper, never the application's, whose customisation could make parsing lenient (D65). */
-    private final JsonMapper mapper = JsonMapper.builder().build();
+    private final Clock clock;
+
+    /**
+     * Its own mapper, never the application's, whose customisation could make parsing lenient (D65). Numbers are read exactly, as
+     * {@code BigInteger} or {@code BigDecimal}, never through a {@code double} (ID-11).
+     */
+    private final JsonMapper mapper = JsonMapper.builder()
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
+            .build();
+
+    /** Exchanged tokens in the order they were added, evicting the earliest added beyond the capacity (ID-11); guarded by itself. */
+    private final Map<CacheKey, CachedToken> cache = new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<CacheKey, CachedToken> eldest) {
+            return size() > CACHE_CAPACITY;
+        }
+    };
 
     ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret) {
+        this(tokenUri, clientId, clientSecret, Clock.systemUTC());
+    }
+
+    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, Clock clock) {
         this.tokenUri = tokenUri;
+        this.clock = clock;
         this.basicCredentials = Base64.getEncoder().encodeToString((formEncode(clientId) + ":" + formEncode(clientSecret))
                 .getBytes(StandardCharsets.US_ASCII));
     }
@@ -48,6 +80,17 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
         Objects.requireNonNull(authority, "authority");
         Objects.requireNonNull(destination, "destination");
         String audience = destination.service().orElseThrow();
+        CacheKey key = new CacheKey(sha256Hex(authority.credential()), audience);
+        synchronized (cache) {
+            CachedToken cached = cache.get(key);
+            if (cached != null) {
+                if (clock.instant().isBefore(cached.end())) {
+                    return Optional.of(cached.token());
+                }
+                // Removed, so the entry that replaces it counts as added last.
+                cache.remove(key);
+            }
+        }
         String form = "grant_type=" + formEncode(GRANT_TYPE)
                 + "&subject_token=" + formEncode(authority.credential())
                 + "&subject_token_type=" + formEncode(ACCESS_TOKEN_TYPE)
@@ -67,7 +110,29 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
         if (!(mapper.readValue(response.body(), Object.class) instanceof Map<?, ?> object)) {
             throw new IllegalStateException("Token exchange for audience " + audience + " failed: no valid response");
         }
-        return Optional.of((String) object.get("access_token"));
+        Instant received = clock.instant();
+        String token = (String) object.get("access_token");
+        if (object.get("expires_in") instanceof Number expiresIn) {
+            Instant end = cacheEnd(received, expiresIn, authority);
+            if (end.isAfter(received)) {
+                synchronized (cache) {
+                    cache.put(key, new CachedToken(token, end));
+                }
+            }
+        }
+        return Optional.of(token);
+    }
+
+    /**
+     * {@return when a token received at {@code received} stops being used} 30 seconds before it expires, never after the source
+     * credential's expiry, and at most {@code Instant.MAX} for an {@code expires_in} too large for the clock (ID-04, ID-11).
+     */
+    private static Instant cacheEnd(Instant received, Number expiresIn, Authority authority) {
+        // Compared with the cap before any conversion: converting a value such as 1e999999999 overflows or takes minutes.
+        BigDecimal seconds = expiresIn instanceof BigDecimal decimal ? decimal : new BigDecimal((BigInteger) expiresIn);
+        BigDecimal cap = BigDecimal.valueOf(Instant.MAX.getEpochSecond() - received.getEpochSecond() + CACHE_MARGIN_SECONDS);
+        Instant end = seconds.compareTo(cap) >= 0 ? Instant.MAX : received.plusSeconds(seconds.longValue() - CACHE_MARGIN_SECONDS);
+        return authority.expiresAt().filter(end::isAfter).orElse(end);
     }
 
     /** Closes the HTTP client; called by Spring's inferred destroy method when the context closes (RT-09). */
@@ -79,6 +144,30 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
     /** {@return the client the exchange requests go through} For tests. */
     HttpClient httpClient() {
         return client;
+    }
+
+    /** {@return the cache's keys, in the order their entries were added} For tests. */
+    List<CacheKey> cacheKeys() {
+        synchronized (cache) {
+            return List.copyOf(cache.keySet());
+        }
+    }
+
+    /** {@return the lower-case hex SHA-256 hash of the credential's UTF-8 bytes} */
+    private static String sha256Hex(String credential) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(credential.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required by every JDK", e);
+        }
+    }
+
+    /** A cached exchanged token and the instant from which it is no longer used. */
+    private record CachedToken(String token, Instant end) {
+    }
+
+    /** A cache key: the hex SHA-256 hash of the source credential, never the credential, and the audience (ID-04, ID-11). */
+    record CacheKey(String credentialHash, String audience) {
     }
 
     private static String formEncode(String value) {

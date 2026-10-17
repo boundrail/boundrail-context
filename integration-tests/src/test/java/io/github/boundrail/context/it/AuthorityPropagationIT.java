@@ -10,14 +10,19 @@ import io.github.boundrail.context.it.topology.Topology.Service;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.context.ConfigurableApplicationContext;
 
 /**
  * Authority propagation suite (IT-4): the edge establishes authority and initiator, authority reaches only internal calls (forwarded or
@@ -28,6 +33,24 @@ import org.junit.jupiter.api.extension.ExtendWith;
 class AuthorityPropagationIT {
 
     private static final HttpClient HTTP = HttpClient.newHttpClient();
+
+    /** An extra edge that exchanges alice's token at the token-exchange stub for internal calls (IT-4.3). */
+    private static ConfigurableApplicationContext exchangeEdge;
+
+    @BeforeAll
+    static void startExchangeEdge(Topology.Running topology) {
+        exchangeEdge = topology.startEdge("boundrail.context.authority.propagation=exchange",
+                "boundrail.context.authority.exchange.token-uri=" + topology.uri(Service.TOKEN_EXCHANGE).resolve("/token"),
+                "boundrail.context.authority.exchange.client-id=edge",
+                "boundrail.context.authority.exchange.client-secret=edge-secret");
+    }
+
+    @AfterAll
+    static void closeExchangeEdge() {
+        if (exchangeEdge != null) {
+            exchangeEdge.close();
+        }
+    }
 
     @Test
     @DisplayName("IT-4.1 Edge establishes authority and initiator")
@@ -66,12 +89,34 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M5")
     @DisplayName("IT-4.3 Exchange mode")
-    void it43ExchangeMode() {
+    void it43ExchangeMode(Topology.Running topology) throws Exception {
         // IT-4.3: Given a public request authenticated as alice to the exchange edge, when edge calls orders twice through its
         // `internal("orders")` client, then orders receives, both times, `Authorization: Bearer` followed by the token the stub issued for
         // the audience `orders`, never alice's token, and the stub receives exactly one request. *(ID-03, ID-04, ID-11)*
+        String marker = UUID.randomUUID().toString();
+        String token = topology.jwts().alice();
+        int callsBefore = topology.tokenExchangeCalls();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(exchangeEdge)
+                        .resolve("/authority/call-orders/twice?marker=" + marker)).header("Authorization", "Bearer " + token).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(topology.tokenExchangeCalls()).as("the stub's calls").isEqualTo(callsBefore + 1);
+        List<Map<String, String>> exchanges = topology.observed().of("token-exchange").stream()
+                .filter(seen -> token.equals(seen.get("form.subject_token")))
+                .toList();
+        assertThat(exchanges).as("exchanges of alice's token").hasSize(1);
+        Map<String, String> exchange = exchanges.getFirst();
+        assertThat(exchange)
+                .containsEntry("form.audience", "orders")
+                .containsEntry("authorization", "Basic " + Base64.getEncoder().encodeToString(
+                        "edge:edge-secret".getBytes(StandardCharsets.US_ASCII)));
+        List<Map<String, String>> calls = observedAll(topology, "orders", marker);
+        assertThat(calls).as("orders' observations marked %s", marker).hasSize(2)
+                .allSatisfy(seen -> assertThat(seen).containsEntry("authorization", "Bearer " + exchange.get("issued")))
+                .noneSatisfy(seen -> assertThat(seen.get("authorization")).contains(token));
     }
 
     @Test
@@ -157,10 +202,15 @@ class AuthorityPropagationIT {
 
     /** The single observation a service recorded with this marker. */
     private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
-        List<Map<String, String>> marked = topology.observed().of(service).stream()
-                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
-                .toList();
+        List<Map<String, String>> marked = observedAll(topology, service, marker);
         assertThat(marked).as("%s observations marked %s", service, marker).hasSize(1);
         return marked.getFirst();
+    }
+
+    /** Every observation a service recorded with this marker, oldest first. */
+    private static List<Map<String, String>> observedAll(Topology.Running topology, String service, String marker) {
+        return topology.observed().of(service).stream()
+                .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
+                .toList();
     }
 }

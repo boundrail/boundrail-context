@@ -300,6 +300,14 @@ public class EdgeApp {
         return "edge";
     }
 
+    /** Calls orders' {@code /ping} twice through the internal client with the marker (IT-4.3). */
+    @GetMapping("/authority/call-orders/twice")
+    String authorityCallOrdersTwice(@RequestParam("marker") String marker) {
+        ping(internalOrders, Service.ORDERS, marker);
+        ping(internalOrders, Service.ORDERS, marker);
+        return "edge";
+    }
+
     /** Records on arrival, then calls orders' {@code /call-billing} through the internal client with the same marker (IT-3.1). */
     @GetMapping("/deadline/chain")
     String deadlineChain(@RequestHeader HttpHeaders headers) {

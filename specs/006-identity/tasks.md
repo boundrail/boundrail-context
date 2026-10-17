@@ -310,7 +310,7 @@ application set its own.
   - Completes: ID-11 (startup validation, Jackson 3 required); ID-04 (not validated when replaced); ID-06 (startup messages); the
     Configuration section's exchange failures.
   - Verify: Unit `TokenExchangeConfigurationTest`.
-- [ ] T012 [US2] Cache exchanged tokens; enable IT-4.3.
+- [x] T012 [US2] Cache exchanged tokens; enable IT-4.3.
   - Red:
     - in `springtest/TokenExchangeCacheTest.java` (fixed `Clock`, the propagator called directly with a counting token endpoint):
       - `ID-04 a second call for the same credential and audience uses the cached token, and another audience or credential exchanges`:
