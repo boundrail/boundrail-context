@@ -146,7 +146,8 @@ public class BoundrailContextAutoConfiguration {
     @Bean
     @Lazy(false)
     @ConditionalOnMissingBean(AuthorityPropagator.class)
-    AuthorityPropagator boundrailAuthorityPropagator(BoundrailContextProperties properties, ConfigurableListableBeanFactory beanFactory) {
+    AuthorityPropagator boundrailAuthorityPropagator(BoundrailContextProperties properties, ConfigurableListableBeanFactory beanFactory,
+            ObjectProvider<DeadlineCounter> counters) {
         BoundrailContextProperties.Authority authority = properties.authority();
         return switch (authority.propagation()) {
             case FORWARD -> new ForwardAuthorityPropagator();
@@ -158,7 +159,7 @@ public class BoundrailContextAutoConfiguration {
                 }
                 BoundrailContextProperties.Authority.Exchange exchange = authority.exchange();
                 yield new ExchangeAuthorityPropagator(tokenUri(exchange.tokenUri()), required(exchange.clientId(), "client-id"),
-                        required(exchange.clientSecret(), "client-secret"));
+                        required(exchange.clientSecret(), "client-secret"), counters.getIfAvailable(() -> stage -> { }));
             }
         };
     }

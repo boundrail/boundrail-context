@@ -5,19 +5,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import io.github.boundrail.context.Authority;
+import io.github.boundrail.context.AuthorityPropagator;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.support.RecordingServer;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Modifier;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.net.URI;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpTimeoutException;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -40,6 +50,9 @@ import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
@@ -55,6 +68,9 @@ class TokenExchangeFailureTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(BoundrailContextAutoConfiguration.class, RestClientAutoConfiguration.class,
                     RestTemplateAutoConfiguration.class));
+
+    /** The registry the slow exchange's deadline counter increments; it outlives the context. */
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     /** {@return the runner with the built-in {@code exchange} propagator selected, against {@code tokenUri}} */
     private ApplicationContextRunner exchange(String tokenUri) {
@@ -226,6 +242,132 @@ class TokenExchangeFailureTest {
             assertThat(fromRestClient).isExactlyInstanceOf(TokenExchangeException.class);
             assertThat(fromRestTemplate[0]).isExactlyInstanceOf(TokenExchangeException.class);
             assertThat(orders.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("ID-12 with a deadline bound, an exchange slower than the remaining time throws DeadlineExceededException at TIMEOUT, "
+            + "counted once, and the request is not sent")
+    void withADeadlineBoundAnExchangeSlowerThanTheRemainingTimeThrowsTimeout() {
+        try (RecordingServer tokenEndpoint = RecordingServer.startDelayed("{\"access_token\":\"t\"}", Duration.ofSeconds(3));
+                RecordingServer orders = RecordingServer.start("ok")) {
+            Duration[] elapsed = new Duration[1];
+            // A no-deadline timeout longer than the delay: only the deadline's remaining time can stop the exchange in time.
+            ApplicationContextRunner configured = slowExchange(tokenEndpoint.uri() + "/token", Duration.ofSeconds(5));
+            Throwable thrown = catchThrowable(() -> callOrders(configured, orders, internal -> {
+                long start = System.nanoTime();
+                try {
+                    Context.with(BuiltInKeys.AUTHORITY, ALICE).with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofMillis(200)))
+                            .run(() -> internal.get().uri("/").retrieve().toBodilessEntity());
+                } finally {
+                    elapsed[0] = Duration.ofNanos(System.nanoTime() - start);
+                }
+            }));
+
+            assertThat(thrown).isExactlyInstanceOf(DeadlineExceededException.class);
+            assertThat(((DeadlineExceededException) thrown).stage()).isEqualTo(DeadlineExceededException.Stage.TIMEOUT);
+            assertThat(thrown.getCause()).isInstanceOf(HttpTimeoutException.class);
+            assertThat(elapsed[0]).isLessThan(Duration.ofMillis(400));
+            assertThat(timeoutCount()).isEqualTo(1.0);
+            assertThat(orders.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("ID-12 a deadline that has run out when the exchange starts throws TIMEOUT without calling the token endpoint")
+    void aDeadlineThatHasRunOutWhenTheExchangeStartsThrowsTimeoutWithoutCallingTheTokenEndpoint() {
+        try (RecordingServer tokenEndpoint = RecordingServer.start(200, "application/json", "{\"access_token\":\"t\"}")) {
+            Throwable[] thrown = new Throwable[1];
+            slowExchange(tokenEndpoint).run(context -> {
+                AuthorityPropagator propagator = context.getBean(AuthorityPropagator.class);
+                // Called directly: the interceptor's DL-06 check would refuse a deadline that has already run out.
+                thrown[0] = catchThrowable(() -> Context.with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ZERO))
+                        .run(() -> propagator.outboundCredential(ALICE, new Destination(INTERNAL, Optional.of("orders")))));
+            });
+
+            assertThat(thrown[0]).isExactlyInstanceOf(DeadlineExceededException.class);
+            assertThat(((DeadlineExceededException) thrown[0]).stage()).isEqualTo(DeadlineExceededException.Stage.TIMEOUT);
+            assertThat(timeoutCount()).isEqualTo(1.0);
+            assertThat(tokenEndpoint.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("ID-12 with no deadline bound, an exchange slower than the fixed timeout throws TokenExchangeException")
+    void withNoDeadlineBoundAnExchangeSlowerThanTheFixedTimeoutThrowsTokenExchangeException() {
+        try (RecordingServer tokenEndpoint = RecordingServer.startDelayed("{\"access_token\":\"t\"}", Duration.ofSeconds(3));
+                RecordingServer orders = RecordingServer.start("ok")) {
+            Throwable thrown = catchThrowable(() -> callOrders(slowExchange(tokenEndpoint), orders));
+
+            assertThat(thrown).isExactlyInstanceOf(TokenExchangeException.class);
+            assertThat(thrown.getMessage()).contains("orders").contains("timed out");
+            assertThat(thrown.getCause()).isInstanceOf(HttpTimeoutException.class);
+            assertThat(timeoutCount()).isZero();
+            assertThat(orders.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("ID-12 a connect slower than the timeout is a timeout")
+    void aConnectSlowerThanTheTimeoutIsATimeout() {
+        try (RecordingServer orders = RecordingServer.start("ok")) {
+            // Non-routable: the connect neither succeeds nor is refused.
+            Throwable thrown = catchThrowable(() -> callOrders(slowExchange("http://10.255.255.1/token"), orders,
+                    internal -> Context.with(BuiltInKeys.AUTHORITY, ALICE).with(BuiltInKeys.DEADLINE, Deadline.after(Duration.ofMillis(200)))
+                            .run(() -> internal.get().uri("/").retrieve().toBodilessEntity())));
+
+            assertThat(thrown).isExactlyInstanceOf(DeadlineExceededException.class);
+            assertThat(((DeadlineExceededException) thrown).stage()).isEqualTo(DeadlineExceededException.Stage.TIMEOUT);
+            assertThat(thrown.getCause()).isInstanceOf(HttpConnectTimeoutException.class);
+            assertThat(timeoutCount()).isEqualTo(1.0);
+            assertThat(orders.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("ID-12 the fixed timeout is 10 seconds and has no property")
+    void theFixedTimeoutIs10SecondsAndHasNoProperty() {
+        exchange("http://127.0.0.1/token").run(context -> assertThat(
+                ((ExchangeAuthorityPropagator) context.getBean(AuthorityPropagator.class)).noDeadlineTimeout())
+                .isEqualTo(Duration.ofSeconds(10)));
+        assertThat(Arrays.stream(BoundrailContextProperties.Authority.Exchange.class.getRecordComponents()).map(c -> c.getName()))
+                .containsExactly("tokenUri", "clientId", "clientSecret");
+    }
+
+    /** {@return the count of {@code boundrail.context.deadline.exceeded{stage=timeout}} in {@link #registry}} */
+    private double timeoutCount() {
+        Counter counter = registry.find("boundrail.context.deadline.exceeded").tag("stage", "timeout").counter();
+        return counter == null ? 0 : counter.count();
+    }
+
+    /** {@return the runner with {@link SlowExchange} against {@code tokenUri}, counting into {@link #registry}} */
+    private ApplicationContextRunner slowExchange(String tokenUri) {
+        return slowExchange(tokenUri, Duration.ofMillis(300));
+    }
+
+    /**
+     * {@return the runner with {@link SlowExchange} against {@code tokenUri} and {@code noDeadlineTimeout}, counting into
+     * {@link #registry}}
+     */
+    private ApplicationContextRunner slowExchange(String tokenUri, Duration noDeadlineTimeout) {
+        return runner.withBean(SimpleMeterRegistry.class, () -> registry)
+                .withPropertyValues("test.token-uri=" + tokenUri, "test.no-deadline-timeout-ms=" + noDeadlineTimeout.toMillis())
+                .withUserConfiguration(SlowExchange.class);
+    }
+
+    private ApplicationContextRunner slowExchange(RecordingServer tokenEndpoint) {
+        return slowExchange(tokenEndpoint.uri() + "/token");
+    }
+
+    /** The exchange propagator with the context's deadline counter and the no-deadline timeout {@code test.no-deadline-timeout-ms}. */
+    @Configuration(proxyBeanMethods = false)
+    static class SlowExchange {
+
+        @Bean
+        AuthorityPropagator slowExchangePropagator(DeadlineCounter counter, Environment environment) {
+            Duration noDeadlineTimeout = Duration.ofMillis(environment.getRequiredProperty("test.no-deadline-timeout-ms", Long.class));
+            return new ExchangeAuthorityPropagator(URI.create(environment.getRequiredProperty("test.token-uri")), "edge", CLIENT_SECRET,
+                    counter, Clock.systemUTC(), noDeadlineTimeout);
         }
     }
 

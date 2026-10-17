@@ -361,11 +361,12 @@ application set its own.
     (`IOException` and `InterruptedException` mapped here; `HttpTimeoutException` gets its own branch, before `IOException`, in T014).
   - Completes: ID-12 (failures, message); ID-11 (response validity); ID-06 (exception messages, logs).
   - Verify: Unit `TokenExchangeFailureTest`.
-- [ ] T014 [US2] The exchange's timeout.
+- [x] T014 [US2] The exchange's timeout.
   - Red, in `springtest/TokenExchangeFailureTest.java` (a slow `RecordingServer`: it accepts and delays its response, so the JDK client
-    throws `HttpTimeoutException`, T001; the no-deadline timeout passed to the package-private constructor as 300ms):
+    throws `HttpTimeoutException`, T001; the no-deadline timeout passed to the package-private constructor as 300ms unless stated):
     - `ID-12 with a deadline bound, an exchange slower than the remaining time throws DeadlineExceededException at TIMEOUT, counted once,
-      and the request is not sent`: a 200ms deadline and a 3s delay: `TIMEOUT` within 200ms plus 200ms, cause `HttpTimeoutException` (Q7),
+      and the request is not sent`: a 200ms deadline and a 3s delay, with a no-deadline timeout of 5s (longer than the delay, so only the
+      remaining time can stop it): `TIMEOUT` within 200ms plus 200ms, cause `HttpTimeoutException` (Q7),
       `boundrail.context.deadline.exceeded{stage=timeout}` at 1;
     - `ID-12 a deadline that has run out when the exchange starts throws TIMEOUT without calling the token endpoint` (Q2): the endpoint
       received nothing, counter at 1, and no `IllegalArgumentException` from the request builder;

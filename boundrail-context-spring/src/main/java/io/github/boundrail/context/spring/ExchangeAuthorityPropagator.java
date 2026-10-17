@@ -2,6 +2,9 @@ package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.AuthorityPropagator;
+import io.github.boundrail.context.Deadline;
+import io.github.boundrail.context.DeadlineExceededException;
+import io.github.boundrail.context.Deadlines;
 import io.github.boundrail.context.Destination;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -11,10 +14,12 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -39,12 +44,16 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
     private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
     private static final int CACHE_CAPACITY = 10_000;
     private static final long CACHE_MARGIN_SECONDS = 30;
+    /** The request timeout with no deadline bound; fixed, with no property (ID-12). */
+    private static final Duration NO_DEADLINE_TIMEOUT = Duration.ofSeconds(10);
 
     private final URI tokenUri;
     private final String basicCredentials;
     private final HttpClient client = HttpClient.newHttpClient();
 
+    private final DeadlineCounter counter;
     private final Clock clock;
+    private final Duration noDeadlineTimeout;
 
     /**
      * Its own mapper, never the application's, whose customisation could make parsing lenient (D65). Numbers are read exactly, as
@@ -63,13 +72,20 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
         }
     };
 
-    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret) {
-        this(tokenUri, clientId, clientSecret, Clock.systemUTC());
+    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, DeadlineCounter counter) {
+        this(tokenUri, clientId, clientSecret, counter, Clock.systemUTC(), NO_DEADLINE_TIMEOUT);
     }
 
     ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, Clock clock) {
+        this(tokenUri, clientId, clientSecret, stage -> { }, clock, NO_DEADLINE_TIMEOUT);
+    }
+
+    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, DeadlineCounter counter, Clock clock,
+            Duration noDeadlineTimeout) {
         this.tokenUri = tokenUri;
+        this.counter = counter;
         this.clock = clock;
+        this.noDeadlineTimeout = noDeadlineTimeout;
         this.basicCredentials = Base64.getEncoder().encodeToString((formEncode(clientId) + ":" + formEncode(clientSecret))
                 .getBytes(StandardCharsets.US_ASCII));
     }
@@ -94,6 +110,14 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
                 cache.remove(key);
             }
         }
+        // The remaining time of a bound deadline, else the fixed timeout (ID-12).
+        Optional<Deadline> deadline = Deadlines.current();
+        Duration timeout = deadline.map(Deadline::remaining).orElse(noDeadlineTimeout);
+        if (!timeout.isPositive()) {
+            // Checked before timeout(...), which rejects zero (Q2): the exchange request is not sent.
+            counter.increment(DeadlineExceededException.Stage.TIMEOUT);
+            throw new DeadlineExceededException(DeadlineExceededException.Stage.TIMEOUT);
+        }
         String form = "grant_type=" + formEncode(GRANT_TYPE)
                 + "&subject_token=" + formEncode(authority.credential())
                 + "&subject_token_type=" + formEncode(ACCESS_TOKEN_TYPE)
@@ -102,11 +126,19 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Authorization", "Basic " + basicCredentials)
                 .header("Accept", "application/json")
+                .timeout(timeout)
                 .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
                 .build();
         HttpResponse<String> response;
         try {
             response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (HttpTimeoutException e) {
+            // Includes HttpConnectTimeoutException: the request timeout covers the connect.
+            if (deadline.isPresent()) {
+                counter.increment(DeadlineExceededException.Stage.TIMEOUT);
+                throw new DeadlineExceededException(DeadlineExceededException.Stage.TIMEOUT, e);
+            }
+            throw new TokenExchangeException(audience, "timed out", e);
         } catch (IOException e) {
             throw new TokenExchangeException(audience, "endpoint unreachable", e);
         } catch (InterruptedException e) {
@@ -166,6 +198,11 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
     @Override
     public void close() {
         client.close();
+    }
+
+    /** {@return the request timeout with no deadline bound} For tests. */
+    Duration noDeadlineTimeout() {
+        return noDeadlineTimeout;
     }
 
     /** {@return the client the exchange requests go through} For tests. */
