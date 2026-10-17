@@ -149,8 +149,9 @@ No client exception message contained the form's secrets, the Basic credentials 
 **Decision B2 (user, 2026-10-13).** The built-in exchange propagator requires Jackson 3 (`tools.jackson.databind`), `compileOnly` and
 `testImplementation` in `-spring` (BOM-managed). It parses with its own `JsonMapper`, strict, with `USE_BIG_DECIMAL_FOR_FLOATS` and
 `USE_BIG_INTEGER_FOR_INTS` so numbers are exact; never the application's mapper bean, whose customisation could make it lenient. With
-`exchange` selected (and no replacing bean) and Jackson 3 absent, startup fails, also with lazy initialization. `NaN` is not valid; an
-infinite or beyond-`long` `expires_in` is too large, so valid and capped. The parse exception is never a cause and never in a message. The
+`exchange` selected (and no replacing bean) and Jackson 3 absent, startup fails, also with lazy initialization. `NaN` is not valid; a
+beyond-`long` or beyond-`double` `expires_in` (`1e400`) is too large, so valid and capped without being expanded; one beyond the parser's
+limits (`1e2147483648`) is not valid (D67). The parse exception is never a cause and never in a message. The
 propagator catches `HttpTimeoutException` before the general `IOException`. Q3 and Q5 are confirmed by the spike; Q9 is new.
 
 ## Research Notes
@@ -223,10 +224,12 @@ propagator catches `HttpTimeoutException` before the general `IOException`. Q3 a
     builder throws `IllegalArgumentException` on it) and is the Q2 `TIMEOUT`, with no request sent.
   - Response: status 200 and a body that the strict `JsonMapper` parses to a JSON object (a whole-body `null` or any non-object is invalid)
     whose `access_token` is a non-empty string; `expires_in` absent, or a `BigInteger`/`BigDecimal` that is a whole number ≥ 0 (Q3; a
-    boolean, string, `null` or fraction is invalid; `NaN` is not JSON, so the parse fails). Anything else →
-    `TokenExchangeException("Token exchange for audience <a> failed with status <s>")` or `"… failed: <reason>"`, where the reason is fixed
-    text ("no valid response", "endpoint unreachable", "timed out"), never the body. A parse failure gives "no valid response" with no
-    cause (its message can echo the body, B2).
+    boolean, string, `null` or fraction is invalid; `NaN` is not JSON, so the parse fails). A status other than 200 →
+    `TokenExchangeException("Token exchange for audience <a> failed with status <s>")`; a 200 with a body that is not valid → `"Token
+    exchange for audience <a> failed with status 200: no valid response"`; no response → `"… failed: <reason>"`. The reason is fixed text
+    ("no valid response", "endpoint unreachable", "timed out", "interrupted"), never the body. A parse failure gives "no valid response"
+    with no cause (its message can echo the body, B2); the parse catch also drops the `NumberFormatException` Jackson throws for a number
+    beyond its limits (e.g. `expires_in` `1e2147483648`), which gives "no valid response" too (user decision 2026-10-18).
   - Exceptions from `send`, caught in this order: `HttpTimeoutException` (including `HttpConnectTimeoutException`) with a deadline bound →
     `counter.increment(TIMEOUT)` and `DeadlineExceededException(TIMEOUT, e)`, without one → `TokenExchangeException("timed out", e)`; any
     other `IOException` → `TokenExchangeException("endpoint unreachable", e)`; `InterruptedException` → interrupt status restored,
@@ -237,7 +240,8 @@ propagator catches `HttpTimeoutException` before the general `IOException`. Q3 a
     (B2); not cached if `expires_in` is absent or the end is not after `received` (ID-11). Two concurrent misses may both
     exchange. A package-private `cacheKeys()` exposes the keys to tests, and `httpClient()` the client (RT-09).
 - **`TokenExchangeException`.** Public final class in `io.github.boundrail.context.spring`, `extends RuntimeException`, package-private
-  constructors `(String audience, int status)`, `(String audience, String reason)` and `(String audience, String reason, Throwable cause)`.
+  constructors `(String audience, int status)`, `(String audience, int status, String reason)` and `(String audience, String reason,
+  Throwable cause)`.
 - **RT-09.** Nothing new is static; the cache and client are per bean.
 
 ### Integration tests
@@ -311,6 +315,7 @@ authority is not in the MDC or in the snapshot filtered for `DETACHED`" with "th
 | T008 | IT-4.7 Application-set Authorization is respected | Before ID-03 nothing wrote `Authorization`, so the application's header always passed | The interceptor's ID-03 step without the "already set" check, so it replaces the header with alice's token |
 | T011 | `ID-04 with an AuthorityPropagator bean, or with forward, the exchange properties are not validated` | Before T011 no property was validated, so both contexts started | (a) `forward` also validating `token-uri`; (b) a separate `@Lazy(false)` bean validating whenever `exchange` is selected, ignoring the replacing bean: the token-uri failure |
 | T012 | `ID-11 a response without expires_in, or one whose lifetime is 30 seconds or less, is used and not cached` (all four rows) | Before T012 nothing was cached | (a) a response without `expires_in` cached until `Instant.MAX`: the absent row; (b) the `end.isAfter(received)` check skipped: the 30, 0 and passed-source-expiry rows; (c) the source expiry ignored in the cache end: the passed-source-expiry row |
+| T013 | `ID-11 an expires_in of 3600.0 or 1e3 is valid` | Before T013 any number was accepted | `case BigDecimal decimal -> false` (only `BigInteger` accepted): both rows fail |
 | T015 | IT-4.6 No credential in any output | A negative property of all M5 code; the earlier tasks pin each part in unit tests | (a) `Authority.toString()` printing the credential: the recorded snapshot `toString()` fails; (b) `MdcScopeListener` not skipping `AUTHORITY`: the recorded MDC fails |
 
 ## TDD Exceptions

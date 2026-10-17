@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -46,10 +48,11 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
 
     /**
      * Its own mapper, never the application's, whose customisation could make parsing lenient (D65). Numbers are read exactly, as
-     * {@code BigInteger} or {@code BigDecimal}, never through a {@code double} (ID-11).
+     * {@code BigInteger} or {@code BigDecimal}, never through a {@code double}, and a repeated key makes the response invalid (ID-11).
      */
     private final JsonMapper mapper = JsonMapper.builder()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .build();
 
     /** Exchanged tokens in the order they were added, evicting the earliest added beyond the capacity (ID-11); guarded by itself. */
@@ -104,14 +107,29 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
         HttpResponse<String> response;
         try {
             response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        } catch (IOException | InterruptedException e) {
-            throw new IllegalStateException("Token exchange for audience " + audience + " failed", e);
+        } catch (IOException e) {
+            throw new TokenExchangeException(audience, "endpoint unreachable", e);
+        } catch (InterruptedException e) {
+            // The JDK client clears the interrupt status (ID-12).
+            Thread.currentThread().interrupt();
+            throw new TokenExchangeException(audience, "interrupted", e);
         }
-        if (!(mapper.readValue(response.body(), Object.class) instanceof Map<?, ?> object)) {
-            throw new IllegalStateException("Token exchange for audience " + audience + " failed: no valid response");
+        if (response.statusCode() != 200) {
+            throw new TokenExchangeException(audience, response.statusCode());
+        }
+        Object body;
+        try {
+            body = mapper.readValue(response.body(), Object.class);
+        } catch (JacksonException | NumberFormatException e) {
+            // Neither the cause nor part of the message: a parser's message can echo the body (ID-12).
+            body = null;
+        }
+        if (!(body instanceof Map<?, ?> object)
+                || !(object.get("access_token") instanceof String token) || token.isEmpty()
+                || object.containsKey("expires_in") && !isWholeAndNotNegative(object.get("expires_in"))) {
+            throw new TokenExchangeException(audience, response.statusCode(), "no valid response");
         }
         Instant received = clock.instant();
-        String token = (String) object.get("access_token");
         if (object.get("expires_in") instanceof Number expiresIn) {
             Instant end = cacheEnd(received, expiresIn, authority);
             if (end.isAfter(received)) {
@@ -121,6 +139,15 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
             }
         }
         return Optional.of(token);
+    }
+
+    /** {@return whether an {@code expires_in} read exactly is a JSON number with a whole value of zero or more} (ID-11) */
+    private static boolean isWholeAndNotNegative(Object expiresIn) {
+        return switch (expiresIn) {
+            case BigInteger integer -> integer.signum() >= 0;
+            case BigDecimal decimal -> decimal.signum() >= 0 && decimal.stripTrailingZeros().scale() <= 0;
+            case null, default -> false;
+        };
     }
 
     /**

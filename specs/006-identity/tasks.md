@@ -336,14 +336,15 @@ application set its own.
     `topology/EdgeApp.java`; the exchange edge in `it/AuthorityPropagationIT.java` ([plan.md](plan.md#integration-tests)).
   - Completes: ID-04 (cache); ID-11 (cache lifetime, size, keys); IT-4.3; SC-003.
   - Verify: Unit `TokenExchangeCacheTest`; IT+.
-- [ ] T013 [US2] Failed exchanges throw `TokenExchangeException`.
+- [x] T013 [US2] Failed exchanges throw `TokenExchangeException`.
   - Red, in `springtest/TokenExchangeFailureTest.java` (`OutputCaptureExtension`):
     - `ID-12 a status other than 200, or a body that is not valid, throws TokenExchangeException and the request is not sent` (parametrized
       over T001's findings): 201, 302, 400, 500; an empty body, `not json`, a whole-body `null`, a JSON array, a truncated
       `{"access_token":"t`, trailing garbage `{"access_token":"t"} trailing`; `access_token` missing, `null`, `""`, `42`, `["t"]`;
-      `expires_in` of `-1`, `1.5`, `"3600"`, `null`, `true`, `NaN`; a duplicate `access_token` key (Q9, D65);
-      orders receives nothing; the exception has no cause (the parse exception is dropped, B2); `expires_in` of `3600.0` and `1e3` are
-      valid (Q3);
+      `expires_in` of `-1` and `-1e999999999` (a negative number), `1.5`, `"3600"`, `null`, `true`, `NaN`, and `1e2147483648` (beyond
+      the parser's limits: not valid); a duplicate `access_token` key (Q9, D65); orders receives nothing; the exception has no cause (the
+      parse exception is dropped, B2);
+    - `ID-11 an expires_in of 3600.0 or 1e3 is valid` (Q3; a guard, [plan.md](plan.md#guard-tests));
     - `ID-12 an unreachable token endpoint throws TokenExchangeException with the I/O exception as its cause, and the request is not sent`:
       a refused port (`ConnectException`);
     - `ID-12 an interrupted exchange throws TokenExchangeException and keeps the interrupt status` (Q6): the calling thread is interrupted
@@ -352,7 +353,8 @@ application set its own.
     - `ID-12 no violation is reported for a failed exchange`;
     - `ID-12 the message names the audience and the status, and contains no credential, exchanged token, client secret or body`: for a 500
       whose body holds a token-like string, and for a 200 body whose parse error would echo a secret (an unquoted
-      `{"access_token":SECRET-xyz}`, which Jackson reports as `Unrecognized token 'SECRET-xyz'`); and `ID-06` in the same test: the
+      `{"access_token":SECRETxyz}`, which Jackson reports as `Unrecognized token 'SECRETxyz'`; not `SECRET-xyz`, where Jackson 3 stops at
+      the `-` and reports `'SECRET'`, so a message echoing the parser text would not be caught); and `ID-06` in the same test: the
       exception's message, every message in its cause chain, and the captured output contain none of them;
     - `ID-12 TokenExchangeException has no public constructor and reaches RestClient and RestTemplate callers unwrapped`.
   - Green: `spring/TokenExchangeException.java`; the validity checks and failure paths in `spring/ExchangeAuthorityPropagator.java`
