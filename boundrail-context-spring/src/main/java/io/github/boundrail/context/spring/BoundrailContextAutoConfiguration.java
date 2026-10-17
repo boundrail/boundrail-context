@@ -9,6 +9,7 @@ import io.github.boundrail.context.HostPatternClassifier;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.DispatcherType;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Clock;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -39,6 +40,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.AbstractOAuth2TokenAuthenticationToken;
+import org.springframework.util.ClassUtils;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
@@ -144,13 +146,52 @@ public class BoundrailContextAutoConfiguration {
     @Bean
     @Lazy(false)
     @ConditionalOnMissingBean(AuthorityPropagator.class)
-    AuthorityPropagator boundrailAuthorityPropagator(BoundrailContextProperties properties) {
+    AuthorityPropagator boundrailAuthorityPropagator(BoundrailContextProperties properties, ConfigurableListableBeanFactory beanFactory) {
         BoundrailContextProperties.Authority authority = properties.authority();
         return switch (authority.propagation()) {
             case FORWARD -> new ForwardAuthorityPropagator();
-            case EXCHANGE -> new ExchangeAuthorityPropagator(URI.create(authority.exchange().tokenUri()), authority.exchange().clientId(),
-                    authority.exchange().clientSecret());
+            case EXCHANGE -> {
+                // Checked before ExchangeAuthorityPropagator, the only class naming a Jackson type, is loaded (ID-11, D65).
+                if (!ClassUtils.isPresent("tools.jackson.databind.json.JsonMapper", beanFactory.getBeanClassLoader())) {
+                    throw new IllegalArgumentException(
+                            "The built-in exchange propagator requires Jackson 3 (tools.jackson.databind) on the classpath");
+                }
+                BoundrailContextProperties.Authority.Exchange exchange = authority.exchange();
+                yield new ExchangeAuthorityPropagator(tokenUri(exchange.tokenUri()), required(exchange.clientId(), "client-id"),
+                        required(exchange.clientSecret(), "client-secret"));
+            }
         };
+    }
+
+    /**
+     * {@return the token URI} Throws {@code IllegalArgumentException} unless it is an absolute {@code http} or {@code https} URI with a
+     * host and no userinfo (ID-11). The message never contains the value, which may carry userinfo (ID-06); {@code getHost()} is checked
+     * directly, because {@code HttpRequest.newBuilder} echoes the URI in its message.
+     */
+    private static URI tokenUri(String value) {
+        String invalid = "boundrail.context.authority.exchange.token-uri must be an absolute http or https URI with a host and no userinfo";
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(invalid);
+        }
+        URI uri;
+        try {
+            uri = new URI(value);
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException(invalid);
+        }
+        if (!uri.isAbsolute() || !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                || uri.getHost() == null || uri.getRawUserInfo() != null) {
+            throw new IllegalArgumentException(invalid);
+        }
+        return uri;
+    }
+
+    /** {@return the value} Throws {@code IllegalArgumentException} naming the property, never the value, if it is unset or blank (ID-11). */
+    private static String required(String value, String property) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("boundrail.context.authority.exchange." + property + " must be set and not blank");
+        }
+        return value;
     }
 
     /** Mirrors loggable keys into SLF4J's MDC for each scope, where SLF4J is present (LOG-01, LOG-02). */

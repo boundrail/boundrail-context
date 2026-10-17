@@ -290,7 +290,7 @@ application set its own.
     its selection by `authority.propagation=exchange` in `spring/BoundrailContextAutoConfiguration.java` ([plan.md](plan.md#spring-wiring)).
   - Completes: ID-11 (request, valid response, whole-body `null`); ID-04 (`exchange` selection); CORE-16 (exchange).
   - Verify: Unit `TokenExchangeTest`.
-- [ ] T011 [US2] Exchange settings are validated at startup.
+- [x] T011 [US2] Exchange settings are validated at startup.
   - Red, in `springtest/TokenExchangeConfigurationTest.java`:
     - `ID-11 with the built-in exchange propagator a missing, blank, relative, non-HTTP or host-less token-uri fails startup, also with lazy
       initialization` (parametrized): unset, ``, `   `, `/token`, `ftp://h/token`, `http:foo` and `http:///x` (Q5), `not a uri`,
