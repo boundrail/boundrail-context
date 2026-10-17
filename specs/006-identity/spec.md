@@ -123,8 +123,10 @@ Authority never reaches external calls, detached work, messages, logs, the MDC o
   and no call). The calling thread is interrupted during the exchange: ID-12 (`TokenExchangeException`; the library restores the interrupt
   status, which the JDK client clears). Slower than 10s with no deadline bound: ID-12 (`TokenExchangeException`).
 - `expires_in` is `3600.0` or `1e3`: ID-11 (valid). It is `"3600"`, `null`, `1.5`, `-1` or NaN: ID-11 (invalid response, ID-12). It is too
-  large for a `long`, or infinite: ID-11 (valid; the cache lifetime is capped). The response has an unexpected `Content-Type`: ID-11 (not
-  checked).
+  large for a `long`, or too large for a `double` (`1e400`): ID-11 (valid; the cache lifetime is capped). It is `1e2147483648`, whose
+  exponent is beyond the `int` range so it cannot be read as an exact decimal: ID-11 (invalid response, ID-12). It is `1e2000000000`: ID-11
+  (valid and capped without expanding the number, so it costs no more work than `1e400`). The response has an unexpected `Content-Type`:
+  ID-11 (not checked).
 - A response body with trailing content after the JSON object, a malformed escape, or an `access_token` that is JSON `null`: ID-11 (invalid
   response, ID-12; Jackson 3 parses strictly). The parse error is neither the cause nor part of the message of the `TokenExchangeException`
   (ID-12).
@@ -222,8 +224,11 @@ valid response SHALL have status 200 and a body that is exactly one JSON object,
 string, which SHALL be the returned credential; `token_type` and the response's `Content-Type` SHALL NOT be checked. `expires_in`, when present,
 SHALL be a JSON number with a whole value of zero or more, such as `3600`, `3600.0` or `1e3`, giving seconds counted from when the response is
 received; a string, `null`, a fraction, a negative number or NaN is not valid. Numbers SHALL be read exactly, not through a `double`, so a fraction
-is never rounded to a whole value. A whole value too large for a `long`, or an infinite value, is valid, and the cache lifetime it gives is capped
-as ID-04 already caps it, and at the largest instant the implementation can represent. The exchanged token SHALL be cached as ID-04 defines; IF the
+is never rounded to a whole value. A number the strict parser cannot represent as an exact decimal, such as `1e2147483648` (an exponent beyond the
+`int` range), is not valid. A whole value too large for a `long`, or too large for a `double`, such as `1e400`, is valid, and the cache lifetime it
+gives is capped as ID-04 already caps it, and at the largest instant the implementation can represent. A value at or above that representable range
+SHALL be capped without being expanded to its full integer value, so a short value cannot cause unbounded work.
+The exchanged token SHALL be cached as ID-04 defines; IF the
 response has no `expires_in`, THEN the token SHALL be returned and not cached, and a token whose cache lifetime would be zero or less is not cached
 either. The cache SHALL hold at most 10,000 entries; adding an entry to a full cache SHALL first evict the entry added earliest. A cached entry
 SHALL NOT be used once its lifetime has passed. Two concurrent calls for the same key with nothing cached MAY both exchange. The cache key SHALL
