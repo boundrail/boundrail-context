@@ -2,10 +2,13 @@ package io.github.boundrail.context.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.boundrail.context.AuthorityPropagator;
 import io.github.boundrail.context.spring.BoundrailContextProperties.Authority.Propagation;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -122,5 +125,58 @@ class AuthorityPropertiesTest {
                 .doesNotContain("s3cr3t");
         assertThat(properties.toString()).contains("clientSecret=<redacted>").doesNotContain("s3cr3t");
         assertThat(unset.authority().exchange().toString()).contains("clientSecret=null");
+    }
+
+    /** The selections of the token-uri {@code toString()} test. */
+    enum Selection {
+        /** {@code forward}: {@code token-uri} binds unvalidated. */
+        FORWARD,
+        /** {@code exchange} replaced by an {@code AuthorityPropagator} bean: {@code token-uri} binds unvalidated. */
+        EXCHANGE_WITH_BEAN,
+        /** The built-in {@code exchange} propagator, with valid client settings. */
+        BUILT_IN_EXCHANGE
+    }
+
+    static Stream<Arguments> tokenUriValues() {
+        List<Arguments> rows = new ArrayList<>();
+        String[][] values = {
+            {"https://u:pw@host/t", "https://<redacted>@host/t"},
+            {"https://edge-user@host:8443/t?q=1", "https://<redacted>@host:8443/t?q=1"},
+            {"https://u:pw@ho st/t", "<redacted>"},
+            {"https://u:pw@ho_st/t", "<redacted>"},
+            {"https://host/a@b", "<redacted>"},
+            {"https://host/t", "https://host/t"},
+            {"relative", "relative"},
+            {null, "null"}};
+        for (Selection selection : List.of(Selection.FORWARD, Selection.EXCHANGE_WITH_BEAN)) {
+            for (String[] value : values) {
+                rows.add(Arguments.of(selection, value[0], value[1]));
+            }
+        }
+        rows.add(Arguments.of(Selection.BUILT_IN_EXCHANGE, "https://host/t", "https://host/t"));
+        return rows.stream();
+    }
+
+    @ParameterizedTest(name = "{0}: token-uri={1}")
+    @MethodSource("tokenUriValues")
+    @DisplayName("ID-06 toString of the exchange properties and of BoundrailContextProperties prints token-uri without its userinfo, "
+            + "whichever propagator is selected")
+    void toStringPrintsTokenUriWithoutItsUserinfo(Selection selection, String tokenUri, String expected) {
+        Map<String, Object> properties = new HashMap<>(Map.of(PREFIX + "exchange.client-id", "edge",
+                PREFIX + "exchange.client-secret", "s3cr3t",
+                PREFIX + "propagation", selection == Selection.FORWARD ? "forward" : "exchange"));
+        if (tokenUri != null) {
+            properties.put(PREFIX + "exchange.token-uri", tokenUri);
+        }
+        ApplicationContextRunner configured = withProperties(runner, properties);
+        if (selection == Selection.EXCHANGE_WITH_BEAN) {
+            AuthorityPropagator own = (authority, destination) -> Optional.empty();
+            configured = configured.withBean(AuthorityPropagator.class, () -> own);
+        }
+        BoundrailContextProperties bound = bound(configured);
+
+        String printed = "Exchange[tokenUri=" + expected + ", clientId=edge, clientSecret=<redacted>]";
+        assertThat(bound.authority().exchange().toString()).isEqualTo(printed);
+        assertThat(bound.toString()).contains(printed).doesNotContain("u:pw", "edge-user", "s3cr3t");
     }
 }

@@ -1,6 +1,8 @@
 package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Boundary;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -243,11 +245,32 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
          */
         public record Exchange(String tokenUri, String clientId, String clientSecret) {
 
-            /** {@return the values, with the client secret redacted when it is set} */
+            /**
+             * {@return the values, with the client secret redacted when it is set, and the token URI without its userinfo (ID-06,
+             * DESIGN D68): a value that {@code java.net.URI} parses with a host and userinfo has the userinfo replaced by
+             * {@code <redacted>}, any other value containing {@code @} is printed as {@code <redacted>}, every other value is printed
+             * unchanged, and an unset value as {@code null}}
+             */
             @Override
             public String toString() {
-                return "Exchange[tokenUri=" + tokenUri + ", clientId=" + clientId + ", clientSecret="
+                return "Exchange[tokenUri=" + printed(tokenUri) + ", clientId=" + clientId + ", clientSecret="
                         + (clientSecret == null ? null : "<redacted>") + "]";
+            }
+
+            private static String printed(String tokenUri) {
+                if (tokenUri == null || tokenUri.indexOf('@') < 0) {
+                    return tokenUri;
+                }
+                try {
+                    URI uri = new URI(tokenUri);
+                    if (uri.getHost() != null && uri.getRawUserInfo() != null) {
+                        int start = tokenUri.indexOf("//") + 2;
+                        return tokenUri.substring(0, start) + "<redacted>" + tokenUri.substring(start + uri.getRawUserInfo().length());
+                    }
+                } catch (URISyntaxException e) {
+                    // Not parsable: printed as <redacted> below.
+                }
+                return "<redacted>";
             }
         }
     }

@@ -448,7 +448,7 @@ Review follow-ups from T016's feature review, approved by the user on 2026-10-18
   - Verify: Unit `TokenExchangeFailureTest`, `TokenExchangeTest`, `TokenExchangeCacheTest`, `TokenExchangeConfigurationTest` and
     `InitiatorDerivationTest` in `:boundrail-context-spring`: each guard red against its temporary change and green after the revert (the
     leader reports each red in the task report); then `./gradlew check`.
-- [ ] T016b [P] [US3] `token-uri` without its userinfo in the properties' `toString()` (ID-06, D68).
+- [x] T016b [P] [US3] `token-uri` without its userinfo in the properties' `toString()` (ID-06, D68).
   - Red, in `springtest/AuthorityPropertiesTest.java`:
     - `ID-06 toString of the exchange properties and of BoundrailContextProperties prints token-uri without its userinfo, whichever
       propagator is selected` (parametrized over the value and the selection: `forward`, and `exchange` with an `AuthorityPropagator` bean,
