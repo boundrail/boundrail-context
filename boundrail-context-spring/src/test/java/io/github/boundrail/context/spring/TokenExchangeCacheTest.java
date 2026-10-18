@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpServer;
 import io.github.boundrail.context.Authority;
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Destination;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,6 +26,7 @@ import java.util.HexFormat;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.apache.commons.logging.LogFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,8 +47,11 @@ class TokenExchangeCacheTest {
 
     private final MutableClock clock = new MutableClock(START);
     private final CountingTokenEndpoint endpoint = new CountingTokenEndpoint();
+    /** Never called: every destination here has a service name, so nothing is reported (ID-05). */
+    private final ViolationReporter reporter = new ViolationReporter(new EffectivePolicy(BuiltInKeys.defaultPolicy()), Duration.ofMinutes(1),
+            violation -> { }, Stream::empty, thread -> Optional.empty(), LogFactory.getLog(TokenExchangeCacheTest.class), clock);
     private final ExchangeAuthorityPropagator propagator = new ExchangeAuthorityPropagator(endpoint.tokenUri(), "edge", "edge-secret",
-            clock);
+            reporter, clock);
 
     @AfterEach
     void close() {
@@ -175,7 +180,8 @@ class TokenExchangeCacheTest {
 
         // An expired entry replaced by a new exchange counts as added last.
         clock.set(START);
-        try (ExchangeAuthorityPropagator fresh = new ExchangeAuthorityPropagator(endpoint.tokenUri(), "edge", "edge-secret", clock)) {
+        try (ExchangeAuthorityPropagator fresh = new ExchangeAuthorityPropagator(endpoint.tokenUri(), "edge", "edge-secret", reporter,
+                clock)) {
             endpoint.expiresIn("100");
             fresh.outboundCredential(ALICE, internal("audience-0"));
             endpoint.expiresIn("3600");

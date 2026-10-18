@@ -7,6 +7,11 @@ import io.github.boundrail.context.it.topology.EdgeApp;
 import io.github.boundrail.context.it.topology.ObservedContext;
 import io.github.boundrail.context.it.topology.Topology;
 import io.github.boundrail.context.it.topology.Topology.Service;
+import io.github.boundrail.context.test.BoundrailTest;
+import io.github.boundrail.context.test.RecordedViolations;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -22,6 +27,8 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ConfigurableApplicationContext;
 
 /**
@@ -30,6 +37,7 @@ import org.springframework.context.ConfigurableApplicationContext;
  * IT-4.8) and specs/007-kafka (IT-4.9); each body is written test-first when that feature enables it (BLD-10).
  */
 @ExtendWith(Topology.class)
+@BoundrailTest
 class AuthorityPropagationIT {
 
     private static final HttpClient HTTP = HttpClient.newHttpClient();
@@ -159,11 +167,49 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M5")
+    @ExtendWith(OutputCaptureExtension.class)
     @DisplayName("IT-4.6 No credential in any output")
-    void it46NoCredentialInAnyOutput() {
+    void it46NoCredentialInAnyOutput(Topology.Running topology, CapturedOutput output, RecordedViolations violations) throws Exception {
         // IT-4.6: Across all IT-4 scenarios, the captured logs, the MDC, violation reports and every `toString()` of a snapshot never
         // contain alice's token string. *(ID-01, ID-06, LOG-02)*
+        String marker = UUID.randomUUID().toString();
+        String token = topology.jwts().alice();
+        URI edge = topology.uri(Service.EDGE);
+        URI exchanging = topology.uri(exchangeEdge);
+
+        // The requests of IT-4.1 – IT-4.5, IT-4.7 and IT-4.8, each to the edge its scenario uses, all with the same token.
+        List<HttpRequest> requests = List.of(
+                HttpRequest.newBuilder(edge.resolve("/ping")).header("Authorization", "Bearer " + token)
+                        .header(EdgeApp.MARKER, marker).build(),
+                HttpRequest.newBuilder(edge.resolve("/call-orders/as-caller?marker=" + marker))
+                        .header("Authorization", "Bearer " + token).build(),
+                HttpRequest.newBuilder(exchanging.resolve("/authority/call-orders/twice?marker=" + marker))
+                        .header("Authorization", "Bearer " + token).build(),
+                HttpRequest.newBuilder(edge.resolve("/public/ping")).header("Boundrail-Initiator", "user:mallory")
+                        .header(EdgeApp.MARKER, marker).build(),
+                HttpRequest.newBuilder(edge.resolve("/authority/detached?marker=" + marker))
+                        .header("Authorization", "Bearer " + token).build(),
+                HttpRequest.newBuilder(edge.resolve("/authority/call-orders/service-token?marker=" + marker))
+                        .header("Authorization", "Bearer " + token).build(),
+                HttpRequest.newBuilder(exchanging.resolve("/authority/call-orders/undeclared?marker=" + marker))
+                        .header("Authorization", "Bearer " + token).build());
+        for (HttpRequest request : requests) {
+            assertThat(HTTP.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).as(request.uri().toString()).isEqualTo(200);
+        }
+
+        List<Map<String, String>> outputs = observedAll(topology, EdgeApp.OUTPUTS, marker);
+        assertThat(outputs).as("precondition: the six handlers called with alice's token recorded her authority")
+                .filteredOn(seen -> "alice".equals(seen.get(ObservedContext.AUTHORITY_SUBJECT))).hasSize(6);
+        assertThat(outputs).as("precondition: the detached task recorded")
+                .filteredOn(seen -> "detached".equals(seen.get("source"))).hasSize(1);
+        assertThat(outputs).allSatisfy(seen -> {
+            assertThat(seen.get(ObservedContext.MDC)).doesNotContain(token);
+            assertThat(seen.get(ObservedContext.SNAPSHOT)).doesNotContain(token);
+        });
+        assertThat(violations.all()).as("precondition: IT-4.4 and IT-4.8 report violations")
+                .extracting(Violation::kind).contains(Violation.Kind.UNTRUSTED_HEADER, Violation.Kind.MISSING_AUDIENCE);
+        assertThat(violations.all()).allSatisfy(violation -> assertThat(violation.toString()).doesNotContain(token));
+        assertThat(output.getAll()).doesNotContain(token);
     }
 
     @Test
@@ -183,13 +229,25 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M5")
     @DisplayName("IT-4.8 Exchange without an audience")
-    void it48ExchangeWithoutAnAudience() {
+    void it48ExchangeWithoutAnAudience(Topology.Running topology) throws Exception {
         // IT-4.8: Given a public request authenticated as alice to the exchange edge, when edge calls `orders.svc.test` through a client with
         // no declaration (so it is classified `INTERNAL` by the host pattern `*.svc.test`, without a service name), then orders receives the
         // request without an `Authorization` header, the stub receives no request, and exactly one `MISSING_AUDIENCE` violation is reported.
         // *(ID-05)*
+        String marker = UUID.randomUUID().toString();
+        int callsBefore = topology.tokenExchangeCalls();
+        double before = exchangeEdgeMissingAudience();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(exchangeEdge)
+                        .resolve("/authority/call-orders/undeclared?marker=" + marker))
+                        .header("Authorization", "Bearer " + topology.jwts().alice()).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(observed(topology, "orders", marker)).doesNotContainKey("authorization");
+        assertThat(topology.tokenExchangeCalls()).as("the stub's calls").isEqualTo(callsBefore);
+        assertThat(exchangeEdgeMissingAudience()).isEqualTo(before + 1);
     }
 
     @Test
@@ -198,6 +256,15 @@ class AuthorityPropagationIT {
     void it49MessagesCarryTheInitiatorNeverTheAuthority() {
         // IT-4.9: When edge publishes an event during alice's request, then billing's listener observes `initiator=user:alice`, no
         // authority, and no `Authorization` record header exists. *(ID-06, KAF-04)*
+    }
+
+    /** The exchange edge's {@code boundrail.context.violations{kind=missing_audience}} count, summed over keys and boundaries. */
+    private static double exchangeEdgeMissingAudience() {
+        return exchangeEdge.getBean(MeterRegistry.class).find("boundrail.context.violations")
+                .tag("kind", "missing_audience")
+                .counters().stream()
+                .mapToDouble(Counter::count)
+                .sum();
     }
 
     /** The single observation a service recorded with this marker. */

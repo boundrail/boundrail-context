@@ -359,15 +359,18 @@ class TokenExchangeFailureTest {
         return slowExchange(tokenEndpoint.uri() + "/token");
     }
 
-    /** The exchange propagator with the context's deadline counter and the no-deadline timeout {@code test.no-deadline-timeout-ms}. */
+    /**
+     * The exchange propagator with the context's violation reporter and deadline counter and the no-deadline timeout
+     * {@code test.no-deadline-timeout-ms}.
+     */
     @Configuration(proxyBeanMethods = false)
     static class SlowExchange {
 
         @Bean
-        AuthorityPropagator slowExchangePropagator(DeadlineCounter counter, Environment environment) {
+        AuthorityPropagator slowExchangePropagator(ViolationReporter reporter, DeadlineCounter counter, Environment environment) {
             Duration noDeadlineTimeout = Duration.ofMillis(environment.getRequiredProperty("test.no-deadline-timeout-ms", Long.class));
             return new ExchangeAuthorityPropagator(URI.create(environment.getRequiredProperty("test.token-uri")), "edge", CLIENT_SECRET,
-                    counter, Clock.systemUTC(), noDeadlineTimeout);
+                    reporter, counter, Clock.systemUTC(), noDeadlineTimeout);
         }
     }
 

@@ -2,10 +2,13 @@ package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.AuthorityPropagator;
+import io.github.boundrail.context.Boundary;
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Deadline;
 import io.github.boundrail.context.DeadlineExceededException;
 import io.github.boundrail.context.Deadlines;
 import io.github.boundrail.context.Destination;
+import io.github.boundrail.context.Violation;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -51,6 +54,7 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
     private final String basicCredentials;
     private final HttpClient client = HttpClient.newHttpClient();
 
+    private final ViolationReporter reporter;
     private final DeadlineCounter counter;
     private final Clock clock;
     private final Duration noDeadlineTimeout;
@@ -72,17 +76,18 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
         }
     };
 
-    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, DeadlineCounter counter) {
-        this(tokenUri, clientId, clientSecret, counter, Clock.systemUTC(), NO_DEADLINE_TIMEOUT);
+    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, ViolationReporter reporter, DeadlineCounter counter) {
+        this(tokenUri, clientId, clientSecret, reporter, counter, Clock.systemUTC(), NO_DEADLINE_TIMEOUT);
     }
 
-    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, Clock clock) {
-        this(tokenUri, clientId, clientSecret, stage -> { }, clock, NO_DEADLINE_TIMEOUT);
+    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, ViolationReporter reporter, Clock clock) {
+        this(tokenUri, clientId, clientSecret, reporter, stage -> { }, clock, NO_DEADLINE_TIMEOUT);
     }
 
-    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, DeadlineCounter counter, Clock clock,
-            Duration noDeadlineTimeout) {
+    ExchangeAuthorityPropagator(URI tokenUri, String clientId, String clientSecret, ViolationReporter reporter, DeadlineCounter counter,
+            Clock clock, Duration noDeadlineTimeout) {
         this.tokenUri = tokenUri;
+        this.reporter = reporter;
         this.counter = counter;
         this.clock = clock;
         this.noDeadlineTimeout = noDeadlineTimeout;
@@ -92,13 +97,20 @@ final class ExchangeAuthorityPropagator implements AuthorityPropagator, AutoClos
 
     /**
      * {@return a token exchanged for the destination's service name} Throws {@code NullPointerException} for a {@code null} argument
-     * (CORE-16).
+     * (CORE-16). For a destination without a service name, returns empty without calling the token endpoint and reports one
+     * {@code MISSING_AUDIENCE} (ID-05).
      */
     @Override
     public Optional<String> outboundCredential(Authority authority, Destination destination) {
         Objects.requireNonNull(authority, "authority");
         Objects.requireNonNull(destination, "destination");
-        String audience = destination.service().orElseThrow();
+        Optional<String> service = destination.service();
+        if (service.isEmpty()) {
+            reporter.report(reporter.violation(Violation.Kind.MISSING_AUDIENCE, BuiltInKeys.AUTHORITY.name(), Boundary.INTERNAL_CALL,
+                    Optional.of(destination)));
+            return Optional.empty();
+        }
+        String audience = service.get();
         CacheKey key = new CacheKey(sha256Hex(authority.credential()), audience);
         synchronized (cache) {
             CachedToken cached = cache.get(key);

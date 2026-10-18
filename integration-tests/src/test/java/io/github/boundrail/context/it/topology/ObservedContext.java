@@ -28,6 +28,10 @@ public final class ObservedContext {
     public static final String AUTHORITY_SUBJECT = "ctx.authority-subject";
     /** Observation entry holding the initiator the handler found bound; absent if unbound. */
     public static final String INITIATOR = "ctx.initiator";
+    /** Observation entry holding the MDC map's {@code toString()} (IT-4.6). */
+    public static final String MDC = "ctx.mdc";
+    /** Observation entry holding {@code Context.capture().toString()} (IT-4.6). */
+    public static final String SNAPSHOT = "ctx.snapshot";
 
     private final Map<String, List<Map<String, String>>> observations = new ConcurrentHashMap<>();
 

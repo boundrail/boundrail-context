@@ -2,9 +2,11 @@ package io.github.boundrail.context.spring;
 
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
 import static io.github.boundrail.context.Destination.Kind.INTERNAL;
+import static io.github.boundrail.context.Violation.Kind.MISSING_AUDIENCE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.AuthorityPropagator;
@@ -17,7 +19,9 @@ import io.github.boundrail.context.Deadline;
 import io.github.boundrail.context.Destination;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.Initiator;
+import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.support.RecordingServer;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +30,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +40,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration;
 import org.springframework.boot.restclient.autoconfigure.RestTemplateAutoConfiguration;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.web.client.RestClient;
 
@@ -165,6 +171,35 @@ class TokenExchangeTest {
             assertThat(tokenEndpoint.requests()).hasSize(1);
             assertThat(thrown).isNotNull();
             assertThat(orders.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("ID-05 a destination without a service name gets no Authorization, the token endpoint is not called, and one "
+            + "MISSING_AUDIENCE is reported for boundrail.authority with INTERNAL_CALL and the destination")
+    void aDestinationWithoutAServiceNameGetsNoAuthorizationAndOneMissingAudience() {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        try (RecordingServer tokenEndpoint = RecordingServer.start(200, "application/json", TOKEN_RESPONSE);
+                RecordingServer orders = RecordingServer.start("ok")) {
+            // Micrometer hidden, so that the counter recording into violations is the only one.
+            exchange(tokenEndpoint).withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                    .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                    .withPropertyValues("boundrail.context.destinations.internal-hosts=localhost")
+                    .run(context -> {
+                        // No declaration: classified INTERNAL by the host pattern, without a service name.
+                        RestClient undeclared = context.getBean(RestClient.Builder.class)
+                                .baseUrl("http://localhost:" + orders.uri().getPort()).build();
+
+                        Context.with(BuiltInKeys.AUTHORITY, ALICE).run(() -> undeclared.get().uri("/").retrieve().toBodilessEntity());
+                    });
+
+            assertThat(orders.requests()).as("the request is still sent").hasSize(1);
+            assertThat(header(orders.requests().getFirst(), "Authorization")).isEmpty();
+            assertThat(tokenEndpoint.requests()).isEmpty();
+            assertThat(violations)
+                    .extracting(Violation::kind, Violation::key, Violation::boundary, Violation::destination)
+                    .containsExactly(tuple(MISSING_AUDIENCE, "boundrail.authority", INTERNAL_CALL,
+                            Optional.of(new Destination(INTERNAL, Optional.empty()))));
         }
     }
 

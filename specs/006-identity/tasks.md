@@ -380,7 +380,7 @@ application set its own.
     builder rejects zero and negative durations), and the `HttpTimeoutException` branch caught before the general `IOException`.
   - Completes: ID-12 (timeouts).
   - Verify: Unit `TokenExchangeFailureTest`.
-- [ ] T015 [US2] Exchange without an audience; enable IT-4.8 and IT-4.6.
+- [x] T015 [US2] Exchange without an audience; enable IT-4.8 and IT-4.6.
   - Red:
     - in `springtest/TokenExchangeTest.java`: `ID-05 a destination without a service name gets no Authorization, the token endpoint is not
       called, and one MISSING_AUDIENCE is reported for boundrail.authority with INTERNAL_CALL and the destination`: an undeclared client to a
@@ -391,7 +391,8 @@ application set its own.
       and exchange edge) with one alice token, then asserts that the captured output, the recorded `ctx.mdc` and `ctx.snapshot` entries,
       and every recorded violation's `toString()` never contain that token, and (precondition) that edge recorded
       `ctx.authority-subject=alice` with them. This is a guard: show it red with (a) `Authority.toString()` temporarily printing the
-      credential and (b) `MdcScopeListener` temporarily not skipping `AUTHORITY`, then revert ([plan.md](plan.md#guard-tests)).
+      credential and (b) `MdcScopeListener` temporarily writing `AUTHORITY` to the MDC as `authority.credential()`, bypassing both its
+      `AUTHORITY` skip and the `isLoggable` filter, then revert ([plan.md](plan.md#guard-tests)).
   - Green: the `MISSING_AUDIENCE` path in `spring/ExchangeAuthorityPropagator.java`; topology test code: `/authority/call-orders/undeclared`
     and the `ctx.mdc`/`ctx.snapshot` recordings in `topology/EdgeApp.java`.
   - Completes: ID-05; IT-4.8; IT-4.6 (with ID-01, ID-06, LOG-02); SC-002.
