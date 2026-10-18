@@ -1,6 +1,8 @@
 package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Boundary;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -20,11 +22,12 @@ import org.springframework.boot.convert.ApplicationConversionService;
  * @param executors how Spring's task executors are decorated
  * @param audit the startup executor audit
  * @param deadline inbound deadlines and their expiry
+ * @param authority how the caller's authority is propagated to internal calls
  */
 @ConfigurationProperties("boundrail.context")
 public record BoundrailContextProperties(@DefaultValue Violations violations, @DefaultValue Inbound inbound,
         @DefaultValue Destinations destinations, @DefaultValue Wire wire, @DefaultValue Executors executors, @DefaultValue Audit audit,
-        @DefaultValue Deadline deadline) {
+        @DefaultValue Deadline deadline, @DefaultValue Authority authority) {
 
     /**
      * Violation handling (DIAG-02) and reporting (DIAG-03).
@@ -211,6 +214,63 @@ public record BoundrailContextProperties(@DefaultValue Violations violations, @D
         private static void requirePositive(String property, Duration value) {
             if (value.isNegative() || value.isZero()) {
                 throw new IllegalArgumentException("boundrail.context.deadline." + property + " must be greater than zero: " + value);
+            }
+        }
+    }
+
+    /**
+     * Authority propagation (ID-04, ID-11).
+     *
+     * @param propagation which built-in propagator writes the {@code Authorization} header of internal calls, matched with relaxed enum
+     *     binding; empty or blank means {@code forward}; an {@code AuthorityPropagator} bean overrides it
+     * @param exchange the token endpoint and client credentials of the {@code exchange} propagator
+     */
+    public record Authority(@DefaultValue("forward") Propagation propagation, @DefaultValue Exchange exchange) {
+
+        /** The built-in propagator (ID-04). */
+        public enum Propagation {
+            /** Send the caller's own credential. */
+            FORWARD,
+            /** Send a token exchanged for the destination's service name (RFC 8693). */
+            EXCHANGE
+        }
+
+        /**
+         * The token exchange (ID-11). Binding validates nothing: the values are checked only when the built-in {@code exchange}
+         * propagator is selected.
+         *
+         * @param tokenUri the RFC 8693 token endpoint
+         * @param clientId the client id for HTTP Basic authentication at the token endpoint
+         * @param clientSecret the client secret for HTTP Basic authentication at the token endpoint
+         */
+        public record Exchange(String tokenUri, String clientId, String clientSecret) {
+
+            /**
+             * {@return the values, with the client secret redacted when it is set, and the token URI without its userinfo (ID-06,
+             * DESIGN D68): a value that {@code java.net.URI} parses with a host and userinfo has the userinfo replaced by
+             * {@code <redacted>}, any other value containing {@code @} is printed as {@code <redacted>}, every other value is printed
+             * unchanged, and an unset value as {@code null}}
+             */
+            @Override
+            public String toString() {
+                return "Exchange[tokenUri=" + printed(tokenUri) + ", clientId=" + clientId + ", clientSecret="
+                        + (clientSecret == null ? null : "<redacted>") + "]";
+            }
+
+            private static String printed(String tokenUri) {
+                if (tokenUri == null || tokenUri.indexOf('@') < 0) {
+                    return tokenUri;
+                }
+                try {
+                    URI uri = new URI(tokenUri);
+                    if (uri.getHost() != null && uri.getRawUserInfo() != null) {
+                        int start = tokenUri.indexOf("//") + 2;
+                        return tokenUri.substring(0, start) + "<redacted>" + tokenUri.substring(start + uri.getRawUserInfo().length());
+                    }
+                } catch (URISyntaxException e) {
+                    // Not parsable: printed as <redacted> below.
+                }
+                return "<redacted>";
             }
         }
     }

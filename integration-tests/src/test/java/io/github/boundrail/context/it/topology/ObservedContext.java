@@ -1,5 +1,6 @@
 package io.github.boundrail.context.it.topology;
 
+import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Deadlines;
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +24,14 @@ public final class ObservedContext {
     public static final String PRIORITY = "ctx.priority";
     /** Observation entry holding the remaining time of the deadline the handler found bound, in nanoseconds; absent if unbound. */
     public static final String DEADLINE_REMAINING_NANOS = "ctx.deadline-remaining-nanos";
+    /** Observation entry holding the subject of the authority the handler found bound; absent if unbound. */
+    public static final String AUTHORITY_SUBJECT = "ctx.authority-subject";
+    /** Observation entry holding the initiator the handler found bound; absent if unbound. */
+    public static final String INITIATOR = "ctx.initiator";
+    /** Observation entry holding the MDC map's {@code toString()} (IT-4.6). */
+    public static final String MDC = "ctx.mdc";
+    /** Observation entry holding {@code Context.capture().toString()} (IT-4.6). */
+    public static final String SNAPSHOT = "ctx.snapshot";
 
     private final Map<String, List<Map<String, String>>> observations = new ConcurrentHashMap<>();
 
@@ -37,7 +46,7 @@ public final class ObservedContext {
 
     /**
      * What a {@code /ping} handler observed: the remaining time of the deadline it found bound, read first so that it is the time on
-     * arrival, its request headers, and the {@code tenant} and {@code priority} it found bound.
+     * arrival, its request headers, and the {@code tenant}, {@code priority}, authority subject and initiator it found bound.
      */
     static Map<String, String> ping(HttpHeaders headers) {
         Optional<Long> remainingNanos = Deadlines.current().map(deadline -> deadline.remaining().toNanos());
@@ -45,6 +54,8 @@ public final class ObservedContext {
         remainingNanos.ifPresent(nanos -> observation.put(DEADLINE_REMAINING_NANOS, nanos.toString()));
         AppKeys.TENANT.find().ifPresent(tenant -> observation.put(TENANT, tenant));
         AppKeys.PRIORITY.find().ifPresent(priority -> observation.put(PRIORITY, priority.toString()));
+        BuiltInKeys.AUTHORITY.find().ifPresent(authority -> observation.put(AUTHORITY_SUBJECT, authority.subject()));
+        BuiltInKeys.INITIATOR.find().ifPresent(initiator -> observation.put(INITIATOR, initiator.value()));
         return observation;
     }
 

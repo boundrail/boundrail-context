@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -37,8 +38,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -67,6 +71,9 @@ public class EdgeApp {
     /** The name under which edge's interceptor records what it observed in {@code postHandle} of an {@code ASYNC} dispatch (IT-1.9). */
     public static final String ASYNC_DISPATCH = "edge-async-dispatch";
 
+    /** The name under which edge records the MDC and the snapshot its handlers and its detached task found (IT-4.6). */
+    public static final String OUTPUTS = "edge-outputs";
+
     private final ObservedContext observed;
     private final Topology.Running topology;
     private final EdgeAsyncWork asyncWork;
@@ -78,6 +85,7 @@ public class EdgeApp {
     private final RestClient internalOrders;
     private final RestClient externalPartner;
     private final RestClient undeclaredPartner;
+    private final RestClient undeclaredOrders;
 
     /**
      * Every client is built from edge's auto-configured {@code RestClient.Builder}, so it carries the library's interceptor. Only internal
@@ -98,12 +106,25 @@ public class EdgeApp {
         this.internalOrders = clients.clone().apply(BoundrailClients.internal("orders")).apply(TestInboundTrustVerifier.peer()).build();
         this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
         this.undeclaredPartner = clients.clone().build();
+        this.undeclaredOrders = clients.clone().apply(TestInboundTrustVerifier.peer()).build();
     }
 
     /** Verifies tokens with the run's public key; no network JWKS. */
     @Bean
     static JwtDecoder jwtDecoder(TestJwts jwts) {
         return NimbusJwtDecoder.withPublicKey(jwts.publicKey()).build();
+    }
+
+    /**
+     * Permits unauthenticated requests to {@code /public/**} (IT-4.4) and requires authentication everywhere else; a JWT resource server,
+     * as Boot's default chain is.
+     */
+    @Bean
+    static SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .authorizeHttpRequests(requests -> requests.requestMatchers("/public/**").permitAll().anyRequest().authenticated())
+                .oauth2ResourceServer(resourceServer -> resourceServer.jwt(Customizer.withDefaults()))
+                .build();
     }
 
     /**
@@ -200,7 +221,14 @@ public class EdgeApp {
     @GetMapping("/ping")
     String ping(@RequestHeader HttpHeaders headers) {
         observed.record("edge", ObservedContext.ping(headers));
+        recordOutputs(headers.getFirst(MARKER), "handler");
         return "edge";
+    }
+
+    /** Records like {@link #ping}; permitted without authentication (IT-4.4). */
+    @GetMapping("/public/ping")
+    String publicPing(@RequestHeader HttpHeaders headers) {
+        return ping(headers);
     }
 
     /**
@@ -250,6 +278,53 @@ public class EdgeApp {
         observation.put("bound-attached-ran", Boolean.toString(ran.get() > 0));
         observed.record("edge-executors", observation);
         return stage;
+    }
+
+    /**
+     * Calls partner's {@code /ping} through the {@code external()} client with the marker, then runs a task on {@code taskExecutor}
+     * (detached) and records under {@code edge-authority}, with the marker, whether the task found an authority bound and the initiator it
+     * found, or {@code -} (IT-4.5).
+     */
+    @GetMapping("/authority/detached")
+    String authorityDetached(@RequestParam("marker") String marker) throws Exception {
+        recordOutputs(marker, "handler");
+        ping(externalPartner, Service.PARTNER, marker);
+        Map<String, String> observation = new HashMap<>();
+        observation.put(MARKER.toLowerCase(Locale.ROOT), marker);
+        observation.put("detached-authority", taskExecutor.submit(() -> BuiltInKeys.AUTHORITY.isBound()).get(5, TimeUnit.SECONDS).toString());
+        observation.put("detached-initiator", taskExecutor.submit(() -> BuiltInKeys.INITIATOR.find().map(Initiator::value).orElse("-"))
+                .get(5, TimeUnit.SECONDS));
+        taskExecutor.submit(() -> recordOutputs(marker, "detached")).get(5, TimeUnit.SECONDS);
+        observed.record("edge-authority", observation);
+        return "edge";
+    }
+
+    /** Calls orders' {@code /ping} through the internal client with the marker and {@code Authorization: Bearer service-token} (IT-4.7). */
+    @GetMapping("/authority/call-orders/service-token")
+    String authorityCallOrdersWithServiceToken(@RequestParam("marker") String marker) {
+        recordOutputs(marker, "handler");
+        internalOrders.get().uri(topology.uri(Service.ORDERS).resolve("/ping"))
+                .header(MARKER, marker)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer service-token")
+                .retrieve().toBodilessEntity();
+        return "edge";
+    }
+
+    /** Calls orders' {@code /ping} twice through the internal client with the marker (IT-4.3). */
+    @GetMapping("/authority/call-orders/twice")
+    String authorityCallOrdersTwice(@RequestParam("marker") String marker) {
+        recordOutputs(marker, "handler");
+        ping(internalOrders, Service.ORDERS, marker);
+        ping(internalOrders, Service.ORDERS, marker);
+        return "edge";
+    }
+
+    /** Calls orders' {@code /ping} through a client with no declaration, so the host pattern classifies it, with the marker (IT-4.8). */
+    @GetMapping("/authority/call-orders/undeclared")
+    String authorityCallOrdersUndeclared(@RequestParam("marker") String marker) {
+        recordOutputs(marker, "handler");
+        ping(undeclaredOrders, Service.ORDERS, marker);
+        return "edge";
     }
 
     /** Records on arrival, then calls orders' {@code /call-billing} through the internal client with the same marker (IT-3.1). */
@@ -362,6 +437,7 @@ public class EdgeApp {
     /** Binds nothing itself, then calls orders through an internal client. */
     @GetMapping("/call-orders/as-caller")
     String callOrdersAsCaller(@RequestParam("marker") String marker) {
+        recordOutputs(marker, "handler");
         ping(internalOrders, Service.ORDERS, marker);
         return "edge";
     }
@@ -391,6 +467,20 @@ public class EdgeApp {
                     ping(partner, Service.PARTNER, marker);
                     return "edge";
                 });
+    }
+
+    /**
+     * Records under {@link #OUTPUTS}, with the marker and {@code source}: the subject of the authority found bound, the MDC map's
+     * {@code toString()} and {@code Context.capture().toString()} (IT-4.6).
+     */
+    private void recordOutputs(String marker, String source) {
+        Map<String, String> observation = new HashMap<>();
+        observation.put(MARKER.toLowerCase(Locale.ROOT), String.valueOf(marker));
+        observation.put("source", source);
+        BuiltInKeys.AUTHORITY.find().ifPresent(authority -> observation.put(ObservedContext.AUTHORITY_SUBJECT, authority.subject()));
+        observation.put(ObservedContext.MDC, String.valueOf(MDC.getCopyOfContextMap()));
+        observation.put(ObservedContext.SNAPSHOT, Context.capture().toString());
+        observed.record(OUTPUTS, observation);
     }
 
     private void ping(RestClient client, Service service, String marker) {

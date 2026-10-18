@@ -191,6 +191,16 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     .sum();
         }
 
+        /** How many violations of this kind a service has counted in this run for the key, summed over boundaries. */
+        public double violations(Service service, Violation.Kind kind, String key) {
+            return contexts.get(service).getBean(MeterRegistry.class).find("boundrail.context.violations")
+                    .tag("kind", kind.name().toLowerCase(Locale.ROOT))
+                    .tag("key", key.toLowerCase(Locale.ROOT))
+                    .counters().stream()
+                    .mapToDouble(Counter::count)
+                    .sum();
+        }
+
         /** The tag values of every violation counter a service has registered in this run. */
         public List<String> violationTagValues(Service service) {
             return contexts.get(service).getBean(MeterRegistry.class).find("boundrail.context.violations")

@@ -24,6 +24,10 @@ import java.util.concurrent.ExecutorService;
  * {@code RequestMappingHandlerAdapter} not built by {@code WebMvcConfigurationSupport} does not get it. Expiries detected here, in
  * {@code boundrail-context-core}, are not counted, because core has no meter registry (DL-09).
  *
+ * <p><b>Authority.</b> Detached work carries no {@link BuiltInKeys#AUTHORITY}, including {@code @Async} methods on executors in the default
+ * detached mode, so its calls to internal services send no {@code Authorization} header (ID-09). When the caller awaits the result, use an
+ * attached executor; otherwise, have the task obtain a service credential itself.
+ *
  * <p><b>Not covered.</b> {@code CompletableFuture.*Async} methods called without an explicit executor run on the common pool ({@link
  * java.util.concurrent.ForkJoinPool#commonPool()}) and are not covered; pass an executor returned by this class instead. {@code @Scheduled}
  * methods that return a reactive {@code Publisher}, and Kotlin {@code suspend} {@code @Scheduled} methods, are not given a system context

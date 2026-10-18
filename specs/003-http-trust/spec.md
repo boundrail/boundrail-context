@@ -233,7 +233,8 @@ be reported. The operation SHALL continue. The adapter SHALL check the length fi
 checking the characters of an outbound value (WIRE-08). A value that is oversized and also invalid SHALL therefore be reported once, as
 `OVERSIZED_VALUE`. This is the only length limit; codecs (WIRE-03) stay limit-free, and values from authentication, such as JWT claims
 (IN-06), are not wire values (DESIGN D35). An outbound value is checked only when the adapter is about to write it: a header value set by
-application code is not an encoded wire value, and is not checked (OUT-04). IF `wire.max-value-length` is less than 1, THEN application
+application code is not an encoded wire value, and is not checked (OUT-04). The `Authorization` value ID-03 `[M5]` writes is not checked
+either (DESIGN D60). IF `wire.max-value-length` is less than 1, THEN application
 startup SHALL fail, even when `spring.main.lazy-initialization` is `true`.
 
 **WIRE-05** `[M2]` IF a trusted inbound value fails to decode, THEN the key SHALL be left unbound and an `INVALID_VALUE` violation SHALL be reported.

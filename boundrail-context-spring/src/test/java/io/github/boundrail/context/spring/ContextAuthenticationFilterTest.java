@@ -2,10 +2,12 @@ package io.github.boundrail.context.spring;
 
 import static io.github.boundrail.context.Boundary.ATTACHED;
 import static io.github.boundrail.context.Boundary.INTERNAL_CALL;
+import static io.github.boundrail.context.BuiltInKeys.AUTHORITY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.tuple;
 
+import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
@@ -43,6 +45,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 class ContextAuthenticationFilterTest {
 
@@ -317,6 +321,67 @@ class ContextAuthenticationFilterTest {
                     assertThat(thrown.get(3)).as("null value for a key already contributed").isInstanceOf(NullPointerException.class);
                     assertThat(thrown.get(4)).as("wrong type for a key already contributed").isInstanceOf(ClassCastException.class);
                     assertThat(observed.tenant()).contains("acme");
+                });
+    }
+
+    @Test
+    @DisplayName("ID-02 ContextContributions.put throws IllegalArgumentException for AUTHORITY, after its null checks")
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void putThrowsIllegalArgumentExceptionForAuthority() {
+        JwtAuthenticationToken aliceJwt = new JwtAuthenticationToken(
+                Jwt.withTokenValue("alice-jwt").header("alg", "none").subject("alice").build(), List.of());
+        List<Throwable> thrown = new ArrayList<>();
+        AtomicReference<Optional<Authority>> authority = new AtomicReference<>();
+        runner.withBean(ContextContributor.class, () -> (authentication, contributions) -> {
+                    ContextKey raw = AUTHORITY;
+                    thrown.add(catchThrowable(() -> contributions.put(AUTHORITY, Authority.of("mallory", "forged"))));
+                    thrown.add(catchThrowable(() -> contributions.put(AUTHORITY, null)));
+                    thrown.add(catchThrowable(() -> contributions.put(raw, "text")));
+                })
+                .run(context -> {
+                    Filter filter = authenticationRegistration(context).getFilter();
+                    HttpServlet recording = new HttpServlet() {
+                        @Override
+                        protected void service(HttpServletRequest req, HttpServletResponse resp) {
+                            authority.set(AUTHORITY.find());
+                        }
+                    };
+                    SecurityContextHolder.getContext().setAuthentication(aliceJwt);
+
+                    new MockFilterChain(recording, filter).doFilter(new MockHttpServletRequest(), new MockHttpServletResponse());
+
+                    assertThat(thrown).hasSize(3);
+                    assertThat(thrown.get(0)).as("an authority").isInstanceOf(IllegalArgumentException.class);
+                    assertThat(thrown.get(1)).as("null").isInstanceOf(NullPointerException.class);
+                    assertThat(thrown.get(2)).as("a value of the wrong type through a raw key").isInstanceOf(IllegalArgumentException.class);
+                    assertThat(authority.get()).as("the request's authority").hasValueSatisfying(bound -> {
+                        assertThat(bound.subject()).isEqualTo("alice");
+                        assertThat(bound.credential()).isEqualTo("alice-jwt");
+                    });
+                });
+    }
+
+    @Test
+    @DisplayName("ID-02 a contributor's IllegalArgumentException propagates from the filter")
+    void aContributorsIllegalArgumentExceptionPropagatesFromTheFilter() {
+        runner.withBean(ContextContributor.class,
+                        () -> (authentication, contributions) -> contributions.put(AUTHORITY, Authority.of("mallory", "forged")))
+                .run(context -> {
+                    Filter filter = authenticationRegistration(context).getFilter();
+                    List<String> ran = new CopyOnWriteArrayList<>();
+                    HttpServlet recording = new HttpServlet() {
+                        @Override
+                        protected void service(HttpServletRequest req, HttpServletResponse resp) {
+                            ran.add("chain");
+                        }
+                    };
+                    SecurityContextHolder.getContext().setAuthentication(ALICE);
+
+                    Throwable caught = catchThrowable(() -> new MockFilterChain(recording, filter)
+                            .doFilter(new MockHttpServletRequest(), new MockHttpServletResponse()));
+
+                    assertThat(caught).isInstanceOf(IllegalArgumentException.class);
+                    assertThat(ran).as("the chain ran").isEmpty();
                 });
     }
 

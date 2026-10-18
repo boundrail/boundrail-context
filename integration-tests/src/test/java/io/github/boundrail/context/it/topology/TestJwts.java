@@ -7,6 +7,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -41,9 +42,11 @@ public final class TestJwts {
         return encode(claims());
     }
 
+    /** The common claims, with a random {@code jti}, so two tokens issued in the same second differ. */
     private static JwtClaimsSet.Builder claims() {
         Instant now = Instant.now();
         return JwtClaimsSet.builder()
+                .id(UUID.randomUUID().toString())
                 .subject("alice")
                 .issuedAt(now)
                 .expiresAt(now.plus(Duration.ofHours(1)));

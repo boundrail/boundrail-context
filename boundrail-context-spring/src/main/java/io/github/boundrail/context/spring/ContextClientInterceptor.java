@@ -1,5 +1,7 @@
 package io.github.boundrail.context.spring;
 
+import io.github.boundrail.context.Authority;
+import io.github.boundrail.context.AuthorityPropagator;
 import io.github.boundrail.context.Boundary;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
@@ -18,6 +20,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
@@ -33,9 +36,11 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
     private final int maxValueLength;
     private final DeadlineTimer timer;
     private final DeadlineCounter counter;
+    private final AuthorityPropagator propagator;
 
     ContextClientInterceptor(DestinationClassifier classifier, EffectivePolicy policy, ViolationReporter reporter,
-            BoundrailContextProperties.Violations.Mode mode, int maxValueLength, DeadlineTimer timer, DeadlineCounter counter) {
+            BoundrailContextProperties.Violations.Mode mode, int maxValueLength, DeadlineTimer timer, DeadlineCounter counter,
+            AuthorityPropagator propagator) {
         this.classifier = classifier;
         this.policy = policy.policy();
         this.reporter = reporter;
@@ -43,14 +48,16 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         this.maxValueLength = maxValueLength;
         this.timer = timer;
         this.counter = counter;
+        this.propagator = propagator;
     }
 
     /**
      * Throws {@code DeadlineExceededException} with stage {@code BEFORE_SEND}, without sending, if the bound deadline has expired (DL-06).
      * Otherwise classifies the request URI and the client's declaration, if any (OUT-02), checks the required keys (POL-08), writes the
      * wire headers of the bound keys that propagate to the boundary (OUT-04), strips forbidden headers from an external or unknown request
-     * (WIRE-07), writes the remaining time of a bound deadline to an internal request (DL-05), then executes the request once; with a
-     * deadline bound, under a timer that stops the call if the remaining time runs out before the response headers arrive (DL-07).
+     * (WIRE-07), writes the {@code Authorization} header of a bound authority to an internal request (ID-03), writes the remaining time of a
+     * bound deadline to an internal request (DL-05), then executes the request once; with a deadline bound, under a timer that stops the
+     * call if the remaining time runs out before the response headers arrive (DL-07).
      */
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
@@ -64,9 +71,12 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
         // DEST-03: UNKNOWN is treated exactly like EXTERNAL.
         Boundary boundary = destination.kind() == Destination.Kind.INTERNAL ? Boundary.INTERNAL_CALL : Boundary.EXTERNAL_CALL;
         checkRequiredKeys(boundary, destination);
-        writeHeaders(request, policy.filter(Context.capture(), boundary), boundary, destination);
+        ContextSnapshot snapshot = policy.filter(Context.capture(), boundary);
+        writeHeaders(request, snapshot, boundary, destination);
         if (boundary == Boundary.EXTERNAL_CALL) {
             stripForbiddenHeaders(request, destination);
+        } else {
+            writeAuthorization(request, snapshot, destination);
         }
         Optional<Deadline> deadline = Deadlines.current();
         if (deadline.isEmpty()) {
@@ -78,6 +88,34 @@ final class ContextClientInterceptor implements ClientHttpRequestInterceptor {
             writeDeadline(request, remaining, destination);
         }
         return timer.execute(remaining, request, body, execution);
+    }
+
+    /**
+     * Sets {@code Authorization: Bearer <credential>} on an internal call from the effective propagator, when {@code AUTHORITY} is in the
+     * snapshot filtered for {@code INTERNAL_CALL} and application code has not set {@code Authorization} with at least one value, compared
+     * as OUT-04 and WIRE-06 define; otherwise the propagator is not called. An empty result writes nothing. WIRE-04's length limit does not
+     * apply to the value (ID-03, DESIGN D60); WIRE-08 does: a value that is not a valid field value is not written and is reported as
+     * {@code INVALID_VALUE} for {@code boundrail.authority}, and the call continues.
+     */
+    private void writeAuthorization(HttpRequest request, ContextSnapshot snapshot, Destination destination) {
+        if (!request.getHeaders().getOrEmpty(HttpHeaders.AUTHORIZATION).isEmpty()) {
+            return;
+        }
+        Optional<Authority> authority = snapshot.find(BuiltInKeys.AUTHORITY);
+        if (authority.isEmpty()) {
+            return;
+        }
+        Optional<String> credential = propagator.outboundCredential(authority.get(), destination);
+        if (credential.isEmpty()) {
+            return;
+        }
+        String value = "Bearer " + credential.get();
+        if (!isFieldValue(value)) {
+            reporter.report(reporter.violation(Violation.Kind.INVALID_VALUE, BuiltInKeys.AUTHORITY.name(), Boundary.INTERNAL_CALL,
+                    Optional.of(destination)));
+            return;
+        }
+        request.getHeaders().set(HttpHeaders.AUTHORIZATION, value);
     }
 
     /**

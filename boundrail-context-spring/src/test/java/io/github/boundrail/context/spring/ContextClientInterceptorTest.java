@@ -13,7 +13,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.tuple;
 
-import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
@@ -124,16 +123,6 @@ class ContextClientInterceptorTest {
                 Context.with(BuiltInKeys.INITIATOR, Initiator.of("user:alice")), NO_HEADERS);
 
         assertThat(header(request, "Boundrail-Initiator")).containsExactly("user:alice");
-    }
-
-    @Test
-    @DisplayName("OUT-04 an internal call writes no Authorization")
-    void anInternalCallWritesNoAuthorization() {
-        RecordingServer.Request request = send(POLICY, BoundrailClients.internal("orders"),
-                Context.with(TENANT, "acme").with(BuiltInKeys.AUTHORITY, Authority.of("alice", "secret-token")), NO_HEADERS);
-
-        assertThat(header(request, "Tenant-Id")).containsExactly("acme");
-        assertThat(header(request, "Authorization")).isEmpty();
     }
 
     @Test
