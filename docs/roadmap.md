@@ -232,8 +232,8 @@ documented limitation in v0.1 (D52, was Q7).
 
 - A producer adapter that writes headers on the calling thread.
 - A consumer adapter that scopes each record's listener invocation through the listener container factories' advice chain (D72, was Q4).
-  Run a spike first: it confirms that mechanism, the producer hook that can throw from the send call (D71), and an around-style hook for the
-  container's error handling (D73). Its outcome goes back to the user before implementation.
+  The T001 spike confirmed it, the `ProducerPostProcessor` on each template bean's `ProducerFactory` (D71), and the error-handler and
+  after-rollback decorators (D73); D79 records its outcome and the limits KAF-06 documents.
 - Header trust defaults (D74, D77), and the `KafkaContext` bean whose `forRecord` serves batch listeners (D76).
 - The Javadoc of `KafkaContext` states the coverage limits (KAF-06).
 

@@ -10,7 +10,7 @@ in [core-api.md](../../002-core-runtime/contracts/core-api.md) (CORE-17): no par
 application context (RT-09; DESIGN D76).
 
 ```java
-/** Provided as a bean by the Kafka auto-configuration; no public constructor. */
+/** Provided as a bean by the Kafka auto-configuration; no public constructor. Its Javadoc states the coverage limits (KAF-06). */
 public final class KafkaContext {
     /**
      * The snapshot KAF-02 would bind for the record, under KAF-04's trust setting; reports the same violations. The snapshot is not current
@@ -20,7 +20,8 @@ public final class KafkaContext {
 }
 ```
 
-The producer and consumer adapters (KAF-01 – KAF-04) are not public types. The Kafka module adds no other public types in this feature beyond
+The producer and consumer adapters (KAF-01 – KAF-04), including the `ProducerPostProcessor`, the listener advice and the error-handler and
+after-rollback decorators (DESIGN D79), are not public types. The Kafka module adds no other public types in this feature beyond
 the properties record `BoundrailKafkaProperties` that binds `boundrail.context.kafka.*` (KAF-04), which lives in `boundrail-context-kafka`
 (DESIGN D70, D78). The types `boundrail-context-spring` exposes to it in `io.github.boundrail.context.spring.internal`, such as the
 interface `AdapterSupport`, are not part of any contract.

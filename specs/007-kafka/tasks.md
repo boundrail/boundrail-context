@@ -15,10 +15,13 @@ with the requirement or scenario ID it covers.
 
 - Approved by the user on 2026-10-18: these tasks, the plan, the TDD exception for the KAF-06 Javadoc (T013), and the guard in T010
   ([plan.md](plan.md#tdd-exceptions), [plan.md](plan.md#guard-tests)).
-- Q5 – Q7 are settled (D78); Q1 – Q4 are open ([plan.md](plan.md#spec-gaps)) and expected to be settled on T001's outcome. Each blocks
-  the tasks it names.
-- T001, the spike, runs first; its outcome goes back to the user before any implementation task. Where the user picks another option than
-  the plan's recommendation, the planner rewrites the affected tasks before they start.
+- Q1 – Q7 are settled: Q5 – Q7 (D78), and Q1 – Q4 on T001's outcome on 2026-10-18, each with the recommendation (D79); the spec-creator
+  wrote them into spec.md, contracts/kafka-api.md and design.md ([plan.md](plan.md#spec-gaps)). T006 – T011 and T013 follow D79.
+- Q8 is settled: the Kafka auto-configuration backs off when the Spring module's auto-configuration is excluded (D80); the new guard in
+  T011 (empty-snapshot fallback) is approved ([plan.md](plan.md#guard-tests)). Both on 2026-10-18.
+- T001, the spike, ran on 2026-10-18; its outcome is in [plan.md](plan.md#outcome-t001-run-2026-10-18).
+- `-kafka`'s unit tests run on the ScopedValue backend (core's multi-release JAR on the JDK 25 toolchain, T001 item 4); the Kafka adapters'
+  ThreadLocal side is exercised only by IT-3.8 and IT-4.9 on `integrationTestJdk21`.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it. A negative assertion in the same test as a positive assertion that is red before the task is not a guard.
@@ -67,7 +70,7 @@ fresh `topology.jwts().alice()` per scenario.
 
 ## Phase 0: Spike
 
-- [ ] T001 Spike: the producer hook (D71), the listener advice chain (D72) and an around-style hook for error handling (D73).
+- [x] T001 Spike: the producer hook (D71), the listener advice chain (D72) and an around-style hook for error handling (D73).
   - On a scratch project with a Testcontainers broker, run the five items of [plan.md](plan.md#what-t001-confirms): the
     `ProducerPostProcessor` on a template bean's `ProducerFactory` (exceptions from every send method, `executeInTransaction`, observation,
     composition with the application's template interceptor, what else it covers); the advice prepended to Boot's and an application's factory
@@ -79,6 +82,7 @@ fresh `topology.jwts().alice()` per scenario.
   - Outcome into plan.md (Spike), with a recommendation for Q1 – Q4. No code kept, nothing committed. The outcome goes to the user, who
     settles Q1 – Q7 before T002 starts.
   - Verify: the outcome section in plan.md, and the user's decisions recorded in plan.md's Status and Spec Gaps.
+  - Done 2026-10-18: outcome in [plan.md](plan.md#outcome-t001-run-2026-10-18); the user settled Q1 – Q4 with the recommendations (D79).
 
 ---
 
@@ -118,9 +122,11 @@ T006, and `integration-tests`' `spring-boot-kafka` in T010.
         Kafka auto-configuration`: `ImportCandidates.load(AutoConfiguration.class, …)` holds it; its `@AutoConfiguration` names
         `BoundrailContextAutoConfiguration` in `after` and `org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration` in
         `afterName`;
-      - per Q5: `KAF-05 without the Spring module's auto-configuration, or without Spring Kafka, no Kafka bean is created and the context
-        starts`: `BoundrailContextAutoConfiguration` left out; `FilteredClassLoader(KafkaTemplate.class)`; a context with both as the red
-        control (one test);
+      - `KAF-04 with Spring Kafka and boundrail-context-spring on the class path the Kafka auto-configuration is active, and no property
+        turns it off` (D78): the `KafkaContext` bean exists by default and with `boundrail.context.kafka.enabled=false`;
+      - `KAF-04 without Spring Kafka no Kafka bean is created and the context starts`: `FilteredClassLoader(KafkaTemplate.class)`, with the
+        default context as the red control (one test); per Q8 (D80), the same test also leaves out
+        `BoundrailContextAutoConfiguration`: no Kafka bean, the context starts;
       - `KAF-04 kafka.trust-headers defaults to true and is bound with Boot's boolean binding` (parametrized, read from the
         `BoundrailKafkaProperties` bean): unset → `true`; `true`, `on`, `YES`, `1` → `true`; `false`, `Off`, `no`, `0` → `false`;
       - `KAF-04 a kafka.trust-headers that Boot cannot convert to a boolean fails startup, also with lazy initialization`: `maybe` and `2`,
@@ -129,8 +135,8 @@ T006, and `integration-tests`' `spring-boot-kafka` in T010.
     package-private constructor taking `AdapterSupport` and the trust setting; no method yet), the `@Lazy(false)` `boundrailKafkaContext` bean,
     and `boundrail-context-kafka/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
     ([plan.md](plan.md#kafka-auto-configuration-and-properties)).
-  - Completes: KAF-04 (binding, startup failure); KAF-05 (the bean, no public constructor); the Configuration section's `kafka.trust-headers`
-    failure; D77's activation conditions (Q5).
+  - Completes: KAF-04 (activation, no off switch, binding, startup failure; the back-off per Q8); KAF-05 (the bean, no public constructor);
+    the Configuration section's `kafka.trust-headers` failure.
   - Verify: Unit `KafkaAutoConfigurationTest` in `:boundrail-context-kafka`.
 
 **Checkpoint**: the Kafka auto-configuration starts and binds its property; nothing reads records yet.
@@ -189,13 +195,13 @@ without the deadline or the authority.
     count, `null`, length on the replaced string, strict UTF-8 decode.
   - Completes: KAF-02 (repeat, `null`, WIRE-04, malformed UTF-8).
   - Verify: Unit `RecordSnapshotTest`.
-- [ ] T006 [P] [US1] The producer hook writes the `MESSAGE` headers (KAF-01, D71; mechanism per Q1).
+- [ ] T006 [P] [US1] The `ProducerPostProcessor` writes the `MESSAGE` headers (KAF-01, D71, D79).
   - Red:
     - `spring-boot-kafka = { module = "org.springframework.boot:spring-boot-kafka" }` in `gradle/libs.versions.toml` (no version), and
       `testImplementation(libs.spring.boot.kafka)` and `testImplementation(libs.testcontainers.kafka)` in
       `boundrail-context-kafka/build.gradle.kts`;
     - test support: `kafkatest/support/KafkaBroker.java` (one `apache/kafka:4.2.1` container per test JVM, started on first use; reading a
-      topic back with a real `KafkaConsumer` and a timeout);
+      topic back with a real `KafkaConsumer` and a timeout, also `read_committed`);
     - in `kafkatest/ProducerHeadersTest.java` (`ApplicationContextRunner` with Boot's `KafkaAutoConfiguration` and both libraries'
       auto-configurations, `spring.kafka.bootstrap-servers` of the broker, the test policy with no required key):
       - `KAF-01 a record sent through the KafkaTemplate bean carries a header per bound MESSAGE key, holding the UTF-8 bytes of its encoding`:
@@ -204,22 +210,30 @@ without the deadline or the authority.
       - `KAF-01 no Authorization or Boundrail-Deadline-Ms header is written, and an expired deadline neither fails nor changes the send`
         (ID-06, D75): with an authority and a live deadline bound, the record has `Tenant-Id` and neither header; with an expired deadline,
         the send succeeds with the same headers and no violation is reported;
-      - `KAF-01 every send method of a KafkaTemplate bean is covered, including Message sends and sends inside executeInTransaction`
-        (parametrized): `send(topic, value)`, `send(topic, key, value)`, `send(topic, partition, key, value)`, `send(topic, partition,
-        timestamp, key, value)`, `send(ProducerRecord)`, `send(Message<?>)`, `sendDefault(value)`; and `executeInTransaction(ops ->
+      - `KAF-01 every send method of a KafkaTemplate bean is covered, including Message sends and sends inside executeInTransaction, with
+        template observation off and on` (parametrized over the method and `spring.kafka.template.observation-enabled`): `send(topic,
+        value)`, `send(topic, key, value)`, `send(topic, partition, key, value)`, `send(topic, partition, timestamp, key, value)`,
+        `send(ProducerRecord)`, `send(Message<?>)`, `sendDefault(value)`, `sendDefault(key, value)`; and `executeInTransaction(ops ->
         ops.send(…))` on a template with `spring.kafka.producer.transaction-id-prefix`;
-      - `KAF-01 a KafkaTemplate subclass bean, and a second template bean sharing the producer factory, are covered`;
-      - `KAF-01 an application's own template interceptor still runs, and the record still carries the headers` (D71): an interceptor set in
-        the template's `@Bean` method records its calls;
+      - `KAF-01 every producer the template bean's ProducerFactory creates is covered: execute(ProducerCallback), a template that is not a
+        bean, and a producer created directly` (D79, one row each): `template.execute(producer -> producer.send(record))`; `new
+        KafkaTemplate<>(template.getProducerFactory())` and a template built with config overrides on that factory; a
+        `getProducerFactory().createProducer()` whose `send` is called directly;
+      - `KAF-01 a KafkaTemplate subclass bean, and a second template bean sharing the producer factory, are covered, and the factory gets one
+        post-processor`: `getPostProcessors()` holds exactly one library post-processor;
+      - `KAF-01 an application's own template interceptor runs first, and the record still carries the headers` (D71, D79): an interceptor
+        set in the template's `@Bean` method records its calls and adds `X-App`; the record has `X-App` and `Tenant-Id`;
       - `KAF-01 headers come from the sending thread's context at the send call`: one send inside a `tenant=a` scope, one outside → `a`, then
         no `Tenant-Id`;
       - `KAF-01 an exception from encode propagates unchanged from the send call, nothing is reported, and the record is not sent` (WIRE-05):
         a throwing codec; the topic holds nothing.
-  - Green: the hook per Q1 (recommended: `kafka/TemplatePostProcessor.java`, `kafka/ContextProducerPostProcessor.java`,
-    `kafka/ContextProducer.java`), registered as a `static` bean in `kafka/BoundrailKafkaAutoConfiguration.java`; header writing from the
-    snapshot filtered for `MESSAGE` ([plan.md](plan.md#producer-kaf-01-d71)).
-  - Completes: KAF-01 (headers, UTF-8, CR/LF, no `Authorization` or `Boundrail-Deadline-Ms`, expired deadline, every send method,
-    `executeInTransaction`, subclass, composition, sending thread, encode exceptions).
+  - Green: `kafka/TemplatePostProcessor.java` (a `static` bean in `kafka/BoundrailKafkaAutoConfiguration.java`, adding one
+    `kafka/ContextProducerPostProcessor.java` to each `KafkaTemplate` bean's `ProducerFactory`), and `kafka/ContextProducer.java` writing the
+    headers from the snapshot filtered for `MESSAGE` ([plan.md](plan.md#producer-kaf-01-d71)). The gaps D79 accepts (a factory that is not a
+    `DefaultKafkaProducerFactory`, producers cached before the hook) are not tested; T013 documents them.
+  - Completes: KAF-01 (headers, UTF-8, CR/LF, no `Authorization` or `Boundrail-Deadline-Ms`, expired deadline, every send method with and
+    without observation, `executeInTransaction`, `execute(ProducerCallback)`, non-bean templates on the factory, direct producers, subclass,
+    composition, sending thread, encode exceptions).
   - Verify: Unit `ProducerHeadersTest` in `:boundrail-context-kafka`.
 - [ ] T007 [US1] Application-set headers and WIRE-04 at send (KAF-01, D74).
   - Red, in `kafkatest/ProducerHeadersTest.java`:
@@ -240,6 +254,8 @@ without the deadline or the authority.
       `order-count`, then `tenant`, boundary `MESSAGE`, no destination; the exception carries the first; the topic holds nothing; `priority`
       is not reported;
     - `KAF-01 in report mode the record is sent without the key and with the other headers`;
+    - `KAF-01 in fail mode the check also applies to execute(ProducerCallback), a template that is not a bean, and a producer created
+      directly from the factory` (D79): each throws `ContextViolationException` from its `send`, and the topic holds nothing;
     - `KAF-01 an application-set wire header does not satisfy the required-key check`: `Tenant-Id: app` on the record, `tenant` unbound →
       `MISSING_REQUIRED` and, in `fail` mode, the exception;
     - `KAF-01 inside executeInTransaction the ContextViolationException propagates from the send, and nothing is committed`: a
@@ -265,10 +281,12 @@ without the deadline or the authority.
     - `KAF-05 a BatchMessageListener is not scoped: it runs in the current snapshot, and nothing is decoded or reported for its records`;
     - `KAF-03 listener methods other than onMessage with a record pass through unscoped`: `onPartitionsAssigned` of a `ConsumerSeekAware`
       listener runs in the outer snapshot.
-  - Green: `kafka/ListenerScopeAdvice.java` ([plan.md](plan.md#listener-scope-kaf-02-kaf-03-d72)): `ContextSnapshot.EMPTY.call(() ->
-    binding.call(invocation::proceed))` for a record `onMessage`, pass-through otherwise. Not yet added to any factory (T010).
-  - Completes: KAF-02 (invocation: replace, restore, empty, consecutive, exceptions, redelivery); KAF-03 (around-style scope); KAF-05 (a batch
-    listener passes through).
+  - Green: `kafka/ListenerScopeAdvice.java` ([plan.md](plan.md#listener-scope-kaf-02-kaf-03-d72)): `context.snapshot(record).call(
+    invocation::proceed)` for a record `onMessage` (one scope entry; the same build and reporting as `forRecord`), pass-through otherwise. Not
+    yet added to any factory (T010).
+  - Completes: KAF-02 (invocation: replace, restore, empty, consecutive, exceptions, redelivery); KAF-03 (around-style scope, on the
+    ScopedValue backend these unit tests run on; the ThreadLocal side through IT-3.8 and IT-4.9 on `integrationTestJdk21` in T010); KAF-05
+    (a batch listener passes through).
   - Verify: Unit `ListenerScopeAdviceTest`.
 - [ ] T010 [US1] The advice on every listener container factory bean, outermost; enable IT-3.8 and IT-4.9.
   - Red:
@@ -278,8 +296,11 @@ without the deadline or the authority.
         AbstractKafkaListenerContainerFactory bean, ahead of the application's advice, and only once` (no broker needed): Boot's factory and
         an application `ConcurrentKafkaListenerContainerFactory` bean whose `@Bean` method sets its own advice;
       - `KAF-03 a @KafkaListener on Boot's factory or on an application factory bean, and a container bean created with
-        factory.createContainer, run in their record's snapshot, with the application's advice inside it` (one row each): the listener and the
-        application advice record `tenant=acme` for a record with `Tenant-Id: acme`;
+        factory.createContainer, run in their record's snapshot, with the application's advice inside it and RecordInterceptors outside it`
+        (one row each, D79): the listener and the application advice record `tenant=acme` for a record with `Tenant-Id: acme`; an
+        application `RecordInterceptor` (a bean on Boot's factory, one set on the application factory) sees no `tenant` in `intercept`,
+        `success` and `afterRecord`, and in `failure` for a listener that throws; `afterRecord` also shows the consumer thread has no binding
+        after each record. A container whose advice chain the application replaces is not covered (D79) and not tested;
       - `KAF-02 a listener's violations are reported through the reporting of the context that owns its container`: a record with two
         `Tenant-Id` headers → that context's counter `boundrail.context.violations{kind=invalid_value,key=tenant,boundary=message}` rises by
         one;
@@ -302,28 +323,50 @@ without the deadline or the authority.
       ([plan.md](plan.md#listener-scope-kaf-02-kaf-03-d72));
     - topology test code ([plan.md](plan.md#integration-tests)): `spring.kafka.bootstrap-servers` for every service and billing's group id
       and offset reset in `topology/Topology.java`; `POST /kafka/publish` in `topology/EdgeApp.java`; the record-mode `@KafkaListener` with
-      the 4-second wait (and `NewTopic` if T001 needs it) in `topology/BillingApp.java`; `consumed(record)` and the `kafka.*` entries in
+      the 4-second wait (no `NewTopic`, T001 item 5) in `topology/BillingApp.java`; `consumed(record)` and the `kafka.*` entries in
       `topology/ObservedContext.java`.
-  - Completes: KAF-03 (every factory bean, Boot's, `createContainer` bean, outermost, composition; the ScopedValue backend through IT-3.8 on
-    `integrationTestJdk25`); KAF-02 (the container's context reports); KAF-01 (a listener's send); KAF-05 (batch `@KafkaListener`, guard);
-    IT-3.8; IT-4.9 (ID-06's `MESSAGE` clause).
+  - Completes: KAF-03 (every factory bean, Boot's, `createContainer` bean, outermost, application advice inside, `RecordInterceptor`s
+    outside; both backends through IT-3.8 on `integrationTestJdk21` and `integrationTestJdk25`); KAF-02 (the container's context reports);
+    KAF-01 (a listener's send); KAF-05 (batch `@KafkaListener`, guard); IT-3.8; IT-4.9 (ID-06's `MESSAGE` clause).
   - Verify: Unit `ListenerScopeTest`; IT+.
-- [ ] T011 [US1] The container's error handling runs inside the record's snapshot (KAF-03, D73; mechanism per Q3 and Q4).
-  - Red, in `kafkatest/ListenerErrorHandlingTest.java` (the broker; the test policy with `tenant` required, `violations.mode=fail`):
+- [ ] T011 [US1] The container's error handling runs inside the failed record's snapshot (KAF-03, D73, D79).
+  - Red, in `kafkatest/ListenerErrorHandlingTest.java` (the broker; the test policy with `tenant` required, `violations.mode=fail`; a
+    recording `ViolationListener`):
     - `KAF-03 a CommonErrorHandler handling a record whose listener threw runs in that record's snapshot, and the previous snapshot is
-      restored afterwards`: an application handler recording `Context.capture()` in `handleOne` and in `handleRemaining`
-      (`seeksAfterHandling` false and true) sees `tenant=acme`; the consumer thread has no binding afterwards; the application's handler,
-      a `CommonErrorHandler` bean on Boot's factory and one set on its own factory, still runs (composition);
-    - `KAF-03 a DeadLetterPublishingRecoverer publishes the failed record in fail mode with a required MESSAGE key`:
-      `DefaultErrorHandler(new DeadLetterPublishingRecoverer(template), new FixedBackOff(0, 0))`; the `.DLT` topic receives the record and
-      no `MISSING_REQUIRED` is counted;
-    - per Q4: `KAF-03 the error handler also runs in the record's snapshot for a deserialization failure, and in the empty snapshot when
-      building the snapshot threw`, and no violation is reported twice for one delivery.
-  - Green: the error-handling hook per Q3 (recommended: a `CommonErrorHandler` decorator installed per container before start), in
-    `kafka/` and `kafka/BoundrailKafkaAutoConfiguration.java`. If the user chooses the D73 fallback, this task is dropped and T013
-    documents that error handling runs outside the scope, after the spec is revised.
-  - Completes: KAF-03 (error handling inside the record's snapshot).
-  - Verify: Unit `ListenerErrorHandlingTest`.
+      restored afterwards`: an application handler recording `Context.capture()` in `handleOne` (`setSeekAfterError(false)`) and in
+      `handleRemaining` (default) sees `tenant=acme`, as a `CommonErrorHandler` bean on Boot's factory and as one set on an application
+      factory, for a `@KafkaListener` container and a `createContainer` bean; an application `RecordInterceptor.afterRecord` that follows
+      sees no binding; the application's handler still runs once per failure (composition);
+    - `KAF-03 a DeadLetterPublishingRecoverer publishes the failed record in fail mode with a required MESSAGE key, and its violations are
+      reported once`: a `DefaultErrorHandler(new DeadLetterPublishingRecoverer(template), new FixedBackOff(0, 0))` bean; the DLT topic receives
+      the record with `Tenant-Id: acme`; no `MISSING_REQUIRED` is counted; a failed record that also carries a repeated `Order-Count` header
+      gives exactly one `INVALID_VALUE` (from the delivery, none from the rebuild, D79);
+    - `KAF-03 a non-transactional container without an error handler gets a decorated DefaultErrorHandler, and a transactional container
+      gets none`: a listener that throws with no handler configured: its record is retried and logged as `DefaultErrorHandler` does, and the
+      container's `getCommonErrorHandler()` is the library's decorator; a container with `spring.kafka.producer.transaction-id-prefix` and
+      Boot's `KafkaTransactionManager` has `getCommonErrorHandler()` `null`;
+    - `KAF-03 an AfterRollbackProcessor of a transactional container processes the failed record in its snapshot`: a
+      `DefaultAfterRollbackProcessor` bean with a `DeadLetterPublishingRecoverer`; the DLT record is committed with `Tenant-Id: acme`
+      (`read_committed` reader); no `MISSING_REQUIRED`;
+    - `KAF-03 the error handler runs in the record's snapshot for a deserialization failure`: `ErrorHandlingDeserializer` around a
+      deserializer that throws for `poison`, a recoverer with a `byte[]` template; the listener is not invoked and the raw record reaches the
+      DLT with `Tenant-Id: acme`;
+    - guard (new, for the user's approval): `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the
+      empty snapshot`: a record whose `Order-Count` codec throws `IllegalStateException`; the listener is not invoked; the application's
+      handler is called once per delivery and sees no binding; the record is redelivered (D79). Show it red with `ContextErrorHandler`
+      temporarily rethrowing the rebuild's exception instead of using `ContextSnapshot.EMPTY` (the handler is then not called), then revert
+      ([plan.md](plan.md#guard-tests)).
+  - Green ([plan.md](plan.md#listener-scope-kaf-02-kaf-03-d72)): `kafka/ContextErrorHandler.java` and
+    `kafka/ContextAfterRollbackProcessor.java` (delegating every method; `handleOne`, `handleRemaining` and `process` in the first record's
+    snapshot); `rebuild(record)` in `kafka/KafkaContext.java` (the same build, reporting nothing); `kafka/ErrorHandlingInstaller.java`, a
+    `SmartLifecycle` with phase `AbstractMessageListenerContainer.DEFAULT_PHASE - 1` that takes `ObjectProvider<KafkaListenerEndpointRegistry>`
+    and looks the registry up in `start()` (never injected directly), wrapping every container of `getAllListenerContainers()` once: the
+    `AfterRollbackProcessor` of a transactional container, otherwise its `CommonErrorHandler` or a decorated `DefaultErrorHandler` where none
+    is set; registered in `kafka/BoundrailKafkaAutoConfiguration.java`.
+  - Not tested, documented in T013 (D79): containers created or registered after startup, `handleOtherException`, the batch paths.
+  - Completes: KAF-03 (error handling in the failed record's snapshot: both decorators, the installer, the default handler only on
+    non-transactional containers, deserialization failures, the empty-snapshot fallback, no double reporting).
+  - Verify: Unit `ListenerErrorHandlingTest`; then `./gradlew check`.
 
 **Checkpoint**: IT-3.8 and IT-4.9 green on JDK 21 and JDK 25; every acceptance suite fully green.
 
@@ -362,13 +405,22 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
 
 ## Phase 6: Documentation and close
 
-- [ ] T013 The `KafkaContext` Javadoc (KAF-06). [TDD-EXCEPTION: review of T013, and inspection in T014 against KAF-06's wording]
-  - In `kafka/KafkaContext.java`, the class Javadoc states: batch listeners are not scoped and `forRecord` gives each record's snapshot
-    (KAF-05); which sends are covered and which are not (KAF-01, worded as Q1 settles); which listener containers are covered, and that
-    `RecordInterceptor`s and replaced advice chains are outside (KAF-03, as Q2 settles); the deadline is neither sent nor applied when a
-    record is sent (KAF-01, D75); only the listener invocation and the container's error handling are scoped, so code that completes a
-    `CompletableFuture` or `Mono` a listener returns runs with its own thread's context (KAF-03, as Q3 settles; with the D73 fallback, that
-    error handling runs outside the scope).
+- [ ] T013 The `KafkaContext` Javadoc (KAF-06, D79). [TDD-EXCEPTION: review of T013, and inspection in T014 against KAF-06's wording]
+  - In `kafka/KafkaContext.java`, the class Javadoc states each item of KAF-06:
+    - batch listeners are not scoped, and `forRecord` gives each record's snapshot (KAF-05);
+    - the sends covered: those through producers that the `ProducerFactory` of a `KafkaTemplate` bean creates, including
+      `execute(ProducerCallback)`, templates that are not beans but share that factory, and producers created directly from it; the gaps: a
+      `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, and producers the factory created and cached before the hook was added
+      (KAF-01);
+    - the deadline is neither sent nor applied when a record is sent (KAF-01);
+    - the containers covered: those created by listener container factory beans; `RecordInterceptor`s run outside the listener scope; a
+      container whose advice chain the application replaces, for example with a `ContainerCustomizer`, is not covered, with no promise that a
+      `@KafkaListener` container keeps the scope then (KAF-03);
+    - error handling runs in the failed record's snapshot, except for containers created or registered after startup,
+      `handleOtherException` and the batch paths; a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be
+      dead-lettered and is redelivered (KAF-03);
+    - only the listener invocation and the container's error handling are scoped, so code that completes a `CompletableFuture` or `Mono` a
+      listener returns runs with its own thread's context (KAF-03).
   - No test: documentation, approved as a TDD exception ([plan.md](plan.md#tdd-exceptions)).
   - Completes: KAF-06.
   - Verify: `./gradlew :boundrail-context-kafka:javadoc` reports no warning for `KafkaContext`; then `./gradlew check`.
@@ -376,8 +428,9 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-17, KAF-01 – KAF-06, as revised by the user's answers to Q1 – Q7.
   - SC-001: no `@Disabled` is left in any acceptance suite; IT-3.8 and IT-4.9 pass in `integrationTestJdk21` and `integrationTestJdk25`.
-  - SC-002: IT-3.8 passes in `integrationTestJdk25` (ScopedValue backend); by inspection, only `ContextSnapshot.call` scopes a listener,
-    and no `RecordInterceptor` or other set/restore hook is used for scoping.
+  - SC-002: IT-3.8 passes in `integrationTestJdk25`, and `-kafka`'s unit tests (T009 – T011) pass, both on the ScopedValue backend; IT-3.8
+    and IT-4.9 pass in `integrationTestJdk21`, the only ThreadLocal run of the Kafka adapters; by inspection, only `ContextSnapshot.call`
+    scopes a listener or an error handler, and no `RecordInterceptor` or other set/restore hook is used for scoping.
   - SC-003: IT-3.8 and IT-4.9 assert no `Boundrail-Deadline-Ms` and no `Authorization` header; T006's unit test covers the producer.
   - Every requirement has a test whose display name starts with its ID, except KAF-06: check the Javadoc of `KafkaContext` against KAF-06,
     word for word in meaning.
@@ -385,37 +438,42 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
   - `boundrail-context-core` still has no runtime dependencies (`./gradlew :boundrail-context-core:dependencies --configuration
     runtimeClasspath`); `boundrail-context-spring` has no Kafka dependency (`./gradlew :boundrail-context-spring:dependencies --configuration
     runtimeClasspath`); only `-kafka` names a Kafka type.
-  - By inspection: no reflection on Spring Kafka internals (D71, D72); nothing new is static (RT-09); violations carry no value; the
-    `AdapterSupport` type is in `spring.internal` and no contract names it.
+  - By inspection: no reflection on Spring Kafka internals (D71, D72, D79); nothing new is static (RT-09); violations carry no value; the
+    `AdapterSupport` type is in `spring.internal` and no contract names it; the installer looks the registry up in `start()`; the error
+    handling rebuild reports nothing.
   - spec.md's Status, roadmap.md's M6 and the README stay as they are, as for 002 – 006.
 
   Run `./gradlew check` fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run. With the CI run green, this closes the feature.
 
 ## Dependencies & Execution Order
 
-- T001 first; its outcome and the user's answers to Q1 – Q7 come before T002 ([plan.md](plan.md#spec-gaps)).
+- T001 is done and Q1 – Q8 are settled (D78 – D80) ([plan.md](plan.md#spec-gaps)).
 - Foundational: T003 needs T002 (the `AdapterSupport` bean).
-- Record snapshot: T004 needs T003 and Q7. T005 needs T004 (same file).
-- Producer: T006 needs T003 and Q1, and is independent of T004 and T005 (different files, hence `[P]`); it touches
+- Record snapshot: T004 needs T003. T005 needs T004 (same file).
+- Producer: T006 needs T003, and is independent of T004 and T005 (different files, hence `[P]`); it touches
   `BoundrailKafkaAutoConfiguration`, so it does not overlap another task changing that file. T007 needs T006. T008 needs T007.
 - Consumer: T009 needs T005 (the trusted snapshot with its shape checks). T010 needs T009 and T008 (edge publishes in `fail` mode with
-  `tenant` bound), and Q2. T011 needs T010 and Q3, Q4.
+  `tenant` bound). T011 needs T010 and touches `KafkaContext` (after T005; not overlapping T012).
 - US2: T012 needs T005 (same file, `KafkaContext`); it is numbered after US1 by priority and can run any time after T005 that does not
   overlap another change to `KafkaContext`.
-- T013 needs T011 (or the D73 fallback decision) and T012. T014 comes last.
+- T013 needs T011 and T012. T014 comes last.
 - Tasks touching the same file run in sequence (`KafkaContext`, `BoundrailKafkaAutoConfiguration`, `ContextProducer`, `ProducerHeadersTest`,
   `RecordSnapshotTest` and the topology classes are touched by several).
 - Every task is committed and reviewed on its own, on branch `007-kafka`.
 
 ## Exit Checklist
 
-- [ ] T001's outcome recorded in plan.md, and Q1 – Q4 settled by the user on it
-- [ ] Q5 – Q7 settled by the user
-- [ ] The answers to Q1 – Q7 written into spec.md and design.md by the spec-creator
+- [x] T001's outcome recorded in plan.md, and Q1 – Q4 settled by the user on it (D79, 2026-10-18)
+- [x] Q5 – Q7 settled by the user (D78)
+- [x] The answers to Q1 – Q7 written into spec.md and design.md by the spec-creator
+- [x] Q8 settled by the user, and written into spec.md if it changes KAF-04
+- [x] The new guard in T011 (empty-snapshot fallback) approved by the user
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.8, IT-4.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M6): CORE-17, KAF-01 – KAF-05; the Javadoc statement
   of KAF-06 checked by inspection (TDD exception)
-- [ ] The guard in T010 (batch `@KafkaListener`) shown red against its temporary change, and the change reverted
-- [ ] The consumer adapter works on the ScopedValue backend without set/restore interceptors (IT-3.8 on `integrationTestJdk25`)
+- [ ] The guards in T010 (batch `@KafkaListener`) and T011 (empty-snapshot fallback) shown red against their temporary change, and the
+  change reverted
+- [ ] The consumer adapter works on the ScopedValue backend without set/restore interceptors (IT-3.8 on `integrationTestJdk25`, `-kafka`'s
+  unit tests) and on ThreadLocal (IT-3.8 and IT-4.9 on `integrationTestJdk21`)
 - [ ] Every acceptance suite fully green; `boundrail-context-core` still has no runtime dependencies; Kafka confined to `-kafka`
 - [ ] `./gradlew check` green

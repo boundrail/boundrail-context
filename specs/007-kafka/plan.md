@@ -8,8 +8,11 @@
 sources from the Gradle cache (read, not run)
 
 **Status**: Approved by the user on 2026-10-18: plan, tasks, the TDD exception row for the KAF-06 Javadoc (T013) and the expected guard in
-[Guard Tests](#guard-tests); Q5 – Q7 ([Spec Gaps](#spec-gaps)) are settled (D78). T001, the spike, runs first; its outcome goes back to the
-user before any implementation task, as 006's T001 and B2 did. Q1 – Q4 are expected to be settled on that outcome.
+[Guard Tests](#guard-tests); Q5 – Q7 ([Spec Gaps](#spec-gaps)) are settled (D78). T001, the spike, ran on 2026-10-18
+([Outcome](#outcome-t001-run-2026-10-18)); on its outcome the user settled Q1 – Q4 the same day, accepting every recommendation (D79), and the
+spec-creator wrote them into spec.md (KAF-01, KAF-03, KAF-06, Edge Cases, Assumptions), contracts/kafka-api.md and design.md. All of Q1 – Q7
+are settled. This revision applies D79 to the plan and to T006 – T011 and T013; it raised Q8 and one new
+guard (T011); the user settled Q8 (back off, D80) and approved the guard on 2026-10-18.
 
 ## Summary
 
@@ -24,9 +27,12 @@ deadline or the authority.
     `BoundrailKafkaProperties` binding `kafka.trust-headers` (KAF-04, D77);
   - `KafkaContext`, the contract's bean, whose `forRecord` builds a record's snapshot (KAF-02, KAF-04, KAF-05); the listener scope uses the
     same code, so both always agree;
-  - the producer hook on every `KafkaTemplate` bean (KAF-01, D71), mechanism per T001 and Q1;
+  - a `ProducerPostProcessor` on the `ProducerFactory` of every `KafkaTemplate` bean, which checks and writes headers in every producer that
+    factory creates (KAF-01, D71, D79);
   - `ListenerScopeAdvice`, an around-style `MethodInterceptor` placed first in the `ContainerProperties` advice chain of every
-    `AbstractKafkaListenerContainerFactory` bean (KAF-02, KAF-03, D72), and the error-handling hook of D73, mechanism per T001 and Q3;
+    `AbstractKafkaListenerContainerFactory` bean (KAF-02, KAF-03, D72);
+  - decorators on each container's `CommonErrorHandler` and, for transactional containers, its `AfterRollbackProcessor`, installed by a
+    `SmartLifecycle` one phase before the containers, so error handling runs in the failed record's snapshot (KAF-03, D73, D79);
   - the `KafkaContext` Javadoc of KAF-06 (TDD exception).
 - `integration-tests`: Boot's Kafka auto-configuration on the classpath, `spring.kafka.bootstrap-servers` for every service, an edge endpoint
   that publishes to `orders.events`, billing's record-mode `@KafkaListener`, and IT-3.8 and IT-4.9 enabled.
@@ -64,6 +70,9 @@ task whose code makes them pass (T010), so they are its failing acceptance tests
     `ViolationListener`, and the lazy-initialization setup first used in 003's T006a;
   - `ConsumerRecord` values with `RecordHeaders` built directly for the record-snapshot rules (T004, T005, T012);
   - the advice driven through a `ProxyFactory` around a hand-written record listener, as `ContainerProperties` does (T009);
+  - all of them on the ScopedValue backend: `-kafka`'s test runtime classpath holds core's multi-release JAR, and the test task runs on the
+    JDK 25 toolchain (T001 item 4); the ThreadLocal backend is exercised only by `integrationTestJdk21` (and, for RuntimeConformanceIT, the
+    forced ThreadLocal run);
   - a shared Testcontainers broker (`support/KafkaBroker`, one per test JVM, image `apache/kafka:4.2.1` as in the topology) for templates and
     listener containers (T006 – T008, T010, T011); records are read back with a real `KafkaConsumer` and produced with a real `KafkaProducer`
     when a test needs exact headers;
@@ -98,13 +107,13 @@ then the record's bindings)
 
 | Principle | Status | Notes |
 |---|---|---|
-| I Scope-only | Pass, pending T001 | Each record-mode invocation runs as `ContextSnapshot.EMPTY.call(() -> binding.call(invocation::proceed))`; nothing is set or cleared. D73's error handling must also be around-style; if T001 finds no such hook, the fallback is to document it (Q3) rather than use a set/restore hook |
+| I Scope-only | Pass | Each record-mode invocation runs as `snapshot(record).call(invocation::proceed)`; error handling runs as the decorated handler's `handleOne`/`handleRemaining`/`process` inside `snapshot.call` (D79); nothing is set or cleared |
 | II Declared propagation | Pass | Only keys that propagate to `MESSAGE` are written (POL-04) or read; application keys need a codec and wire name for `MESSAGE` |
 | III Secure by default | Pass | `AUTHORITY` and `DEADLINE` excluded in both directions regardless of `trust-headers`; untrusted headers reported, never bound (KAF-04); violations never hold values (DIAG-09) |
 | IV Declared, never guessed | Pass | `MESSAGE` is detached: no deadline sent or applied at send (D75); the listener scope replaces the consumer thread's snapshot (KAF-02) |
 | V Evidence only | Pass | Violations carry kind, key, `MESSAGE`, an empty destination and DIAG-04's thread evidence; no topic is added to `Violation` (D74) |
-| VI Interoperate | Pass, pending Q1, Q2 | The hooks compose with the application's template interceptor, advice and error handler instead of replacing them; T001 confirms no reflection is needed |
-| VII Spec-first, test-first | Pass, pending approval | Every task is one red-green cycle; IT-3.8 and IT-4.9 are T010's failing tests; the TDD exception row (KAF-06 Javadoc) and the guard row await approval; Q1 – Q7 await the user |
+| VI Interoperate | Pass | The hooks compose with the application's template interceptor, advice, error handler and after-rollback processor instead of replacing them, without reflection (T001, D79) |
+| VII Spec-first, test-first | Pass | Every task is one red-green cycle; IT-3.8 and IT-4.9 are T010's failing tests; the TDD exception row and T010's guard are approved; Q1 – Q8 are settled (D78 – D80); T011's new guard is approved |
 | VIII Simplicity | Pass | No switch to turn adapters off (D77); one internal interface for D70; no batch scoping (KAF-05); no new public type beyond `KafkaContext` and the properties record |
 | Technical constraints | Pass | Core unchanged; Spring confined to `-spring`/`-kafka`; Kafka to `-kafka`; Testcontainers for every client interaction, no mocked clients (BLD-07) |
 
@@ -174,6 +183,136 @@ On a scratch project with a Testcontainers broker, against the packaged JARs whe
 Outcome into this section, with a recommendation for Q1 – Q4. If a mechanism cannot meet a requirement, the requirement is revised with the
 user before implementation (spec Assumptions); for D73 the fallback is to document that error handling runs outside the scope (KAF-06).
 
+### Outcome (T001, run 2026-10-18)
+
+Scratch project outside the repository (`~/.claude/jobs/1c2be776/tmp/spike-007/proj`, deleted with the job): Spring Boot 4.1.1 BOM
+(Spring Kafka 4.1.1), `spring-boot-kafka`, Testcontainers `apache/kafka:4.2.1`, and the repo's packaged
+`boundrail-context-core/build/libs/boundrail-context-core.jar` (multi-release). Stand-ins: one `MESSAGE` key `tenant` (`Tenant-Id`), a
+"required" check in `fail` mode that throws a marker exception, and a header `Boom-Decode` whose presence makes "decode" throw an
+`IllegalStateException`. Run: `./gradlew test` on JDK 25 (15 tests, 0 failures; BUILD SUCCESSFUL in 2m 53s), and the listener test also with
+`./gradlew testJdk21`. Nothing from it is in the repository.
+
+1. **Producer (D71): confirmed, with three limits.**
+   - A `ProducerPostProcessor` added by a bean post-processor to `getProducerFactory()` of every `KafkaTemplate` bean, whose wrapper throws
+     from `send` when the key is unbound, makes these throw the wrapper's exception unchanged (same class, no cause) on the calling thread:
+     `send(topic, v)`, `send(topic, k, v)`, `send(topic, p, k, v)`, `send(topic, p, ts, k, v)`, `send(ProducerRecord)`, `send(Message<?>)`,
+     `sendDefault(v)` and `sendDefault(k, v)`, with `spring.kafka.template.observation-enabled` `false` and `true`. With observation on, a real
+     `ObservationRegistry` saw 10 `spring.kafka.template` starts and 8 errors carrying the exception. None of the failed records reached the
+     topic; the bound sends that followed were delivered with `Tenant-Id=acme`.
+   - `executeInTransaction`: the exception propagates from `executeInTransaction`; a callback whose first send succeeded and whose second
+     threw was aborted (a `read_committed` reader saw only the later committed record, which had `Tenant-Id`). Transactional producers are
+     created through the post-processor too.
+   - Composition: an application template bean with `setProducerInterceptor` runs its interceptor first; the wrapper then sees the header it
+     added, and a `Tenant-Id` the interceptor set is kept unchanged (D74).
+   - Finding 3 confirmed: a CGLIB proxy around the template counted 0 sends inside `executeInTransaction`; the callback received the target.
+   - Also covered, as the plan expected: `execute(ProducerCallback)`, a `KafkaTemplate` that is not a bean but shares the factory, a template
+     built with config overrides (its copied factory copies the post-processors), and `factory.createProducer()`.
+   - Not covered: a producer the factory created and cached before the post-processor was added (the next send was not checked; after
+     `factory.reset()` it was); and a `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, because `addPostProcessor` is a no-op
+     interface default, so the template is silently uncovered (`getPostProcessors()` stayed empty and the record went out unchecked).
+   - Note: `KafkaTemplate.doSend` does not close the producer when `send` throws; harmless for the shared non-transactional producer (later
+     sends worked) and for `executeInTransaction` (the template closes it).
+2. **Listener scope (D72): confirmed, on both backends.**
+   - Prepending the advice in a bean post-processor on Boot's `kafkaListenerContainerFactory` and on an application factory reached
+     `@KafkaListener` containers of both, and a container bean made with `appFactory.createContainer(topic)`. The advice ran once per record
+     (6 records, 6 scoped invocations), also with a `ConcurrentMessageListenerContainer`.
+   - What it sees: for a `@KafkaListener` method, `onMessage(ConsumerRecord, null, ExtendedKafkaConsumer)` declared by
+     `AcknowledgingConsumerAwareMessageListener`, with `getThis()` a `RecordMessagingMessageListenerAdapter`; for a lambda container,
+     `onMessage(ConsumerRecord)` with `getThis()` the lambda; with a `RecordFilterStrategy` bean, `getThis()` is a
+     `FilteringMessageListenerAdapter`. A batch listener's `getThis()` is a `BatchMessagingMessageListenerAdapter` (or
+     `FilteringBatchMessageListenerAdapter`), both `BatchMessageListener`s, called with `onMessage(ArrayList, null, ExtendedKafkaConsumer)`;
+     it was passed through and saw no `tenant`. Other methods also pass through the proxy: `isAsyncReplies`, `wantsPollResult` and
+     `getDelegate` on the startup thread, and `registerSeekCallback`, `onPartitionsAssigned` and `onFirstPoll` on the consumer thread.
+   - The application's advice set on its factory in the `@Bean` method ran inside the scope (`tenant=acme`). Application `RecordInterceptor`s
+     (a bean on Boot's factory, and one set on the application factory) saw no `tenant` in `intercept`, `success`, `failure` and `afterRecord`
+     (finding 5); `afterRecord` also shows the consumer thread has no binding after each record.
+   - A `ContainerCustomizer` calling `setAdviceChain(appAdvice)` removes the library's advice only where the listener is set after the
+     customizer runs: a `createContainer` container lost the scope (`tenant` unbound), but a `@KafkaListener` container kept it, because its
+     listener is already proxied when the factory copies the chain, and `setAdviceChain` on a proxied listener only removes the advices of
+     the new chain before adding them. A customizer that appends to `getAdviceChain()` keeps the library's advice outermost.
+   - JDK 25 with core loaded from the packaged JAR: backend `SCOPED_VALUE`, listeners saw `tenant=acme` for the record that carried it and
+     nothing for the next one. JDK 21: backend `THREAD_LOCAL`, same results.
+3. **Error handling (D73): confirmed, with a decorator installed per container before it starts.**
+   - The prototype `CommonErrorHandler` decorator delegates every method and runs `handleOne` and `handleRemaining` in the snapshot of the
+     failed record (the first of the list). A `SmartLifecycle` with phase `AbstractMessageListenerContainer.DEFAULT_PHASE - 1` wraps the
+     handler of every container from `KafkaListenerEndpointRegistry.getAllListenerContainers()` (registry containers and
+     `MessageListenerContainer` beans) and sets a wrapped `DefaultErrorHandler` where none is set on a non-transactional container. The
+     parent's handler is copied to the child containers when they start.
+   - It must look the registry up when it starts (`ObjectProvider`), not take it as a constructor argument: with the registry injected,
+     Spring started the registry, a dependency, before the installer, and the installer saw `running=true` and wrapped too late (first run).
+   - With a `DefaultErrorHandler` bean holding a `DeadLetterPublishingRecoverer` (no retries) and the producer check in `fail` mode, a
+     listener that threw had its record published to `<topic>-dlt` with `Tenant-Id=acme`, through the `handleRemaining` path (default) and
+     the `handleOne` path (`setSeekAfterError(false)`), for a `@KafkaListener` container and a `createContainer` bean. The decorator was
+     entered with no binding (the error handler runs outside the listener's scope), and the `RecordInterceptor.afterRecord` that followed saw
+     none, so the previous snapshot is restored.
+   - Control without the installer: the recoverer saw no `tenant`, the dead-letter send threw the producer check's exception, the
+     recoverer logged "Dead-letter publication ... failed" and the record was redelivered and failed again in a loop; nothing reached the
+     DLT. This is the failure D73 prevents.
+   - Deserialization failure (`ErrorHandlingDeserializer` around a deserializer that throws for `poison`, a `DeadLetterPublishingRecoverer`
+     with a `byte[]` template): the listener was not invoked, the decorator built the snapshot from the record's headers, and the raw record
+     reached the DLT with `Tenant-Id=acme`. A failure inside `poll()` without `ErrorHandlingDeserializer` reaches `handleOtherException`,
+     which has no record (not run).
+   - Decode exception (KAF-02's non-`IllegalArgumentException`): the advice threw before the listener, which was not invoked; the decorator's
+     rebuild threw again and it used the empty snapshot (Q4). In `fail` mode with a required `MESSAGE` key the dead-letter send then fails,
+     so the record is redelivered in a loop (4 attempts in 8 seconds).
+   - Late containers: a container created from Boot's factory and started after startup had the advice (listener saw `tenant=acme`) but an
+     undecorated handler; its dead-letter send failed.
+   - Transactional containers (`spring.kafka.producer.transaction-id-prefix`, Boot's `KafkaTransactionManager`): the container has no
+     `CommonErrorHandler` and uses its `AfterRollbackProcessor`, so the installer must not set a `DefaultErrorHandler` there. A
+     `DefaultAfterRollbackProcessor` bean with a recoverer ran outside the scope and its dead-letter send failed in a loop. The same
+     decorator pattern on `getAfterRollbackProcessor()`/`setAfterRollbackProcessor` ran `process` in the first record's snapshot, and the
+     DLT record was committed with `Tenant-Id=acme` (`read_committed` reader).
+   - Not run: containers registered at runtime through `registry.registerListenerContainer(..., true)` (same gap as late containers),
+     `@RetryableTopic` containers, and restarting a container.
+4. **Backend of `-kafka`'s unit tests.** An init script outside the repository printed `:boundrail-context-kafka`'s and
+   `:boundrail-context-spring`'s `testRuntimeClasspath`: both load `boundrail-context-core/build/libs/boundrail-context-core.jar`, the
+   multi-release JAR, not its classes directory. A probe test added to `:boundrail-context-kafka:test` by a second init script (no
+   tracked file changed; its outputs were deleted afterwards) printed `java.version=25.0.4.1 backend=SCOPED_VALUE`. So `-kafka`'s unit tests
+   run on the ScopedValue backend; nothing runs them on ThreadLocal. The Risks entry "ScopedValue proof only in `integration-tests`" does
+   not hold: the unit tests also prove it, and ThreadLocal is covered only by `integrationTestJdk21`.
+5. **Topology timing.** A billing-like Boot app with a record `@KafkaListener` on a topic that did not exist yet, `auto-offset-reset=earliest`
+   and no `NewTopic`: assigned 660 ms after startup, and a record published right after startup arrived 77 ms after it was sent; a record
+   published before the app started was also received. With `NewTopic` it was the same (12 ms). With `latest` a record sent right after
+   startup was lost once (with `NewTopic`). So billing needs no `NewTopic`; `auto-offset-reset=earliest`, already in the plan, is what makes
+   delivery safe.
+
+### Recommendations for Q1 – Q4
+
+- **Q1: option (a), the `ProducerPostProcessor`.** It meets D71: composes with the application's interceptor, throws from every send call
+  and `executeInTransaction`, runs on the sending thread, needs no reflection. KAF-01's coverage and KAF-06's list change to "every send
+  through a producer that the `ProducerFactory` of a `KafkaTemplate` bean creates after startup", which includes `execute(ProducerCallback)`,
+  non-bean templates sharing that factory and `createProducer()`. KAF-06 should also name the two gaps found: a `ProducerFactory` that is not
+  a `DefaultKafkaProducerFactory` (silently uncovered), and producers created before the template bean was initialized.
+- **Q2: revise KAF-03 as the plan recommends, more precisely.** The application's advice in a factory's chain runs inside the scope;
+  `RecordInterceptor`s run outside it. A chain replaced by a `ContainerCustomizer` or `ContainerPostProcessor` removes the scope only from
+  containers whose listener is set after it (`createContainer`); `@KafkaListener` containers keep it. KAF-06 states both as "not covered when
+  the application replaces the chain", without promising the `@KafkaListener` case.
+- **Q3: the decorator, extended to transactional containers.** A `CommonErrorHandler` decorator, and an `AfterRollbackProcessor` decorator
+  for containers with a transaction manager, installed by a `SmartLifecycle` one phase before the containers that looks up the registry when
+  it starts. It sets a `DefaultErrorHandler` only on non-transactional containers without a handler. Not covered, stated in KAF-06:
+  containers registered or created after startup, `handleOtherException`, `handleBatch` and `processBatch` (KAF-05). If the user prefers to
+  leave `AfterRollbackProcessor` out, KAF-06 says transactional containers' after-rollback handling runs outside the scope.
+- **Q4: as recommended (failed record's snapshot, rebuilt without reporting; empty when rebuilding throws), with one consequence to
+  accept.** For a decode exception in `fail` mode with a required `MESSAGE` key, a dead-letter recoverer cannot publish in the empty
+  snapshot, so the record is redelivered until the application handles it, the same as WIRE-05's "propagates" elsewhere. The alternative,
+  binding the keys that decoded, is behaviour the spec does not define.
+
+### Contradictions with the spec and plan
+
+Resolved on 2026-10-18: the user accepted the four recommendations above (D79); spec.md, the contract and design.md were revised, and this
+plan and tasks.md now follow them (Q3's `AfterRollbackProcessor` decorator, the installer's registry lookup at start, the ScopedValue
+backend of the unit tests, and the one-entry listener scope in [Listener scope](#listener-scope-kaf-02-kaf-03-d72)).
+
+- KAF-01 and KAF-06 (D71) say `execute(ProducerCallback)`, non-bean templates and directly created producers are not covered; with Q1 (a)
+  those sharing the template bean's factory are (Q1).
+- KAF-03 says application interceptors run inside the scope; `RecordInterceptor`s cannot (Q2).
+- Plan, Q3 row: "transactional containers' `AfterRollbackProcessor`" is listed as not covered; the spike shows it can be (Q3). The plan's
+  installer wording should say the registry is looked up at start, and that no `DefaultErrorHandler` is set on transactional containers.
+- Plan, Risks: "`-kafka`'s unit tests may run on the ThreadLocal backend" is answered: they run on ScopedValue (item 4).
+- Plan, Research Notes: the listener scope can be `forRecord(record).call(invocation::proceed)`, one scope entry per record instead of two
+  (the snapshot is exact, and `call` replaces the current one, CORE-10); the spike used it. Building the snapshot still enters a temporary
+  scope (Q7), so the `ScopeListener` count per record stays two.
+
 ## Research Notes
 
 ### Spring side (D70)
@@ -190,8 +329,8 @@ user before implementation (spec Assumptions); for D73 the fallback is to docume
 
 - **`BoundrailKafkaAutoConfiguration` (T003).** `@AutoConfiguration(after = BoundrailContextAutoConfiguration.class, afterName =
   "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration")`, `@ConditionalOnClass(KafkaTemplate.class)`,
-  `@ConditionalOnBean(AdapterSupport.class)` (the Spring module's auto-configuration is active; Q5), `@EnableConfigurationProperties(
-  BoundrailKafkaProperties.class)`; registered in `boundrail-context-kafka/src/main/resources/META-INF/spring/
+  `@ConditionalOnBean(AdapterSupport.class)` (KAF-04 activation; backing off when the Spring module's auto-configuration is excluded, Q8),
+  `@EnableConfigurationProperties(BoundrailKafkaProperties.class)`; registered in `boundrail-context-kafka/src/main/resources/META-INF/spring/
   org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
 - **`BoundrailKafkaProperties`.** `@ConfigurationProperties("boundrail.context.kafka") public record BoundrailKafkaProperties(
   @DefaultValue("true") boolean trustHeaders)`. Boot's boolean conversion accepts `true`/`on`/`yes`/`1` and their opposites in any case; any
@@ -222,11 +361,12 @@ user before implementation (spec Assumptions); for D73 the fallback is to docume
   (DIAG-09), reported in the context that owns the `KafkaContext` bean, which is the context of the listener containers its advice is added to.
 - **Building the snapshot.** Core has no public snapshot factory, so the decoded bindings become a `ContextBinding` and the snapshot is
   `ContextSnapshot.EMPTY.call(() -> binding.call(Context::capture))`, or `ContextSnapshot.EMPTY` when nothing was decoded. Nothing stays
-  current after `forRecord` returns, but `ScopeListener`s such as the MDC bridge see a nested enter/exit pair on the caller's thread (Q7).
+  current after `forRecord` returns, but `ScopeListener`s such as the MDC bridge see a nested enter/exit pair on the caller's thread (Q7,
+  D78). `rebuild(record)` (T011) is the same build with reporting off.
 
 ### Producer (KAF-01, D71)
 
-Assuming T001 confirms finding 2 and the user picks option (a) of Q1; otherwise T006's green step is rewritten before it starts.
+Settled by T001 and Q1 (D79): a `ProducerPostProcessor` on the template bean's `ProducerFactory`.
 
 - **Hook.** A `static` bean post-processor `TemplatePostProcessor` (it takes `ObjectProvider<AdapterSupport>`, so it creates nothing early)
   adds one `ContextProducerPostProcessor` to the `ProducerFactory` of every `KafkaTemplate` bean, subclasses included, unless that factory's
@@ -243,28 +383,56 @@ Assuming T001 confirms finding 2 and the user picks option (a) of Q1; otherwise 
   The deadline is not read (D75).
 - **Composition.** The application's template interceptor runs in `doSend` before `producer.send`, so a header it adds counts as set by the
   application. Nothing of the template's own configuration is replaced.
+- **Coverage (KAF-01, D79).** Every producer the hooked factory creates after the post-processor is added: all template send methods,
+  `executeInTransaction`, `execute(ProducerCallback)`, templates that are not beans but share the factory (including a template built with
+  config overrides, whose copied factory copies the post-processors), and `factory.createProducer()`. Not covered, and stated in KAF-06: a
+  `ProducerFactory` that is not a `DefaultKafkaProducerFactory` (its `addPostProcessor` is the interface's no-op default), and a producer the
+  factory created and cached before the hook was added. No test pins these gaps; T013's Javadoc states them.
 
 ### Listener scope (KAF-02, KAF-03, D72)
 
 - **`ListenerScopeAdvice` (T009).** A package-private `MethodInterceptor` holding the `KafkaContext`. If `invocation.getThis()` is a
   `BatchMessageListener`, the method is not `onMessage`, or the first argument is not a `ConsumerRecord`, it returns `invocation.proceed()`
-  (KAF-05; other listener methods). Otherwise it builds `snapshot(record)` (a non-`IllegalArgumentException` from `decode` propagates, so the
-  listener is not invoked) and returns `ContextSnapshot.EMPTY.call(() -> binding.call(invocation::proceed))`, always entering a scope, also for
-  an empty snapshot (D73), so the consumer thread's snapshot is replaced (CORE-10) and restored, and the listener's exception propagates
-  unchanged (CORE-08). `invocation.proceed()` declares `Throwable`; `ContextCallable<R, X>` carries it.
+  (KAF-05; other listener methods, which T001 saw on the startup and consumer threads). Otherwise it returns
+  `context.snapshot(record).call(invocation::proceed)`: one scope entry for the invocation, as the spike did.
+  - Consistent with KAF-05's reporting rules: `snapshot(record)` is the code `forRecord` runs (without its `null` check, which cannot fail
+    here), so the listener is bound with exactly the snapshot `forRecord` would return, and the delivery reports its violations once, in that
+    build, as KAF-02 requires; a redelivery builds and reports again.
+  - `snapshot.call` replaces the consumer thread's snapshot (CORE-10) and restores it, also for `ContextSnapshot.EMPTY` (always entering a
+    scope, D73), and rethrows the listener's exception unchanged (CORE-08). `invocation.proceed()` declares `Throwable`;
+    `ContextCallable<R, X>` carries it.
+  - A non-`IllegalArgumentException` from `decode` propagates from `snapshot(record)` before any scope is entered, so the listener is not
+    invoked.
+  - `ScopeListener`s still see two enter/exit pairs per record: the temporary scope that builds the snapshot (D78) and the invocation's.
 - **Wiring (T010).** A `static` bean post-processor `ListenerContainerFactoryPostProcessor` sets, on every
   `AbstractKafkaListenerContainerFactory` bean after initialization, `getContainerProperties().setAdviceChain(advice, existing...)`, unless the
   first element already is the library's advice. The application's advice set in its `@Bean` method is in `existing`, so it runs inside.
-- **Error handling (T011, D73).** Mechanism per T001 and Q3; the recommended decorator builds the failed record's snapshot without reporting
-  (the delivery already reported its violations, so counts are not doubled) and runs `handleOne`/`handleRemaining` in it; per Q4, an empty
-  snapshot when building throws.
+- **Error handling (T011, D73, D79).**
+  - `ContextErrorHandler implements CommonErrorHandler` (package-private) delegates every method and runs `handleOne` and `handleRemaining` in
+    the snapshot of the first record it is given. `ContextAfterRollbackProcessor implements AfterRollbackProcessor` does the same for
+    `process`; every other method, including `processBatch`, `handleBatch` and `handleOtherException`, is delegated unscoped.
+  - The snapshot comes from `KafkaContext.rebuild(record)` (package-private): the same build as `snapshot(record)`, under the same trust
+    setting, but reporting nothing, so one delivery is never counted twice. If it throws, the handler runs in `ContextSnapshot.EMPTY` (so a
+    record whose decode threw still reaches the application's handler; with a required `MESSAGE` key in `fail` mode its dead-letter send then
+    fails and the record is redelivered, as KAF-03 states).
+  - `ErrorHandlingInstaller implements SmartLifecycle` (package-private), phase `AbstractMessageListenerContainer.DEFAULT_PHASE - 1`, takes
+    `ObjectProvider<KafkaListenerEndpointRegistry>` and looks the registry up in `start()`; injecting the registry directly made Spring
+    start it, a dependency, before the installer, which then wrapped too late (T001). In `start()`, for every container of
+    `getAllListenerContainers()` (registry containers and `MessageListenerContainer` beans) that is an `AbstractMessageListenerContainer`:
+    - transactional (its container properties hold a transaction manager, as Boot's factory sets from `KafkaTransactionManager`): wrap its
+      `AfterRollbackProcessor`; set no `CommonErrorHandler`;
+    - otherwise: wrap its `CommonErrorHandler`, or set a decorated `new DefaultErrorHandler()` where none is set (what the container would
+      have created itself);
+    - never wrap twice (a handler already a `ContextErrorHandler` is kept). Child containers of a `ConcurrentMessageListenerContainer` copy
+      the parent's handler when they start.
+  - Not covered (KAF-03, KAF-06): containers created or registered after startup, `handleOtherException`, and the batch paths.
 
 ### Integration tests
 
 - **Topology (T010).**
   - `Topology.startService` adds `spring.kafka.bootstrap-servers=<broker>` for every service, and for billing
-    `spring.kafka.consumer.group-id=billing` and `spring.kafka.consumer.auto-offset-reset=earliest`; billing also declares
-    `NewTopic("orders.events")` if T001 item 5 shows it is needed.
+    `spring.kafka.consumer.group-id=billing` and `spring.kafka.consumer.auto-offset-reset=earliest`; no `NewTopic` (T001 item 5:
+    `earliest` makes delivery safe).
   - `EdgeApp`: `POST /kafka/publish` sends the request's marker as the value to `orders.events` through Boot's auto-configured
     `KafkaTemplate` (string serializers by default) and waits for the send result (`get(10, SECONDS)`), so a send failure is a 500. The deadline
     of DeadlinePropagationIT's edge is not applied to the send (D75).
@@ -292,23 +460,27 @@ ends with `./gradlew check`.
 
 ## Spec Gaps
 
-Open; each blocks the tasks named until the user answers. Q1 – Q4 are expected to be settled on T001's outcome. The spec-creator writes the
-answers into spec.md and design.md.
+Q1 – Q7 are settled: Q5 – Q7 by the user with the recommended answers (D78), Q1 – Q4 by the user on T001's outcome on 2026-10-18, each with
+the recommendation (D79). The spec-creator wrote them into spec.md, contracts/kafka-api.md and design.md. Q8 is new, from applying D78 to
+T003, and open.
 
-| Gap | Status | Question | Recommendation | Tasks |
+| Gap | Status | Question | Decision | Tasks |
 |---|---|---|---|---|
-| Q1 | Open | Which producer hook meets D71? `KafkaTemplate` 4.1.1 has no getter for its interceptor (finding 1), so the template's own interceptor cannot compose with an application's without reflection | (a) A `ProducerPostProcessor` on the `ProducerFactory` of each `KafkaTemplate` bean (finding 2): composes, throws from the send call, runs on the sending thread, covers `executeInTransaction`. It also covers `execute(ProducerCallback)`, templates that are not beans but share that factory, and producers created from it directly, so KAF-01's coverage sentence and KAF-06's "not covered" list change to "every send through a producer created by the `ProducerFactory` of a `KafkaTemplate` bean". Rejected: (b) a template proxy, which misses sends inside `executeInTransaction` (finding 3); (c) `setProducerInterceptor`, which replaces the application's interceptor | T006 – T008, T013 |
-| Q2 | Open | KAF-03 says interceptors the application configured run inside the library's scope, but the advice chain wraps only the listener: `RecordInterceptor.intercept`, `success`, `failure` and `afterRecord` run outside (finding 5). Also: a `ContainerCustomizer` or `ContainerPostProcessor` that calls `setAdviceChain` removes the library's advice, and an already-proxied listener gets the chain after its own advisors (finding 4) | Revise KAF-03: the application's advice in the factory's chain runs inside the scope; `RecordInterceptor`s, which are set/restore hooks, run outside it; containers whose advice chain the application replaces after the factory configured it are not covered. KAF-06 states both | T010, T013 |
-| Q3 | Open | Which around-style hook runs the error handler inside the record's snapshot (D73)? The advice cannot (finding 5); the factory has no getter for its error handler (finding 6) | If T001 confirms it: a `CommonErrorHandler` decorator installed on each container before it starts, by a `SmartLifecycle` over the endpoint registry and the container beans (an explicit `DefaultErrorHandler` where none is set). Not covered, and stated in KAF-06: containers registered after startup, `handleOtherException`, `handleBatch` (KAF-05), and transactional containers' `AfterRollbackProcessor`. Otherwise the D73 fallback: KAF-06 says error handling runs outside the scope | T011, T013 |
-| Q4 | Open | Which failures does D73 cover, and with which snapshot? The error handler also handles records whose listener was never invoked: a deserialization failure, and a decode exception from KAF-02 (WIRE-05) | The decorator runs every `handleOne`/`handleRemaining` in the failed record's snapshot, built without reporting again (the delivery already reported); when building it throws, in the empty snapshot, so the error handler can still recover the record | T011 |
-| Q5 | Open | D77's activation conditions (Spring Kafka on the classpath, the Spring module's auto-configuration active) are in design.md only, not in spec.md. Without the Spring module's auto-configuration there is no `AdapterSupport` | Add them to spec.md (Assumptions or KAF-05) and test both: excluding `BoundrailContextAutoConfiguration`, or filtering `KafkaTemplate` from the class path, creates no Kafka bean and the context starts. Keep `spring-kafka` as an `implementation` dependency of `-kafka` | T003 |
-| Q6 | Open | Two public names the contract leaves open: the properties record (contract: "the properties record that binds `boundrail.context.kafka.*`") and the `spring.internal` type (D70 says "public classes") | `io.github.boundrail.context.kafka.BoundrailKafkaProperties`, mirroring `BoundrailContextProperties`; `io.github.boundrail.context.spring.internal.AdapterSupport`, an interface implemented in the Spring auto-configuration (D70's "classes" read as "types") | T002, T003 |
-| Q7 | Open | `forRecord` returns the snapshot "without entering it", but core has no public snapshot factory: building it enters a temporary scope on the caller's thread, which `ScopeListener`s such as the MDC bridge observe as an enter/exit pair (nothing stays current) | Accept: "without entering it" means the snapshot is not current when `forRecord` returns; record it in spec.md's KAF-05. A core snapshot factory would change 002's contract, outside M6 | T004 |
+| Q1 | Closed (D79) | Which producer hook meets D71? `KafkaTemplate` 4.1.1 has no getter for its interceptor (finding 1) | A `ProducerPostProcessor` on the `ProducerFactory` of each `KafkaTemplate` bean. Covered: every send through a producer that factory creates, including `execute(ProducerCallback)`, templates that are not beans but share the factory, and producers created directly from it (KAF-01). Not covered, stated in KAF-06: a `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, and producers created and cached before the hook was added | T006 – T008, T013 |
+| Q2 | Closed (D79) | KAF-03 said application interceptors run inside the scope, but the advice chain wraps only the listener (finding 5); a replaced chain loses the advice (finding 4) | Advice the application adds to a factory's chain runs inside the scope; `RecordInterceptor`s (`intercept`, `success`, `failure`, `afterRecord`) run outside it; a container whose chain the application replaces is not covered, and KAF-06 does not promise that a `@KafkaListener` container keeps the scope then | T010, T013 |
+| Q3 | Closed (D79) | Which around-style hook runs the error handler inside the record's snapshot (D73)? | Decorators on each container's `CommonErrorHandler` and, for containers with a transaction manager, its `AfterRollbackProcessor` (`handleOne`, `handleRemaining`, `process`), installed by a `SmartLifecycle` one phase before the containers that looks the `KafkaListenerEndpointRegistry` up when it starts (`ObjectProvider`); a decorated `DefaultErrorHandler` only on non-transactional containers without a handler, none on transactional ones. Not covered: containers created or registered after startup, `handleOtherException`, `handleBatch` and `processBatch` | T011, T013 |
+| Q4 | Closed (D79) | Which failures does D73 cover, and with which snapshot? | Every record the decorators handle (including deserialization failures), in the failed record's snapshot rebuilt without reporting again; the empty snapshot when rebuilding throws. Accepted consequence: a record whose decode throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered | T011, T013 |
+| Q5 | Closed (D78) | D77's activation conditions were in design.md only | Now KAF-04: the Kafka auto-configuration is active whenever Spring Kafka and `boundrail-context-spring` are on the classpath, with no off switch; `spring-kafka` stays `implementation` | T003 |
+| Q6 | Closed (D78) | The properties record's and the `spring.internal` type's names | `BoundrailKafkaProperties`; the interface `spring.internal.AdapterSupport` | T002, T003 |
+| Q7 | Closed (D78) | `forRecord` builds its snapshot in a temporary scope | Accepted and in KAF-05: the snapshot is not current when `forRecord` returns, and `ScopeListener`s may see one enter/exit pair per call | T004 |
+| Q8 | Closed (D80) | KAF-04 (D78) makes the Kafka auto-configuration active whenever both libraries are on the classpath. What happens when an application excludes `BoundrailContextAutoConfiguration` while keeping `-kafka`? There is then no `AdapterSupport`, so an unconditional Kafka auto-configuration fails startup with an unsatisfied dependency | Back off: keep `@ConditionalOnBean(AdapterSupport.class)` so the Kafka adapters are inactive when the Spring module's auto-configuration is excluded, and add that sentence to KAF-04 (it was D77's second condition). The alternative, failing startup with a clear message, adds a check nobody asked for | T003 |
 
 ## Guard Tests
 
 These tests already pass before the task that introduces them. As in 002 – 006, each red is shown against a named temporary change, which
-is reverted before the commit. They are not TDD exceptions; listed here for the user's approval.
+is reverted before the commit. They are not TDD exceptions. The user approved T010's row on 2026-10-18; T011's row is new (D79) and awaits
+approval. The `RecordInterceptor` assertions in T010 and the "reported once" assertion in T011 sit in tests with red positive assertions, so
+they are not guards.
 
 A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code, which
 is then reverted; the leader reports it in the task report, the planner adds it to this table, and the reviewer checks it.
@@ -320,14 +492,15 @@ propagate to `MESSAGE` are not checked" with the `MISSING_REQUIRED` assertions i
 | Task | Scenario or test | Why green first | Red shown against (temporary, reverted) |
 |---|---|---|---|
 | T010 | `KAF-05 a batch @KafkaListener is not scoped, and nothing is decoded or reported for its records` | T009's advice already passes `BatchMessageListener` invocations through | `ListenerScopeAdvice` without its `BatchMessageListener` check and scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant` and a repeated header is reported |
+| T011 | `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the empty snapshot` (new, for the user's approval) | Before T011 the error handler runs undecorated on the consumer thread, which has no binding, so it runs and sees an empty snapshot | `ContextErrorHandler` rethrowing the rebuild's exception instead of falling back to `ContextSnapshot.EMPTY`: the application's handler is not called |
 
 ## TDD Exceptions
 
-For the user's approval.
+Approved by the user on 2026-10-18; its content follows KAF-06 as revised by D79. No new exception.
 
 | Task | What | Verified by |
 |---|---|---|
-| T013 | The Javadoc of `KafkaContext` required by KAF-06: batch listeners are not scoped and `forRecord` gives each record's snapshot (KAF-05); which sends are covered and which are not (KAF-01, as settled by Q1); which listener containers are covered (KAF-03, as settled by Q2); the deadline is neither sent nor applied at send (KAF-01, D75); only the listener invocation and the container's error handling are scoped, so code completing a returned `CompletableFuture` or `Mono` runs with its own thread's context (KAF-03, as settled by Q3). Documentation, with no behaviour a test can fail on; the behaviour is tested in T004 – T012 | Review of T013, and inspection in T014 against KAF-06's wording |
+| T013 | The Javadoc of `KafkaContext` required by KAF-06 (D79): batch listeners are not scoped and `forRecord` gives each record's snapshot (KAF-05); the sends covered (producers the `ProducerFactory` of a `KafkaTemplate` bean creates, including `execute(ProducerCallback)`, non-bean templates sharing the factory and producers created directly from it) and the gaps (a `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, producers created and cached before the hook was added) (KAF-01); the deadline is neither sent nor applied at send (KAF-01, D75); the containers covered (those created by listener container factory beans), `RecordInterceptor`s outside the scope, and a container whose advice chain the application replaces not covered, with no promise for `@KafkaListener` containers (KAF-03); error handling in the failed record's snapshot, except containers created or registered after startup, `handleOtherException` and the batch paths, and a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered (KAF-03); only the listener invocation and error handling are scoped, so code completing a returned `CompletableFuture` or `Mono` runs with its own thread's context (KAF-03). Documentation, with no behaviour a test can fail on; the behaviour is tested in T004 – T012 | Review of T013, and inspection in T014 against KAF-06's wording |
 
 T001 is a spike, not an exception: no code from it is kept. Build changes (`-kafka`'s dependencies, the catalog alias, `integration-tests`'
 `spring-boot-kafka`) and topology test code are part of the red step of the task whose tests need them (T003, T006, T010). The
@@ -359,12 +532,13 @@ boundrail-context-kafka/src/main/resources/META-INF/spring/
 boundrail-context-kafka/src/main/java/io/github/boundrail/context/kafka/
 ├── BoundrailKafkaAutoConfiguration.java                                 # T003, T006, T010, T011
 ├── BoundrailKafkaProperties.java                                        # T003
-├── KafkaContext.java (forRecord; Javadoc KAF-06)                        # T003 – T005, T012, T013
-├── TemplatePostProcessor.java (package-private, per Q1)                 # T006
-├── ContextProducerPostProcessor.java, ContextProducer.java (per Q1)     # T006 – T008
+├── KafkaContext.java (forRecord, rebuild; Javadoc KAF-06)               # T003 – T005, T011 – T013
+├── TemplatePostProcessor.java (package-private)                         # T006
+├── ContextProducerPostProcessor.java, ContextProducer.java              # T006 – T008
 ├── ListenerScopeAdvice.java (package-private)                           # T009
 ├── ListenerContainerFactoryPostProcessor.java (package-private)         # T010
-└── error-handling hook (per Q3)                                         # T011
+├── ContextErrorHandler.java, ContextAfterRollbackProcessor.java         # T011
+└── ErrorHandlingInstaller.java (SmartLifecycle)                         # T011
 boundrail-context-kafka/src/test/java/io/github/boundrail/context/kafka/
 ├── KafkaAutoConfigurationTest.java                                      # T003
 ├── RecordSnapshotTest.java (T004, T005)  RecordTrustTest.java (T012)
@@ -389,8 +563,8 @@ public type added to `-spring`, in a package no contract declares. Everything el
 | CORE-17 | T004 (`forRecord(null)`) |
 | KAF-01 | T006 (headers, UTF-8, CR/LF, no `Authorization`/`Boundrail-Deadline-Ms`, expired deadline, every send method, subclass, composition, sending thread, encode exception), T007 (application-set header, WIRE-04), T008 (required keys, both modes, POL-08, transactions), T010 (a listener's send), IT-3.8, IT-4.9 |
 | KAF-02 | T004 (trusted decoding, ignored headers, exact names, empty, decode failures, other exceptions, reporting context, DIAG-09), T005 (repeat, `null`, WIRE-04, UTF-8), T009 (invocation: replace, restore, empty, consecutive, exceptions, redelivery), T010 (the container's context reports), IT-3.8, IT-4.9 |
-| KAF-03 | T009 (around-style advice), T010 (every factory bean, Boot's, `createContainer` bean, outermost, composition; ScopedValue backend by IT-3.8 on `integrationTestJdk25`), T011 (error handling, per Q3) |
-| KAF-04 | T003 (binding, startup failure with lazy initialization), T012 (untrusted path, `AUTHORITY`/`DEADLINE` never bound), IT-3.8, IT-4.9 (default trust) |
+| KAF-03 | T009 (around-style advice, on the ScopedValue backend of `-kafka`'s unit tests), T010 (every factory bean, Boot's, `createContainer` bean, outermost, application advice inside, `RecordInterceptor`s outside; both backends through IT-3.8 on `integrationTestJdk21` and `integrationTestJdk25`), T011 (both decorators, the installer, a decorated `DefaultErrorHandler` only where none is set and never on transactional containers, empty-snapshot fallback (guard), no double reporting) |
+| KAF-04 | T003 (activation, no off switch, binding, startup failure with lazy initialization), T012 (untrusted path, `AUTHORITY`/`DEADLINE` never bound), IT-3.8, IT-4.9 (default trust) |
 | KAF-05 | T003 (bean, no public constructor), T004 (`forRecord` does not enter, reports per call), T009 (batch listener passes through), T010 (batch `@KafkaListener`, guard) |
 | KAF-06 | T013 (Javadoc: TDD exception) |
 | IT-3.8 | T010 |
@@ -399,22 +573,27 @@ public type added to `-spring`, in a package no contract declares. Everything el
 
 ## Risks
 
-- **The hooks depend on T001 (Q1 – Q4).** If option (a) of Q1 is refused, T006 – T008's green steps change; if Q3's decorator proves
-  unreliable, T011 is replaced by the D73 fallback and KAF-03 and KAF-06 are revised first. The task list keeps those tasks separate so the
-  rest does not move.
-- **Coverage wider than the spec (Q1 (a)).** The producer wrapper also covers sends the spec lists as not covered; no test asserts their
-  absence, and the spec wording is revised with the user.
-- **Advice-chain edges (finding 4).** An application `ContainerCustomizer` that replaces the advice chain silently removes the scope; the
-  library cannot detect it without reflection. KAF-06 documents it (Q2).
-- **ScopedValue proof only in `integration-tests`.** `-kafka`'s unit tests may run on the ThreadLocal backend (T001 item 4); KAF-03's
-  around-style requirement is proven by IT-3.8 on `integrationTestJdk25`, and the review checks that only `ContextSnapshot.call` scopes.
+- **Coverage gaps D79 accepts.** A `ProducerFactory` that is not a `DefaultKafkaProducerFactory` is silently uncovered (its
+  `addPostProcessor` does nothing), and so is a producer created and cached before the hook was added; containers created or registered
+  after startup keep the advice but get no error-handling decorator. KAF-06 states all three; no test pins them.
+- **Decode exceptions loop in `fail` mode (D79).** A record whose decoding throws, with a required `MESSAGE` key in `fail` mode, is redelivered
+  because its dead-letter send fails in the empty snapshot. Accepted by the user; KAF-06 states it.
+- **Installer ordering.** The installer must run before every container starts: phase `DEFAULT_PHASE - 1` and the registry looked up in
+  `start()`, never injected (injecting it started the registry first in T001). T011's tests use Boot's factory, an application factory, a
+  `createContainer` bean and a transactional container.
+- **Advice-chain edges (finding 4).** An application `ContainerCustomizer` that replaces the advice chain removes the scope from containers
+  whose listener is set afterwards; the library cannot detect it without reflection. KAF-06 documents it (D79).
+- **Backend coverage.** `-kafka`'s unit tests load core's multi-release JAR on the JDK 25 toolchain, so they run on the ScopedValue backend
+  (T001 item 4); nothing runs them on ThreadLocal. The ThreadLocal backend of the Kafka adapters is exercised only by IT-3.8 and IT-4.9 on
+  `integrationTestJdk21` (the forced ThreadLocal run is limited to RuntimeConformanceIT). T009 and T010 therefore rely on IT-3.8 and IT-4.9
+  on JDK 21 for the ThreadLocal side, and T014 checks both runs.
 - **Docker in unit tests.** `:boundrail-context-kafka:test` needs Docker, as `integration-tests` already does; one broker per test JVM,
   unique topics and group ids per test, records read back with a timeout, so tests do not interfere.
 - **Shared topology.** After T010 every service has Boot's Kafka auto-configuration and billing a listener; TopologySmokeIT, IT-1 – IT-4 must
   stay green (T010 runs every suite). Billing's 4-second wait makes IT-3.8 and IT-4.9 slow and serial; the scenario timeout (30 seconds)
-  allows for it. A consumer assigned after the first send is handled by `auto-offset-reset=earliest` (and `NewTopic` if T001 item 5 needs it).
-- **Two scope entries per record.** `ScopeListener`s (the MDC bridge) run twice per record and twice per `forRecord`; correct, slightly more
-  work (Q7).
+  allows for it. `auto-offset-reset=earliest` makes delivery safe without a `NewTopic` (T001 item 5).
+- **Two scope entries per record.** The temporary scope that builds the snapshot (D78) and the invocation's scope: `ScopeListener`s (the MDC
+  bridge) run twice per record and once per `forRecord`; correct, slightly more work.
 
 ## Complexity Tracking
 
