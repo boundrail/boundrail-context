@@ -96,8 +96,8 @@ class TokenExchangeConfigurationTest {
 
     @ParameterizedTest(name = "token-uri {0}, lazy initialization: {2}")
     @MethodSource("tokenUris")
-    @DisplayName("ID-11 with the built-in exchange propagator a missing, blank, relative, non-HTTP or host-less token-uri fails startup, also "
-            + "with lazy initialization")
+    @DisplayName("ID-11 with the built-in exchange propagator a missing, blank, relative, non-HTTP or host-less token-uri, or one with "
+            + "userinfo, fails startup, also with lazy initialization")
     void anInvalidTokenUriFailsStartup(String name, Optional<String> tokenUri, boolean lazy) {
         ApplicationContextRunner configured = lazy(withProperties(runner, exchange(TOKEN_URI, tokenUri.orElse(null))), lazy);
         if (tokenUri.equals(Optional.of("HTTPS://h/token"))) {

@@ -108,6 +108,27 @@ class InitiatorDerivationTest {
     }
 
     @Test
+    @DisplayName("ID-08 a contributor's invalid(INITIATOR) is not a contribution: with nothing putting INITIATOR the derived user:<name> is "
+            + "bound, with the one INVALID_VALUE from IN-07")
+    void aContributorsInvalidInitiatorIsNotAContribution() {
+        List<Violation> violations = new CopyOnWriteArrayList<>();
+        AtomicReference<Observed> observed = new AtomicReference<>();
+        runner.withClassLoader(new FilteredClassLoader(MeterRegistry.class))
+                .withBean(ViolationReporter.Counter.class, () -> violations::add)
+                .withBean(ContextContributor.class, () -> (authentication, contributions) -> contributions.invalid(INITIATOR))
+                .run(context -> observed.set(filter(ALICE_JWT, request -> { }, authenticationFilter(context))));
+
+        assertThat(observed.get()).as("the chain ran").isNotNull();
+        assertThat(observed.get().initiator()).contains(Initiator.of("user:alice"));
+        assertThat(violations).singleElement().satisfies(violation -> {
+            assertThat(violation.kind()).isEqualTo(Violation.Kind.INVALID_VALUE);
+            assertThat(violation.key()).isEqualTo("boundrail.initiator");
+            assertThat(violation.boundary()).isEqualTo(INTERNAL_CALL);
+            assertThat(violation.destination()).isEmpty();
+        });
+    }
+
+    @Test
     @DisplayName("ID-08 a name longer than 251 characters leaves INITIATOR unbound, reports one INVALID_VALUE for boundrail.initiator with "
             + "boundary INTERNAL_CALL and no destination, and the request continues")
     void aNameLongerThan251CharactersLeavesInitiatorUnboundAndReportsOneInvalidValue() {

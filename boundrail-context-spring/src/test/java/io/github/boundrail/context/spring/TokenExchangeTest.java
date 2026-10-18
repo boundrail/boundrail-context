@@ -162,6 +162,18 @@ class TokenExchangeTest {
     }
 
     @Test
+    @DisplayName("ID-11 an access_token with JSON escapes is sent decoded")
+    void anAccessTokenWithJsonEscapesIsSentDecoded() {
+        try (RecordingServer tokenEndpoint = RecordingServer.start(200, "application/json", "{\"access_token\":\"x\\u0041\\/y\"}");
+                RecordingServer orders = RecordingServer.start("ok")) {
+            callOrders(exchange(tokenEndpoint), orders);
+
+            assertThat(orders.requests()).hasSize(1);
+            assertThat(header(orders.requests().getFirst(), "Authorization")).containsExactly("Bearer xA/y");
+        }
+    }
+
+    @Test
     @DisplayName("ID-11 a body that is JSON null is not a token: the call is not sent")
     void aBodyThatIsJsonNullIsNotAToken() {
         try (RecordingServer tokenEndpoint = RecordingServer.start(200, "application/json", "null");

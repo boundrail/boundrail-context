@@ -109,7 +109,9 @@ class TokenExchangeFailureTest {
                 Arguments.of("expires_in true", 200, "{\"access_token\":\"t\",\"expires_in\":true}"),
                 Arguments.of("expires_in NaN", 200, "{\"access_token\":\"t\",\"expires_in\":NaN}"),
                 Arguments.of("expires_in 1e2147483648", 200, "{\"access_token\":\"t\",\"expires_in\":1e2147483648}"),
-                Arguments.of("duplicate access_token", 200, "{\"access_token\":\"a\",\"access_token\":\"b\"}"));
+                Arguments.of("duplicate access_token", 200, "{\"access_token\":\"a\",\"access_token\":\"b\"}"),
+                Arguments.of("malformed escape", 200, "{\"access_token\":\"\\x\"}"),
+                Arguments.of("expires_in of 1001 digits", 200, "{\"access_token\":\"t\",\"expires_in\":" + "1" + "0".repeat(1000) + "}"));
     }
 
     @ParameterizedTest(name = "[{index}] {0}")

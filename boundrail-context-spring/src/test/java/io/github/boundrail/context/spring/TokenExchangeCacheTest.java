@@ -141,7 +141,7 @@ class TokenExchangeCacheTest {
     }
 
     @ParameterizedTest(name = "[{index}] expires_in {0}")
-    @ValueSource(strings = {"1e400", "99999999999999999999", "1e999999999"})
+    @ValueSource(strings = {"1e400", "99999999999999999999", "1e999999999", "1e2000000000"})
     @DisplayName("ID-11 an expires_in too large for the clock is valid and the cache end is capped")
     void anExpiresInTooLargeForTheClockIsValidAndTheCacheEndIsCapped(String expiresIn) {
         endpoint.expiresIn(expiresIn);

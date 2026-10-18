@@ -417,7 +417,7 @@ messages, logs) and T016b (`token-uri` userinfo in the properties' `toString()`,
 
 Review follow-ups from T016's feature review, approved by the user on 2026-10-18; T016 is re-run after them.
 
-- [ ] T016a [P] Test-only guards from the review: ID-08's `invalid(INITIATOR)`, escapes and D69 for ID-11 and ID-12, and a display name.
+- [x] T016a [P] Test-only guards from the review: ID-08's `invalid(INITIATOR)`, escapes and D69 for ID-11 and ID-12, and a display name.
   - Red: each test or row below already passes, so it is a guard: show it red against the named temporary change to the finished code, then
     revert the change before the commit ([plan.md](plan.md#guard-tests)):
     - in `springtest/TokenExchangeFailureTest.java`, two rows in `ID-12 a status other than 200, or a body that is not valid, throws
