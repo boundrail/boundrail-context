@@ -102,7 +102,8 @@ Authority never reaches external calls, detached work, messages, logs, the MDC o
   it to internal calls).
 - A contributor puts `AUTHORITY`: ID-02 (`IllegalArgumentException` at the `put` call, even with a value of the wrong type through a raw
   key). A contributor puts `INITIATOR`: ID-08 (it wins over
-  the derived `user:` initiator, and a trusted header wins over both).
+  the derived `user:` initiator, and a trusted header wins over both). A contributor calls `invalid(INITIATOR)` and nothing puts it: ID-08 (one
+  `INVALID_VALUE` from IN-07, and the derived `user:` initiator is still bound).
 - A trusted caller sends `Boundrail-Initiator` to an authenticated request: ID-08 (the header's initiator is kept).
 - `authentication.getName()` is longer than 251 characters: ID-08 (`INITIATOR` unbound, one `INVALID_VALUE`; the request continues).
 - A handler's MVC `Callable` or `DeferredResult` (IN-09, EXE-09): ID-02, ID-08 (the authority and initiator are in the stored snapshot, and a
@@ -124,9 +125,9 @@ Authority never reaches external calls, detached work, messages, logs, the MDC o
   status, which the JDK client clears). Slower than 10s with no deadline bound: ID-12 (`TokenExchangeException`).
 - `expires_in` is `3600.0` or `1e3`: ID-11 (valid). It is `"3600"`, `null`, `1.5`, `-1` or NaN: ID-11 (invalid response, ID-12). It is too
   large for a `long`, or too large for a `double` (`1e400`): ID-11 (valid; the cache lifetime is capped). It is `1e2147483648`, whose
-  exponent is beyond the `int` range so it cannot be read as an exact decimal: ID-11 (invalid response, ID-12). It is `1e2000000000`: ID-11
-  (valid and capped without expanding the number, so it costs no more work than `1e400`). The response has an unexpected `Content-Type`:
-  ID-11 (not checked).
+  exponent is beyond the `int` range so it cannot be read as an exact decimal, or a whole number of more than 1000 digits: ID-11 (beyond the
+  parser's limits; invalid response, ID-12). It is `1e999999999` or `1e2000000000`: ID-11 (valid and capped without expanding the number, so
+  it costs no more work than `1e400`). The response has an unexpected `Content-Type`: ID-11 (not checked).
 - A response body with trailing content after the JSON object, a malformed escape, or an `access_token` that is JSON `null`: ID-11 (invalid
   response, ID-12; Jackson 3 parses strictly). The parse error is neither the cause nor part of the message of the `TokenExchangeException`
   (ID-12).
@@ -137,9 +138,11 @@ Authority never reaches external calls, detached work, messages, logs, the MDC o
 - Several `AuthorityPropagator` beans: ID-04 (the `@Primary` one; with none primary, startup fails).
 - `authority.propagation` is `EXCHANGE`, blank or `bogus`: ID-04 (relaxed binding means `exchange`; blank means `forward`; `bogus` fails
   startup, even under lazy initialization).
-- `authority.propagation=exchange` with a missing, blank, relative, hostless or non-HTTP `authority.exchange.token-uri`, or a missing or
-  blank client id or secret, or without Jackson 3 on the classpath: ID-11 (startup fails, even under lazy initialization); with an
-  `AuthorityPropagator` bean, the `authority.exchange.*` properties are not validated.
+- `authority.propagation=exchange` with a missing, blank, relative, hostless or non-HTTP `authority.exchange.token-uri`, or one with
+  userinfo, or a missing or blank client id or secret, or without Jackson 3 on the classpath: ID-11 (startup fails, even under lazy
+  initialization); with an `AuthorityPropagator` bean, the `authority.exchange.*` properties are not validated.
+- `authority.exchange.token-uri` is `https://u:pw@host/t` with `forward` or an `AuthorityPropagator` bean, so it binds unvalidated: ID-06 (the
+  properties' `toString()` prints `https://<redacted>@host/t`; an unparsable value containing `@` prints `<redacted>`).
 - A `null` argument passed to the M5 contract: CORE-16.
 
 ## Requirements *(mandatory)*
@@ -169,9 +172,11 @@ credential is forwarded; ID-08 reports the derived initiator as invalid (DESIGN 
 **ID-08** `[M5]` WHEN a request is authenticated, as IN-04 defines, and `INITIATOR` is neither already bound, for example from a trusted
 `Boundrail-Initiator` header, nor contributed by a `ContextContributor` (IN-05), the library SHALL bind `INITIATOR = "user:" +
 authentication.getName()`, in the scope of ID-02. A trusted inbound `Boundrail-Initiator` header SHALL take precedence over a contribution, and a
-contribution over the derived value (DESIGN D27, D59). IF `authentication.getName()` is `null` or empty, or the derived value is not a valid
-initiator (ID-07), THEN the filter SHALL leave `INITIATOR` unbound and SHALL report one `INVALID_VALUE` violation for `boundrail.initiator`, with the
-boundary and destination DIAG-08 defines, and the request SHALL continue. Verified by IT-4.1, IT-4.4, IT-4.5 and unit tests.
+contribution over the derived value (DESIGN D27, D59). A contributor's call to `ContextContributions.invalid(INITIATOR)` binds nothing and is not a
+contribution (IN-07): after such a call, with no contributor putting `INITIATOR`, the library SHALL still bind the derived value. IF
+`authentication.getName()` is `null` or empty, or the derived value is not a valid initiator (ID-07), THEN the filter SHALL leave `INITIATOR`
+unbound and SHALL report one `INVALID_VALUE` violation for `boundrail.initiator`, with the boundary and destination DIAG-08 defines, and the
+request SHALL continue. Verified by IT-4.1, IT-4.4, IT-4.5 and unit tests.
 
 **ID-10** `[M5]` `Authority` SHALL have the factory `of(String subject, String credential, Instant expiresAt)` and the accessor
 `Optional<Instant> expiresAt()` declared in [contracts/identity-api.md](contracts/identity-api.md). `expiresAt()` SHALL return the given
@@ -224,10 +229,12 @@ valid response SHALL have status 200 and a body that is exactly one JSON object,
 string, which SHALL be the returned credential; `token_type` and the response's `Content-Type` SHALL NOT be checked. `expires_in`, when present,
 SHALL be a JSON number with a whole value of zero or more, such as `3600`, `3600.0` or `1e3`, giving seconds counted from when the response is
 received; a string, `null`, a fraction, a negative number or NaN is not valid. Numbers SHALL be read exactly, not through a `double`, so a fraction
-is never rounded to a whole value. A number the strict parser cannot represent as an exact decimal, such as `1e2147483648` (an exponent beyond the
-`int` range), is not valid. A whole value too large for a `long`, or too large for a `double`, such as `1e400`, is valid, and the cache lifetime it
-gives is capped as ID-04 already caps it, and at the largest instant the implementation can represent. A value at or above that representable range
-SHALL be capped without being expanded to its full integer value, so a short value cannot cause unbounded work.
+is never rounded to a whole value. A number beyond the strict parser's limits is not valid: one it cannot represent as an exact decimal, such as
+`1e2147483648` (an exponent beyond the `int` range), or one longer than Jackson 3's default maximum number length (`StreamReadConstraints`, 1000
+digits), such as a whole number of 1001 digits (DESIGN D69). A whole value too large for a `long`, or too large for a `double`, such as `1e400`, is
+valid, and the cache lifetime it gives is capped as ID-04 already caps it, and at the largest instant the implementation can represent (the cap). A
+value at or above the cap SHALL be capped without being expanded to its full integer value, so a short value such as `1e999999999` cannot cause
+unbounded work.
 The exchanged token SHALL be cached as ID-04 defines; IF the
 response has no `expires_in`, THEN the token SHALL be returned and not cached, and a token whose cache lifetime would be zero or less is not cached
 either. The cache SHALL hold at most 10,000 entries; adding an entry to a full cache SHALL first evict the entry added earliest. A cached entry
@@ -256,7 +263,11 @@ Verified by unit tests.
 **ID-06** `[M5]` `AUTHORITY` SHALL NOT be written to `EXTERNAL_CALL`, `MESSAGE`, MDC, logs or violation reports, and SHALL be absent from snapshots
 filtered for `DETACHED`. No log entry the library writes, and no message of an exception the library creates, SHALL contain a credential, an
 exchanged token or the exchange client secret. `toString()` of the properties record that binds `authority.exchange` SHALL NOT contain the
-client secret (DESIGN D63). Verified by IT-4.5, IT-4.6 and unit tests; the `MESSAGE` clause is verified by IT-4.9 in
+client secret (DESIGN D63), nor the userinfo of `authority.exchange.token-uri`, whichever propagator is selected, so also when the value was never
+validated (ID-04, ID-11). It SHALL print `token-uri` as follows: a value that `java.net.URI` parses with a host and userinfo is printed with its
+userinfo replaced by `<redacted>`, so `https://u:pw@host/t` prints `https://<redacted>@host/t`; any other value that contains `@`, including one
+`java.net.URI` cannot parse, such as `https://u:pw@ho st/t`, is printed as `<redacted>`; every other value is printed unchanged, and an unset value
+as `null` (DESIGN D68). Verified by IT-4.5, IT-4.6 and unit tests; the `MESSAGE` clause is verified by IT-4.9 in
 [007-kafka](../007-kafka/spec.md).
 
 ### Documentation
@@ -279,7 +290,7 @@ Jackson 3 missing from the classpath (ID-11); and, while HTTP client support is 
 | Property | Default | Meaning |
 |---|---|---|
 | `authority.propagation` | `forward` | `forward` or `exchange`, matched with Spring Boot's relaxed enum binding; an empty or blank value means `forward`, and any value that matches neither, such as `bogus`, fails startup, even under lazy initialization; an `AuthorityPropagator` bean overrides it (ID-04) |
-| `authority.exchange.token-uri` | unset | RFC 8693 token endpoint, an absolute `http` or `https` URI with a host and no userinfo; required when the built-in `exchange` propagator is selected, and any other value fails startup, even under lazy initialization (ID-11) |
+| `authority.exchange.token-uri` | unset | RFC 8693 token endpoint, an absolute `http` or `https` URI with a host and no userinfo; required when the built-in `exchange` propagator is selected, and any other value fails startup, even under lazy initialization (ID-11); its userinfo is never in the properties' `toString()`, whichever propagator is selected (ID-06) |
 | `authority.exchange.client-id` | unset | Client id for HTTP Basic authentication at the token endpoint; required, not blank, when the built-in `exchange` propagator is selected (ID-11) |
 | `authority.exchange.client-secret` | unset | Client secret for HTTP Basic authentication at the token endpoint; required, not blank, when the built-in `exchange` propagator is selected; never in a log entry, exception message or the properties' `toString()` (ID-11, ID-06) |
 

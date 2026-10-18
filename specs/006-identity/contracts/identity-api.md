@@ -47,4 +47,4 @@ It has no public constructor; only the library throws it.
 `IllegalArgumentException` when its key is `BuiltInKeys.AUTHORITY`.
 
 The Spring module adds no other public types in this feature beyond the `BoundrailContextProperties.Authority` properties record that binds
-the properties in [spec.md](../spec.md#configuration); its `toString()` never contains the client secret (ID-06).
+the properties in [spec.md](../spec.md#configuration); its `toString()` never contains the client secret, nor the userinfo of `token-uri` (ID-06).
