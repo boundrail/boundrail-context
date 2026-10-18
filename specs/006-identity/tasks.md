@@ -469,7 +469,7 @@ Review follow-ups from T016's feature review, approved by the user on 2026-10-18
     the Javadoc of `toString()` updated ([plan.md](plan.md#spring-wiring)).
   - Completes: ID-06 (the userinfo of `token-uri` in the properties' `toString()`, whichever propagator is selected, D68).
   - Verify: Unit `AuthorityPropertiesTest` in `:boundrail-context-spring`; then `./gradlew check`.
-- [ ] T016 Verify each requirement one by one against the code and its tests, using the coverage table in
+- [x] T016 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-16, ID-02 – ID-06, ID-08 – ID-12, including the 2026-10-18 amendments (ID-06 and D68 in T016b; ID-08's
     `invalid(INITIATOR)`, ID-11 and D69 in T016a).
@@ -486,7 +486,8 @@ Review follow-ups from T016's feature review, approved by the user on 2026-10-18
     imports `tools.jackson`; nothing new is static (RT-09); the
     exchange request never goes through a Spring client; no log statement or exception message in the new code takes a credential, token,
     secret or body; `AUTHORITY` is still never written to the MDC (LOG-02).
-  - spec.md's Status, roadmap.md's M5 and the README, if it lists milestones, are updated by the spec-creator, not here.
+  - spec.md's Status, roadmap.md's M5 and the README stay as they are, as for 002 – 005; the user chose on 2026-10-18 to add a closed
+    state for M0 – M5 on a separate `docs/<topic>` branch.
 
   Run `./gradlew check` fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run. With the CI run green, this closes the feature.
 
@@ -510,11 +511,11 @@ Review follow-ups from T016's feature review, approved by the user on 2026-10-18
 - [x] Q1 – Q8 written into spec.md and design.md by the spec-creator (D64)
 - [x] T001's outcome recorded in plan.md, and any choice it raises settled by the user (B2, 2026-10-13)
 - [x] Q9 settled by the user and written into spec.md (D65)
-- [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-4.1 – IT-4.8
-- [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M5): CORE-16, ID-02 – ID-06, ID-08, ID-10 – ID-12;
+- [x] Scenarios enabled and green on JDK 21 and JDK 25: IT-4.1 – IT-4.8
+- [x] Requirements implemented with tests named after their IDs (roadmap traceability row M5): CORE-16, ID-02 – ID-06, ID-08, ID-10 – ID-12;
   the Javadoc statement of ID-09 checked by inspection (TDD exception)
-- [ ] Guard scenarios (IT-4.4 in T007, IT-4.7 in T008, IT-4.6 in T015) shown red against their temporary change, and the change reverted
-- [ ] T016a's guards (two invalid-body rows, the escape test, `1e2000000000`, `invalid(INITIATOR)`) shown red against their temporary
+- [x] Guard scenarios (IT-4.4 in T007, IT-4.7 in T008, IT-4.6 in T015) shown red against their temporary change, and the change reverted
+- [x] T016a's guards (two invalid-body rows, the escape test, `1e2000000000`, `invalid(INITIATOR)`) shown red against their temporary
   change, and the change reverted
-- [ ] `boundrail-context-core` still has no runtime dependencies; Spring Security, Micrometer and Jackson 3 are `compileOnly` in `-spring`
-- [ ] `./gradlew check` green
+- [x] `boundrail-context-core` still has no runtime dependencies; Spring Security, Micrometer and Jackson 3 are `compileOnly` in `-spring`
+- [x] `./gradlew check` green
