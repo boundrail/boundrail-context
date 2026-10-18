@@ -24,6 +24,9 @@ with the requirement or scenario ID it covers.
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
   checks it. A negative assertion in the same test as a positive assertion that is red before the task is not a guard.
 - Review follow-ups get a letter suffix (T004a, …).
+- Approved by the user on 2026-10-18, after T016's feature review: the follow-ups T016a (test-only guards) and T016b (D68), on the spec
+  changes of 0a171ed (ID-06 and D68, ID-08, ID-11 and D69, Edge Cases). T016's verification is re-run after them. T016a's guard changes are
+  listed in [plan.md](plan.md#guard-tests) for the user's review.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -295,7 +298,7 @@ application set its own.
     - `ID-11 with the built-in exchange propagator a missing, blank, relative, non-HTTP or host-less token-uri fails startup, also with lazy
       initialization` (parametrized): unset, ``, `   `, `/token`, `ftp://h/token`, `http:foo` and `http:///x` (Q5), `not a uri`,
       `https://edge:pw@host/token` (userinfo, D66; the failure message never contains it);
-      `HTTPS://h/token` starts;
+      `HTTPS://h/token` starts (display name extended with the userinfo row in T016a);
     - `ID-11 a missing or blank client-id or client-secret fails startup, also with lazy initialization`;
     - `ID-06 the startup failure names the property and never contains the client secret`: the failure's message chain lacks the secret;
     - `ID-04 with an AuthorityPropagator bean, or with forward, the exchange properties are not validated`: both start with
@@ -405,16 +408,71 @@ application set its own.
 ## Phase 5: User Story 3 - Authority never leaks (Priority: P1)
 
 Delivered inside the tasks above, because each guarantee is the negative side of a positive test there: IT-4.5 in T006, IT-4.6 in T015;
-ID-06's unit clauses in T003 (properties), T004 (MDC, `DETACHED`), T008 (external, unknown), T011 (startup messages) and T013 (exception
-messages, logs). The `MESSAGE` clause is IT-4.9 in 007-kafka.
+ID-06's unit clauses in T003 (properties), T004 (MDC, `DETACHED`), T008 (external, unknown), T011 (startup messages), T013 (exception
+messages, logs) and T016b (`token-uri` userinfo in the properties' `toString()`, D68). The `MESSAGE` clause is IT-4.9 in 007-kafka.
 
 ---
 
 ## Phase 6: Close
 
+Review follow-ups from T016's feature review, approved by the user on 2026-10-18; T016 is re-run after them.
+
+- [ ] T016a [P] Test-only guards from the review: ID-08's `invalid(INITIATOR)`, escapes and D69 for ID-11 and ID-12, and a display name.
+  - Red: each test or row below already passes, so it is a guard: show it red against the named temporary change to the finished code, then
+    revert the change before the commit ([plan.md](plan.md#guard-tests)):
+    - in `springtest/TokenExchangeFailureTest.java`, two rows in `ID-12 a status other than 200, or a body that is not valid, throws
+      TokenExchangeException and the request is not sent`; orders receives nothing and the exception has no cause, as for the other rows:
+      - `malformed escape`: the body `{"access_token":"\x"}` (Java `"{\"access_token\":\"\\x\"}"`); red against the propagator's mapper
+        temporarily enabling `JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER`, which reads the token `x` and sends the call;
+      - `expires_in of 1001 digits` (D69): `{"access_token":"t","expires_in":<"1" + "0".repeat(1000)>}`; red against the mapper temporarily
+        built with `StreamReadConstraints.builder().maxNumberLength(Integer.MAX_VALUE)`, which reads a valid, capped value and sends the call;
+    - in `springtest/TokenExchangeTest.java`: `ID-11 an access_token with JSON escapes is sent decoded`: the token endpoint answers
+      `{"access_token":"x\u0041\/y"}` with 200; orders receives `Authorization: Bearer xA/y`; red against the body temporarily parsed with
+      Boot's `BasicJsonParser.parseMap` instead of the mapper, which mangles escapes (T001: `\u0041` → `u0041`);
+    - in `springtest/TokenExchangeCacheTest.java`: `1e2000000000` added to the `@ValueSource` of `ID-11 an expires_in too large for the clock
+      is valid and the cache end is capped`, next to `1e999999999` (the Edge Cases value: capped without expanding the number); red against
+      `cacheEnd` temporarily without the cap comparison, `received.plusSeconds(seconds.longValueExact() - 30)`, which throws
+      `ArithmeticException` for it;
+    - in `springtest/InitiatorDerivationTest.java`: `ID-08 a contributor's invalid(INITIATOR) is not a contribution: with nothing putting
+      INITIATOR the derived user:<name> is bound, with the one INVALID_VALUE from IN-07`: a contributor that only calls
+      `contributions.invalid(INITIATOR)`; the chain sees `user:alice` for alice's JWT; exactly one violation: `INVALID_VALUE` for
+      `boundrail.initiator`, boundary `INTERNAL_CALL`, no destination; red against `Contributions.invalid` temporarily adding the key to
+      `contributed`, which skips the derivation;
+    - in `springtest/TokenExchangeConfigurationTest.java`: the token-uri test's display name becomes `ID-11 with the built-in exchange
+      propagator a missing, blank, relative, non-HTTP or host-less token-uri, or one with userinfo, fails startup, also with lazy
+      initialization`, naming the `https://edge:pw@host/token` row it already has (D66). No assertion changes, so this is neither a guard
+      nor a TDD exception.
+  - Green: none. No production code changes; every temporary change is reverted before the commit.
+  - Completes: ID-08 (`invalid(INITIATOR)` is not a contribution); ID-11 (malformed and valid escapes, `1e2000000000`, a number beyond the
+    parser's maximum length, D69; the userinfo display name); ID-12 (the two invalid-body rows).
+  - Verify: Unit `TokenExchangeFailureTest`, `TokenExchangeTest`, `TokenExchangeCacheTest`, `TokenExchangeConfigurationTest` and
+    `InitiatorDerivationTest` in `:boundrail-context-spring`: each guard red against its temporary change and green after the revert (the
+    leader reports each red in the task report); then `./gradlew check`.
+- [ ] T016b [P] [US3] `token-uri` without its userinfo in the properties' `toString()` (ID-06, D68).
+  - Red, in `springtest/AuthorityPropertiesTest.java`:
+    - `ID-06 toString of the exchange properties and of BoundrailContextProperties prints token-uri without its userinfo, whichever
+      propagator is selected` (parametrized over the value and the selection: `forward`, and `exchange` with an `AuthorityPropagator` bean,
+      the two selections where `token-uri` binds unvalidated; read from `BoundrailContextProperties.authority()`):
+      - `https://u:pw@host/t` → `tokenUri=https://<redacted>@host/t`;
+      - `https://edge-user@host:8443/t?q=1` → `tokenUri=https://<redacted>@host:8443/t?q=1`;
+      - `https://u:pw@ho st/t` (`java.net.URI` cannot parse it) → `tokenUri=<redacted>`;
+      - `https://u:pw@ho_st/t` (parses with no host) → `tokenUri=<redacted>`;
+      - `https://host/a@b` (parses with a host and no userinfo, and contains `@`; accepted by the user on 2026-10-18) →
+        `tokenUri=<redacted>`;
+      - `https://host/t` and `relative` → unchanged; unset → `tokenUri=null`;
+      - for every value, neither the exchange record's nor `BoundrailContextProperties`' `toString()` contains `u:pw` or `edge-user`, and
+        both still show `clientSecret=<redacted>` for a set secret;
+      - `https://host/t` with the built-in `exchange` and valid client settings prints unchanged too.
+  - Green: in `spring/BoundrailContextProperties.java`, `Exchange.toString()` prints `tokenUri` through a private static helper: `null` →
+    `null`; no `@` → unchanged; `new URI(value)` with `getHost() != null` and `getRawUserInfo() != null` (the parse of ID-11's validation) →
+    the value with the raw userinfo after `//` replaced by `<redacted>`; anything else, including a `URISyntaxException`, → `<redacted>`;
+    the Javadoc of `toString()` updated ([plan.md](plan.md#spring-wiring)).
+  - Completes: ID-06 (the userinfo of `token-uri` in the properties' `toString()`, whichever propagator is selected, D68).
+  - Verify: Unit `AuthorityPropertiesTest` in `:boundrail-context-spring`; then `./gradlew check`.
 - [ ] T016 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
-  - Requirements: CORE-16, ID-02 – ID-06, ID-08 – ID-12.
+  - Requirements: CORE-16, ID-02 – ID-06, ID-08 – ID-12, including the 2026-10-18 amendments (ID-06 and D68 in T016b; ID-08's
+    `invalid(INITIATOR)`, ID-11 and D69 in T016a).
   - SC-001: AuthorityPropagationIT has no `@Disabled` left except IT-4.9 (`Pending: M6`); IT-4.1 – IT-4.8 pass in `integrationTestJdk21` and
     `integrationTestJdk25`.
   - SC-002: IT-4.6. SC-003: IT-4.3 and T012's unit tests.
@@ -440,7 +498,8 @@ messages, logs). The `MESSAGE` clause is IT-4.9 in 007-kafka.
   initiator). T009 needs T008.
 - US2: T010 needs T001, T003 and T008. T011 needs T010. T012 needs T010 (and T011, so the exchange edge's settings are validated). T013 needs
   T010. T014 needs T013. T015 needs T012 (the exchange edge) and T008.
-- T016 comes last.
+- T016a and T016b need T015 and are independent of each other (different files).
+- T016 comes last, after T016a and T016b.
 - Tasks touching the same file run in sequence (`ContextAuthenticationFilter`, `ContextClientInterceptor`,
   `BoundrailContextAutoConfiguration`, `ExchangeAuthorityPropagator`, `EdgeApp` and `AuthorityPropagationIT` are touched by several).
 - Every task is committed and reviewed on its own, on branch `006-identity`.
@@ -455,5 +514,7 @@ messages, logs). The `MESSAGE` clause is IT-4.9 in 007-kafka.
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M5): CORE-16, ID-02 – ID-06, ID-08, ID-10 – ID-12;
   the Javadoc statement of ID-09 checked by inspection (TDD exception)
 - [ ] Guard scenarios (IT-4.4 in T007, IT-4.7 in T008, IT-4.6 in T015) shown red against their temporary change, and the change reverted
+- [ ] T016a's guards (two invalid-body rows, the escape test, `1e2000000000`, `invalid(INITIATOR)`) shown red against their temporary
+  change, and the change reverted
 - [ ] `boundrail-context-core` still has no runtime dependencies; Spring Security, Micrometer and Jackson 3 are `compileOnly` in `-spring`
 - [ ] `./gradlew check` green

@@ -4,13 +4,16 @@
 
 **Input**: Feature specification from `/specs/006-identity/spec.md`, contract [contracts/identity-api.md](contracts/identity-api.md),
 decisions D58 – D63 and the D35 amendment in [design.md](../../docs/design.md), the WIRE-04 sentence of
-[003-http-trust](../003-http-trust/spec.md), the merged code of 002 – 005 (`main` at 4eaebfe)
+[003-http-trust](../003-http-trust/spec.md), the merged code of 002 – 005 (`main` at 4eaebfe); for the review follow-ups T016a and T016b, the
+spec changes of 0a171ed (ID-06 and D68, ID-08, ID-11 and D69, Edge Cases)
 
 **Status**: Approved by the user on 2026-10-13: plan, tasks, the TDD exception row for the ID-09 Javadoc (T006), and the three guard
 scenarios IT-4.4 (T007), IT-4.7 (T008) and IT-4.6 with its two reds (T015). Q1 – Q8 are closed with the recommended answers, now in
 spec.md and design.md D64 ([Spec Gaps](#spec-gaps)). The spike T001 ran on 2026-10-13 ([Spike](#spike-t001)); on its outcome the user
 chose B2: the built-in exchange propagator requires Jackson 3, `compileOnly` in `-spring`, and fails startup without it. Q9 (duplicate
-keys in the token response) is settled: invalid, through Jackson's strict duplicate detection (D65).
+keys in the token response) is settled: invalid, through Jackson's strict duplicate detection (D65). On 2026-10-18, after T016's feature
+review, the user approved the follow-ups T016a (test-only guards) and T016b (D68); the user approved T016a's guard changes in
+[Guard Tests](#guard-tests) the same day.
 
 ## Summary
 
@@ -21,7 +24,8 @@ Authority is only ever established from verified authentication and never leaks,
   - the `AuthorityPropagator` interface (ID-03, ID-04);
   - the `BoundExecutors` Javadoc for ID-09 (TDD exception).
 - `boundrail-context-spring`, in the existing auto-configuration:
-  - the `boundrail.context.authority.*` properties; the exchange record's `toString()` redacts the client secret (ID-04, ID-06, ID-11);
+  - the `boundrail.context.authority.*` properties; the exchange record's `toString()` redacts the client secret and the userinfo of
+    `token-uri` (ID-04, ID-06, ID-11, D68);
   - `ContextAuthenticationFilter` binds `AUTHORITY` from an `AbstractOAuth2TokenAuthenticationToken`, whether or not it is already bound,
     and derives `INITIATOR = user:<name>` after trusted headers and contributions; `ContextContributions.put(AUTHORITY, …)` throws
     `IllegalArgumentException` (ID-02, ID-08);
@@ -77,8 +81,8 @@ credential and one synchronized map lookup per internal call; a miss adds one HT
 - Principle I: the authority and initiator are bound with `Context.with` in the authentication filter's existing nested scope.
 - No work from M6: no Kafka (IT-4.9 stays disabled).
 
-**Scale/Scope**: 1 contract; 12 requirements (CORE-16, ID-02 – ID-06, ID-08 – ID-12); 8 scenarios; a spike, 15 red-green tasks (T002 – T015)
-and a close task (T016)
+**Scale/Scope**: 1 contract; 12 requirements (CORE-16, ID-02 – ID-06, ID-08 – ID-12); 8 scenarios; a spike, 15 red-green tasks (T002 – T015),
+two review follow-ups (T016a, guards only; T016b) and a close task (T016)
 
 ## Constitution Check
 
@@ -151,7 +155,7 @@ No client exception message contained the form's secrets, the Basic credentials 
 `USE_BIG_INTEGER_FOR_INTS` so numbers are exact; never the application's mapper bean, whose customisation could make it lenient. With
 `exchange` selected (and no replacing bean) and Jackson 3 absent, startup fails, also with lazy initialization. `NaN` is not valid; a
 beyond-`long` or beyond-`double` `expires_in` (`1e400`) is too large, so valid and capped without being expanded; one beyond the parser's
-limits (`1e2147483648`) is not valid (D67). The parse exception is never a cause and never in a message. The
+limits (`1e2147483648`, D67; a number longer than 1000 digits, D69) is not valid. The parse exception is never a cause and never in a message. The
 propagator catches `HttpTimeoutException` before the general `IOException`. Q3 and Q5 are confirmed by the spike; Q9 is new.
 
 ## Research Notes
@@ -176,6 +180,13 @@ propagator catches `HttpTimeoutException` before the general `IOException`. Q3 a
   built-in selection; its `toString()` prints `clientSecret=<redacted>` when set (D63), so the enclosing records' `toString()` is safe too.
   The nested record's simple name `Authority` is fixed by the contract; inside `BoundrailContextProperties` the core type is written fully
   qualified where needed.
+- **`token-uri` in `toString()` (ID-06, D68; T016b).** `Exchange.toString()` prints `tokenUri` through a private static helper, whichever
+  propagator is selected (the record knows nothing of the selection): `null` → `null`; a value without `@` → unchanged; otherwise
+  `new URI(value)`, the parse ID-11's validation uses, and with `getHost() != null` and `getRawUserInfo() != null` the value with the raw
+  userinfo that follows `//` replaced by `<redacted>` (string surgery on the original, so the scheme's case, port, path, query and fragment
+  stay as given; the multi-argument `URI` constructor would percent-encode `<redacted>`); any other value, including one that throws
+  `URISyntaxException` or parses with a registry authority and no host (`https://u:pw@ho_st/t`), → `<redacted>`. `toString()` never
+  throws. `https://host/a@b` prints `<redacted>` (accepted by the user on 2026-10-18).
 - **Authority binding (ID-02, ID-10).** A package-private functional interface `AuthorityExtraction { Optional<Authority>
   from(Authentication) }`. Its one implementation, in a nested configuration of `AuthenticationConfiguration` conditional on
   `AbstractOAuth2TokenAuthenticationToken`, returns `Authority.of(getName(), token.getTokenValue(), token.getExpiresAt())`, or the two-argument
@@ -229,7 +240,9 @@ propagator catches `HttpTimeoutException` before the general `IOException`. Q3 a
     exchange for audience <a> failed with status 200: no valid response"`; no response → `"… failed: <reason>"`. The reason is fixed text
     ("no valid response", "endpoint unreachable", "timed out", "interrupted"), never the body. A parse failure gives "no valid response"
     with no cause (its message can echo the body, B2); the parse catch also drops the `NumberFormatException` Jackson throws for a number
-    beyond its limits (e.g. `expires_in` `1e2147483648`), which gives "no valid response" too (user decision 2026-10-18).
+    beyond its limits (e.g. `expires_in` `1e2147483648`), which gives "no valid response" too (user decision 2026-10-18). Jackson 3's
+    default `StreamReadConstraints` (maximum number length 1000) is kept, so a longer number is a `JacksonException` and "no valid
+    response" (D69); T016a pins it, and a malformed escape, with guard rows.
   - Exceptions from `send`, caught in this order: `HttpTimeoutException` (including `HttpConnectTimeoutException`) with a deadline bound →
     `counter.increment(TIMEOUT)` and `DeadlineExceededException(TIMEOUT, e)`, without one → `TokenExchangeException("timed out", e)`; any
     other `IOException` → `TokenExchangeException("endpoint unreachable", e)`; `InterruptedException` → interrupt status restored,
@@ -283,7 +296,8 @@ Tasks that change shared topology code (T006, T007, T008, T012, T015) also run `
 ## Spec Gaps
 
 Q1 – Q8 are closed by the user's decisions on 2026-10-13, each with the recommended answer, now in [spec.md](spec.md) and design.md;
-their tests are in the tasks named. Q9 came from T001 and is closed by the user's decision (invalid; D65).
+their tests are in the tasks named. Q9 came from T001 and is closed by the user's decision (invalid; D65). The 2026-10-18 follow-ups
+(ID-06 and D68, ID-08's `invalid(INITIATOR)`, ID-11 and D69) raised no new gap.
 
 | Gap | Status | Question | Decision | Tasks |
 |---|---|---|---|---|
@@ -309,6 +323,10 @@ A negative assertion that sits in the same test as a positive assertion that is 
 example, "external and unknown calls get no `Authorization`" sits with "an internal call gets `Bearer <credential>`" in T008, and "the
 authority is not in the MDC or in the snapshot filtered for `DETACHED`" with "the authority is bound" in T004).
 
+T016a also renames the display name of TokenExchangeConfigurationTest's token-uri test to name its existing userinfo row; it changes no
+assertion, so it is neither a guard nor a TDD exception, and is not listed. In T016b the rows already green (`https://host/t`, `relative`,
+unset) sit in the same test as the red userinfo rows, so they are not guards either.
+
 | Task | Scenario or test | Why green first | Red shown against (temporary, reverted) |
 |---|---|---|---|
 | T007 | IT-4.4 No verified credential, no authority | An anonymous request never had an authority or initiator, and untrusted headers were reported since M2 | ID-08's derivation using `authentication != null && authentication.isAuthenticated()` instead of the trust resolver, so the anonymous token gives `user:anonymousUser` |
@@ -317,6 +335,11 @@ authority is not in the MDC or in the snapshot filtered for `DETACHED`" with "th
 | T012 | `ID-11 a response without expires_in, or one whose lifetime is 30 seconds or less, is used and not cached` (all four rows) | Before T012 nothing was cached | (a) a response without `expires_in` cached until `Instant.MAX`: the absent row; (b) the `end.isAfter(received)` check skipped: the 30, 0 and passed-source-expiry rows; (c) the source expiry ignored in the cache end: the passed-source-expiry row |
 | T013 | `ID-11 an expires_in of 3600.0 or 1e3 is valid` | Before T013 any number was accepted | `case BigDecimal decimal -> false` (only `BigInteger` accepted): both rows fail |
 | T015 | IT-4.6 No credential in any output | A negative property of all M5 code; the earlier tasks pin each part in unit tests | (a) `Authority.toString()` printing the credential: the recorded snapshot `toString()` fails; (b) `MdcScopeListener` writing `AUTHORITY` to the MDC as `authority.credential()` (the `AUTHORITY` skip removed and the `isLoggable` filter bypassed for it; removing the skip alone changes nothing, because `AUTHORITY` is not loggable under the fixed built-in rules (POL-06) and `toString()` redacts; accepted by the user on 2026-10-18): the recorded MDC fails |
+| T016a | `malformed escape` row (`{"access_token":"\x"}`) in `ID-12 a status other than 200, or a body that is not valid, ...` | Jackson 3 rejects a malformed escape since T010 | The propagator's mapper with `JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER` enabled: the token `x` is sent |
+| T016a | `expires_in of 1001 digits` row in the same test (D69) | Jackson 3's default `StreamReadConstraints` rejects it since T010 | The mapper built with `StreamReadConstraints.builder().maxNumberLength(Integer.MAX_VALUE)`: a valid, capped value, and the call is sent |
+| T016a | `ID-11 an access_token with JSON escapes is sent decoded` | Jackson 3 decodes escapes since T010 | The body parsed with Boot's `BasicJsonParser.parseMap` instead of the mapper: `\u0041` becomes `u0041` (T001) |
+| T016a | `1e2000000000` row in `ID-11 an expires_in too large for the clock is valid and the cache end is capped` | The cap comparison of T012 handles any exponent without expanding the number | `cacheEnd` without the cap comparison, `received.plusSeconds(seconds.longValueExact() - 30)`: `ArithmeticException` |
+| T016a | `ID-08 a contributor's invalid(INITIATOR) is not a contribution: ...` | `Contributions.invalid` never recorded a contribution (IN-07) | `Contributions.invalid` adding the key to `contributed`: the derivation is skipped and `INITIATOR` is unbound |
 
 ## TDD Exceptions
 
@@ -351,7 +374,7 @@ boundrail-context-core/src/main/java/io/github/boundrail/context/
 boundrail-context-core/src/test/java/io/github/boundrail/context/
 └── AuthorityTest.java                                              # T002
 boundrail-context-spring/src/main/java/io/github/boundrail/context/spring/
-├── BoundrailContextProperties.java (Authority, Exchange)            # T003
+├── BoundrailContextProperties.java (Authority, Exchange)            # T003, T016b
 ├── BoundrailContextAutoConfiguration.java                          # T004, T006, T008, T010, T011
 ├── ContextAuthenticationFilter.java (ID-02, ID-08)                 # T004 – T007
 ├── AuthorityExtraction.java (package-private)                      # T004
@@ -361,9 +384,9 @@ boundrail-context-spring/src/main/java/io/github/boundrail/context/spring/
 ├── ExchangeAuthorityPropagator.java (package-private, Jackson 3)   # T010 – T015
 └── TokenExchangeException.java                                     # T013
 boundrail-context-spring/src/test/java/io/github/boundrail/context/spring/
-├── AuthorityPropertiesTest.java  AuthorityBindingTest.java  InitiatorDerivationTest.java
+├── AuthorityPropertiesTest.java (T016b)  AuthorityBindingTest.java  InitiatorDerivationTest.java (T016a)
 ├── AuthorityPropagationTest.java
-├── TokenExchangeTest.java  TokenExchangeConfigurationTest.java  TokenExchangeCacheTest.java  TokenExchangeFailureTest.java
+├── TokenExchangeTest.java  TokenExchangeConfigurationTest.java  TokenExchangeCacheTest.java  TokenExchangeFailureTest.java (all T016a)
 ├── ContextAuthenticationFilterTest.java  ContextClientInterceptorTest.java (one test replaced)
 └── support/RecordingServer.java (status, body, request bodies)      # T010
 boundrail-context-spring/build.gradle.kts (Jackson 3 compileOnly, testImplementation)  # T010
@@ -385,12 +408,12 @@ the only public changes. Everything else new in `-spring` is package-private, as
 | ID-03 | T008 (internal only, application-set kept, empty, ordering, D60), T009 (WIRE-08) |
 | ID-04 | T003 (`propagation` binding), T008 (forward default, bean replaces, `@Primary`, none primary, lazy), T012 (cache) |
 | ID-05 | T015 |
-| ID-06 | T003 (properties `toString`), T004 (MDC, `DETACHED`), T008 (external, unknown), T011 (startup messages), T013 (exception messages, logs), T015 (IT-4.6, guard) |
-| ID-08 | T006 (derivation, precedence, non-OAuth2), T007 (invalid name, unauthenticated) |
+| ID-06 | T003 (properties `toString`), T004 (MDC, `DETACHED`), T008 (external, unknown), T011 (startup messages), T013 (exception messages, logs), T015 (IT-4.6, guard), T016b (`token-uri` userinfo in `toString`, D68) |
+| ID-08 | T006 (derivation, precedence, non-OAuth2), T007 (invalid name, unauthenticated), T016a (`invalid(INITIATOR)` is not a contribution, guard) |
 | ID-09 | T006 (Javadoc: TDD exception) |
 | ID-10 | T002, T004 (bound from `getExpiresAt()`) |
-| ID-11 | T010 (request, response, whole-body `null`), T011 (startup validation, Jackson 3 required), T012 (cache, capped lifetime), T013 (validity) |
-| ID-12 | T013 (failures, message), T014 (timeouts) |
+| ID-11 | T010 (request, response, whole-body `null`), T011 (startup validation, Jackson 3 required), T012 (cache, capped lifetime), T013 (validity), T016a (malformed and valid escapes, `1e2000000000`, more than 1000 digits (D69), userinfo display name; guards) |
+| ID-12 | T013 (failures, message), T014 (timeouts), T016a (malformed-escape and 1001-digit invalid-body rows, guards) |
 | IT-4.1 | T006 |
 | IT-4.2 | T008 |
 | IT-4.3 | T012 |
