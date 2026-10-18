@@ -96,7 +96,7 @@ T006, and `integration-tests`' `spring-boot-kafka` in T010.
 
 ## Phase 2: Foundational
 
-- [ ] T002 `AdapterSupport` in `io.github.boundrail.context.spring.internal` (D70).
+- [x] T002 `AdapterSupport` in `io.github.boundrail.context.spring.internal` (D70).
   - Red, in `springtest/internal/AdapterSupportTest.java` (`ApplicationContextRunner` with `BoundrailContextAutoConfiguration`, a
     `SimpleMeterRegistry`, a recording `ViolationListener`, `OutputCaptureExtension`):
     - `POL-07 AdapterSupport gives the effective policy, merged with every ContextPolicy bean`: `policy().keys()` holds the built-in keys and

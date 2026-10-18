@@ -2,10 +2,13 @@ package io.github.boundrail.context.spring;
 
 import io.github.boundrail.context.Authority;
 import io.github.boundrail.context.AuthorityPropagator;
+import io.github.boundrail.context.Boundary;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.DestinationClassifier;
 import io.github.boundrail.context.HostPatternClassifier;
+import io.github.boundrail.context.Violation;
+import io.github.boundrail.context.spring.internal.AdapterSupport;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.DispatcherType;
 import java.net.URI;
@@ -71,6 +74,40 @@ public class BoundrailContextAutoConfiguration {
         return new ViolationReporter(policy, properties.violations().logInterval(), counter.getIfAvailable(() -> violation -> { }),
                 () -> listeners.orderedStream().filter(listener -> !ancestors.contains(listener)), executorTable::evidence,
                 LogFactory.getLog(ViolationReporter.class), Clock.systemUTC());
+    }
+
+    /**
+     * Gives the Kafka module the effective policy, the violation settings and this context's reporter (DESIGN D70, D78). An anonymous class,
+     * because the types it delegates to are package-private.
+     */
+    @Bean
+    AdapterSupport boundrailAdapterSupport(EffectivePolicy policy, ViolationReporter reporter, BoundrailContextProperties properties) {
+        return new AdapterSupport() {
+            @Override
+            public ContextPolicy policy() {
+                return policy.policy();
+            }
+
+            @Override
+            public boolean failOnMissingRequired() {
+                return properties.violations().mode() == BoundrailContextProperties.Violations.Mode.FAIL;
+            }
+
+            @Override
+            public int maxValueLength() {
+                return properties.wire().maxValueLength();
+            }
+
+            @Override
+            public Violation violation(Violation.Kind kind, String key, Boundary boundary) {
+                return reporter.violation(kind, key, boundary, Optional.empty());
+            }
+
+            @Override
+            public void report(Violation violation) {
+                reporter.report(violation);
+            }
+        };
     }
 
     /**
