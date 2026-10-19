@@ -2,6 +2,7 @@ package io.github.boundrail.context.kafka;
 
 import io.github.boundrail.context.spring.BoundrailContextAutoConfiguration;
 import io.github.boundrail.context.spring.internal.AdapterSupport;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -26,5 +27,11 @@ public class BoundrailKafkaAutoConfiguration {
     @Lazy(false)
     KafkaContext boundrailKafkaContext(AdapterSupport support, BoundrailKafkaProperties properties) {
         return new KafkaContext(support, properties.trustHeaders());
+    }
+
+    /** Adds the producer hook to the {@code ProducerFactory} of every {@code KafkaTemplate} bean (KAF-01, DESIGN D71, D79). */
+    @Bean
+    static TemplatePostProcessor boundrailTemplatePostProcessor(ObjectProvider<AdapterSupport> support) {
+        return new TemplatePostProcessor(support);
     }
 }

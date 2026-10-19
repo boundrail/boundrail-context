@@ -195,7 +195,7 @@ without the deadline or the authority.
     count, `null`, length on the replaced string, strict UTF-8 decode.
   - Completes: KAF-02 (repeat, `null`, WIRE-04, malformed UTF-8).
   - Verify: Unit `RecordSnapshotTest`.
-- [ ] T006 [P] [US1] The `ProducerPostProcessor` writes the `MESSAGE` headers (KAF-01, D71, D79).
+- [x] T006 [P] [US1] The `ProducerPostProcessor` writes the `MESSAGE` headers (KAF-01, D71, D79).
   - Red:
     - `spring-boot-kafka = { module = "org.springframework.boot:spring-boot-kafka" }` in `gradle/libs.versions.toml` (no version), and
       `testImplementation(libs.spring.boot.kafka)` and `testImplementation(libs.testcontainers.kafka)` in
