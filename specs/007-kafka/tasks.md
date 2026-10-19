@@ -112,7 +112,7 @@ T006, and `integration-tests`' `spring-boot-kafka` in T010.
     ([plan.md](plan.md#spring-side-d70)). Name per Q6.
   - Completes: D70's Spring side (the reporting KAF-01 – KAF-05 use; no requirement on its own).
   - Verify: Unit `AdapterSupportTest` in `:boundrail-context-spring`.
-- [ ] T003 The Kafka auto-configuration, `BoundrailKafkaProperties` and the `KafkaContext` bean.
+- [x] T003 The Kafka auto-configuration, `BoundrailKafkaProperties` and the `KafkaContext` bean.
   - Red:
     - in `boundrail-context-kafka/build.gradle.kts`: `api(project(":boundrail-context-spring"))`, `implementation(libs.spring.boot.autoconfigure)`
       and `testImplementation(libs.spring.boot.starter.test)`;
