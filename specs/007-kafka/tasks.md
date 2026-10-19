@@ -150,7 +150,7 @@ without the deadline or the authority.
 
 **Independent Test**: IT-3.8 and IT-4.9 in the IT command.
 
-- [ ] T004 [US1] `KafkaContext.forRecord`: a trusted record's snapshot (KAF-02).
+- [x] T004 [US1] `KafkaContext.forRecord`: a trusted record's snapshot (KAF-02).
   - Red:
     - test support: `kafkatest/support/TestPolicies.java` (the test policy and its variants);
     - in `kafkatest/RecordSnapshotTest.java` (`ApplicationContextRunner` with both auto-configurations, the test policy, a `SimpleMeterRegistry`
