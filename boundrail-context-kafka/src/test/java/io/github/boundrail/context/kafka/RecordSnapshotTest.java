@@ -2,6 +2,7 @@ package io.github.boundrail.context.kafka;
 
 import static io.github.boundrail.context.Boundary.MESSAGE;
 import static io.github.boundrail.context.Violation.Kind.INVALID_VALUE;
+import static io.github.boundrail.context.Violation.Kind.OVERSIZED_VALUE;
 import static io.github.boundrail.context.kafka.support.TestPolicies.ORDER_COUNT;
 import static io.github.boundrail.context.kafka.support.TestPolicies.PRIORITY;
 import static io.github.boundrail.context.kafka.support.TestPolicies.TENANT;
@@ -12,6 +13,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.BuiltInKeys;
+import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextCodec;
 import io.github.boundrail.context.ContextPolicy;
@@ -23,15 +25,22 @@ import io.github.boundrail.context.spring.BoundrailContextAutoConfiguration;
 import io.github.boundrail.context.spring.ViolationListener;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.record.TimestampType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -61,7 +70,36 @@ class RecordSnapshotTest {
         for (int i = 0; i < namesAndValues.length; i += 2) {
             headers.add(namesAndValues[i], namesAndValues[i + 1].getBytes(UTF_8));
         }
+        return record(headers);
+    }
+
+    /** {@return a record carrying {@code headers}} */
+    private static ConsumerRecord<String, String> record(RecordHeaders headers) {
         return new ConsumerRecord<>("orders", 0, 0L, 0L, TimestampType.CREATE_TIME, 0, 0, "key", "value", headers, Optional.empty());
+    }
+
+    /** {@return a string codec counting its {@code decode} calls in {@code calls}} */
+    private static ContextCodec<String> counting(AtomicInteger calls) {
+        return new ContextCodec<>() {
+            @Override
+            public String encode(String value) {
+                return value;
+            }
+
+            @Override
+            public String decode(String text) {
+                calls.incrementAndGet();
+                return Codecs.string().decode(text);
+            }
+        };
+    }
+
+    private static byte[] bytes(int... values) {
+        byte[] bytes = new byte[values.length];
+        for (int i = 0; i < values.length; i++) {
+            bytes[i] = (byte) values[i];
+        }
+        return bytes;
     }
 
     @Test
@@ -131,6 +169,117 @@ class RecordSnapshotTest {
                             tuple(INVALID_VALUE, "order-count", MESSAGE, Optional.empty()),
                             tuple(INVALID_VALUE, "boundrail.initiator", MESSAGE, Optional.empty()));
         });
+    }
+
+    @ParameterizedTest(name = "{0} Tenant-Id headers")
+    @ValueSource(ints = {2, 3})
+    @DisplayName("KAF-02 a wire header carried more than once leaves the key unbound, decodes none of its values and reports one INVALID_VALUE")
+    void repeatedHeaderLeavesTheKeyUnbound(int copies) {
+        AtomicInteger decodes = new AtomicInteger();
+        runner(TestPolicies.withTenantCodec(counting(decodes))).run(context -> {
+            RecordHeaders headers = new RecordHeaders();
+            headers.add("Order-Count", "7".getBytes(UTF_8));
+            headers.add("Boundrail-Initiator", "user:alice".getBytes(UTF_8));
+            for (int i = 0; i < copies; i++) {
+                headers.add("Tenant-Id", ("acme-" + i).getBytes(UTF_8));
+            }
+
+            ContextSnapshot snapshot = context.getBean(KafkaContext.class).forRecord(record(headers));
+
+            assertThat(snapshot.keys()).as("other keys still bound").containsExactlyInAnyOrder(ORDER_COUNT, BuiltInKeys.INITIATOR);
+            assertThat(decodes).as("none of the values decoded").hasValue(0);
+            assertThat(received)
+                    .extracting(Violation::kind, Violation::key, Violation::boundary, Violation::destination)
+                    .containsExactly(tuple(INVALID_VALUE, "tenant", MESSAGE, Optional.empty()));
+        });
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("nullValueHeaders")
+    @DisplayName("KAF-02 a header with a null value leaves the key unbound and reports one INVALID_VALUE")
+    void nullValueLeavesTheKeyUnbound(String wireName, String keyName) {
+        runner().run(context -> {
+            RecordHeaders headers = new RecordHeaders();
+            headers.add("Order-Count", "7".getBytes(UTF_8));
+            headers.add(wireName, null);
+
+            ContextSnapshot snapshot = context.getBean(KafkaContext.class).forRecord(record(headers));
+
+            assertThat(snapshot.keys()).as("other keys still bound").containsExactly(ORDER_COUNT);
+            assertThat(received)
+                    .extracting(Violation::kind, Violation::key, Violation::boundary, Violation::destination)
+                    .containsExactly(tuple(INVALID_VALUE, keyName, MESSAGE, Optional.empty()));
+        });
+    }
+
+    static Stream<Arguments> nullValueHeaders() {
+        return Stream.of(Arguments.of("Tenant-Id", "tenant"), Arguments.of("Boundrail-Initiator", "boundrail.initiator"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("lengths")
+    @DisplayName("KAF-02 WIRE-04 applies first, to the value decoded as UTF-8 with replacement in UTF-16 code units: a longer value is unbound"
+            + " with one OVERSIZED_VALUE, also when it is malformed")
+    void lengthIsCheckedFirstInUtf16CodeUnits(String row, byte[] value, Integer maxValueLength, boolean bound) {
+        ApplicationContextRunner runner = maxValueLength == null
+                ? runner()
+                : runner().withPropertyValues("boundrail.context.wire.max-value-length=" + maxValueLength);
+        runner.run(context -> {
+            RecordHeaders headers = new RecordHeaders();
+            headers.add("Tenant-Id", value);
+
+            ContextSnapshot snapshot = context.getBean(KafkaContext.class).forRecord(record(headers));
+
+            if (bound) {
+                assertThat(snapshot.find(TENANT)).contains(new String(value, UTF_8));
+                assertThat(received).isEmpty();
+            } else {
+                assertThat(snapshot.isEmpty()).isTrue();
+                assertThat(received)
+                        .extracting(Violation::kind, Violation::key, Violation::boundary, Violation::destination)
+                        .containsExactly(tuple(OVERSIZED_VALUE, "tenant", MESSAGE, Optional.empty()));
+            }
+        });
+    }
+
+    static Stream<Arguments> lengths() {
+        byte[] malformed = new byte[300];
+        Arrays.fill(malformed, (byte) 0x80);
+        return Stream.of(
+                Arguments.of("256 'a' bound", "a".repeat(256).getBytes(UTF_8), null, true),
+                Arguments.of("257 'a' not bound", "a".repeat(257).getBytes(UTF_8), null, false),
+                Arguments.of("256 'é' (512 bytes) bound", "é".repeat(256).getBytes(UTF_8), null, true),
+                Arguments.of("128 U+1F600 (256 code units) bound", "\uD83D\uDE00".repeat(128).getBytes(UTF_8), null, true),
+                Arguments.of("129 U+1F600 (258 code units) not bound", "\uD83D\uDE00".repeat(129).getBytes(UTF_8), null, false),
+                Arguments.of("300 bytes of 0x80: OVERSIZED_VALUE only", malformed, null, false),
+                Arguments.of("max-value-length=10, 11 'a' not bound", "a".repeat(11).getBytes(UTF_8), 10, false));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("malformedUtf8")
+    @DisplayName("KAF-02 a value that is not well-formed UTF-8 leaves the key unbound, reports one INVALID_VALUE and is not decoded")
+    void malformedUtf8LeavesTheKeyUnbound(String row, byte[] value) {
+        AtomicInteger decodes = new AtomicInteger();
+        runner(TestPolicies.withTenantCodec(counting(decodes))).run(context -> {
+            RecordHeaders headers = new RecordHeaders();
+            headers.add("Tenant-Id", value);
+
+            ContextSnapshot snapshot = context.getBean(KafkaContext.class).forRecord(record(headers));
+
+            assertThat(snapshot.isEmpty()).isTrue();
+            assertThat(decodes).as("not decoded").hasValue(0);
+            assertThat(received)
+                    .extracting(Violation::kind, Violation::key, Violation::boundary, Violation::destination)
+                    .containsExactly(tuple(INVALID_VALUE, "tenant", MESSAGE, Optional.empty()));
+        });
+    }
+
+    static Stream<Arguments> malformedUtf8() {
+        return Stream.of(
+                Arguments.of("80 (lone continuation byte)", bytes(0x80)),
+                Arguments.of("C0 80 (overlong)", bytes(0xC0, 0x80)),
+                Arguments.of("ED A0 80 (surrogate)", bytes(0xED, 0xA0, 0x80)),
+                Arguments.of("E2 82 (truncated)", bytes(0xE2, 0x82)));
     }
 
     @Test

@@ -180,7 +180,7 @@ without the deadline or the authority.
   - Completes: KAF-02 (trusted decoding, ignored headers, exact names, empty record, decode failures, other exceptions, reporting, DIAG-09);
     KAF-05 (`forRecord` without entering, reporting per call); CORE-17.
   - Verify: Unit `RecordSnapshotTest` in `:boundrail-context-kafka`.
-- [ ] T005 [US1] Repeated, `null`, oversized and malformed header values (KAF-02, D74).
+- [x] T005 [US1] Repeated, `null`, oversized and malformed header values (KAF-02, D74).
   - Red, in `kafkatest/RecordSnapshotTest.java`:
     - `KAF-02 a wire header carried more than once leaves the key unbound, decodes none of its values and reports one INVALID_VALUE`: two and
       three `Tenant-Id` headers, a counting codec at zero calls, one violation each time; other keys still bound;

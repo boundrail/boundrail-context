@@ -12,6 +12,10 @@ import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.internal.AdapterSupport;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.util.Iterator;
 import java.util.Objects;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
@@ -43,10 +47,13 @@ public final class KafkaContext {
     /**
      * {@return the record's snapshot: exactly the bindings decoded from its headers (KAF-02)} For each key of the effective policy that
      * propagates to {@code MESSAGE}, except {@code AUTHORITY} and {@code DEADLINE}, whose wire header is present (names compared exactly,
-     * WIRE-06), the value decoded as UTF-8 is decoded with {@code Initiator.of} for the initiator (WIRE-02), otherwise with the key's codec.
+     * WIRE-06), a header present once, with a value of at most {@code maxValueLength()} that is well-formed UTF-8 (DESIGN D74, WIRE-04), is
+     * decoded with {@code Initiator.of} for the initiator (WIRE-02), otherwise with the key's codec.
      * A decoding that throws {@code IllegalArgumentException} leaves the key unbound and is reported as {@code INVALID_VALUE} with boundary
-     * {@code MESSAGE} and no destination (WIRE-05, DIAG-08), without the value (DIAG-09); any other exception propagates unchanged. Every
-     * other header is ignored. The snapshot is built in a temporary scope, which is left before this returns (KAF-05, DESIGN D78).
+     * {@code MESSAGE} and no destination (WIRE-05, DIAG-08), without the value (DIAG-09); any other exception propagates unchanged. A
+     * repeated header, a {@code null} value or malformed UTF-8 is reported as {@code INVALID_VALUE}, and a longer value as
+     * {@code OVERSIZED_VALUE} (see {@code bind}). Every other header is ignored. The snapshot is built in a temporary scope, which is
+     * left before this returns (KAF-05, DESIGN D78).
      */
     ContextSnapshot snapshot(ConsumerRecord<?, ?> record) {
         ContextPolicy policy = support.policy();
@@ -64,24 +71,47 @@ public final class KafkaContext {
     }
 
     /**
-     * Adds the key's value decoded from its wire header, if the header is present and decodes. A key that propagates to {@code MESSAGE}
-     * has a wire name, and a codec unless it is the initiator (POL-03).
+     * Adds the key's value decoded from its wire header, if the header is present once and decodes (KAF-02, DESIGN D74): a repeated header
+     * or a {@code null} value is reported as {@code INVALID_VALUE}; a value longer than {@code maxValueLength()} once decoded as UTF-8 with
+     * replacement, in UTF-16 code units, as {@code OVERSIZED_VALUE} (WIRE-04, checked first); a value that is not well-formed UTF-8 as
+     * {@code INVALID_VALUE}. None of these is decoded. A key that propagates to {@code MESSAGE} has a wire name, and a codec unless it is
+     * the initiator (POL-03).
      */
     private <T> ContextBinding bind(ContextBinding binding, ContextPolicy policy, ContextKey<T> key, ConsumerRecord<?, ?> record) {
-        Header header = record.headers().lastHeader(policy.wireName(key).orElseThrow());
-        if (header == null) {
+        Iterator<Header> headers = record.headers().headers(policy.wireName(key).orElseThrow()).iterator();
+        if (!headers.hasNext()) {
             return binding;
         }
-        String text = new String(header.value(), UTF_8);
+        byte[] bytes = headers.next().value();
+        if (headers.hasNext() || bytes == null) {
+            return invalid(binding, Violation.Kind.INVALID_VALUE, key);
+        }
+        if (new String(bytes, UTF_8).length() > support.maxValueLength()) {
+            return invalid(binding, Violation.Kind.OVERSIZED_VALUE, key);
+        }
+        String text;
+        try {
+            text = UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            return invalid(binding, Violation.Kind.INVALID_VALUE, key);
+        }
         T value;
         try {
             value = key == BuiltInKeys.INITIATOR
                     ? key.type().cast(Initiator.of(text))
                     : policy.codec(key).orElseThrow().decode(text);
         } catch (IllegalArgumentException e) {
-            support.report(support.violation(Violation.Kind.INVALID_VALUE, key.name(), Boundary.MESSAGE));
-            return binding;
+            return invalid(binding, Violation.Kind.INVALID_VALUE, key);
         }
         return binding == null ? Context.with(key, value) : binding.with(key, value);
+    }
+
+    /** Reports the key's violation and returns {@code binding} unchanged. */
+    private ContextBinding invalid(ContextBinding binding, Violation.Kind kind, ContextKey<?> key) {
+        support.report(support.violation(kind, key.name(), Boundary.MESSAGE));
+        return binding;
     }
 }
