@@ -235,7 +235,7 @@ without the deadline or the authority.
     without observation, `executeInTransaction`, `execute(ProducerCallback)`, non-bean templates on the factory, direct producers, subclass,
     composition, sending thread, encode exceptions).
   - Verify: Unit `ProducerHeadersTest` in `:boundrail-context-kafka`.
-- [ ] T007 [US1] Application-set headers and WIRE-04 at send (KAF-01, D74).
+- [x] T007 [US1] Application-set headers and WIRE-04 at send (KAF-01, D74).
   - Red, in `kafkatest/ProducerHeadersTest.java`:
     - `KAF-01 a header application code set with a key's wire name is left unchanged and that key is not encoded`: a record carrying
       `Tenant-Id: app` keeps exactly that one header, with a counting codec at zero `encode` calls; a `Tenant-Id` with a `null` value is

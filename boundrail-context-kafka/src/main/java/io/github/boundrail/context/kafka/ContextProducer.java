@@ -9,6 +9,7 @@ import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
 import io.github.boundrail.context.Initiator;
+import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.internal.AdapterSupport;
 import java.time.Duration;
 import java.util.List;
@@ -57,13 +58,24 @@ final class ContextProducer<K, V> implements Producer<K, V> {
      * Adds a header for each key bound in the current snapshot filtered for {@code MESSAGE} (POL-04), named by its wire name and holding
      * the UTF-8 bytes of its encoding: the initiator's value, otherwise the key's codec (WIRE-01, WIRE-02). {@code AUTHORITY} and
      * {@code DEADLINE} do not propagate to {@code MESSAGE} (POL-06, ID-06). An exception from {@code encode} propagates unchanged before
-     * the record is handed to the producer (WIRE-05).
+     * the record is handed to the producer (WIRE-05). A key whose wire name the record already carries, compared exactly, is left to the
+     * application's header and not encoded; an encoding longer than {@code wire.max-value-length} is not written and reported as
+     * {@code OVERSIZED_VALUE} (WIRE-04, DESIGN D74).
      */
     private void writeHeaders(ProducerRecord<K, V> record) {
         ContextPolicy policy = support.policy();
         ContextSnapshot snapshot = policy.filter(Context.capture(), Boundary.MESSAGE);
         for (ContextKey<?> key : snapshot.keys()) {
-            record.headers().add(policy.wireName(key).orElseThrow(), encode(policy, snapshot, key).getBytes(UTF_8));
+            String wireName = policy.wireName(key).orElseThrow();
+            if (record.headers().headers(wireName).iterator().hasNext()) {
+                continue;
+            }
+            String encoded = encode(policy, snapshot, key);
+            if (encoded.length() > support.maxValueLength()) {
+                support.report(support.violation(Violation.Kind.OVERSIZED_VALUE, key.name(), Boundary.MESSAGE));
+                continue;
+            }
+            record.headers().add(wireName, encoded.getBytes(UTF_8));
         }
     }
 

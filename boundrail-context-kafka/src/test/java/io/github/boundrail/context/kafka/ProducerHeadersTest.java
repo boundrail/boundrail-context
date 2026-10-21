@@ -6,8 +6,10 @@ import static io.github.boundrail.context.kafka.support.TestPolicies.TENANT;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.Authority;
+import io.github.boundrail.context.Boundary;
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
@@ -27,6 +29,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -38,6 +41,7 @@ import org.apache.kafka.clients.producer.ProducerInterceptor;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -391,6 +395,91 @@ class ProducerHeadersTest {
             assertThat(received).isEmpty();
             assertThat(KafkaBroker.read(topic, 1)).as("only the later record reached the topic").extracting(ConsumerRecord::value)
                     .containsExactly("marker");
+        });
+    }
+
+    /** {@return a string codec counting its {@code encode} calls in {@code calls}} */
+    private static ContextCodec<String> countingEncodes(AtomicInteger calls) {
+        return new ContextCodec<>() {
+            @Override
+            public String encode(String value) {
+                calls.incrementAndGet();
+                return Codecs.string().encode(value);
+            }
+
+            @Override
+            public String decode(String text) {
+                return Codecs.string().decode(text);
+            }
+        };
+    }
+
+    /** {@return a record to {@code topic} carrying one header with {@code name} and {@code value}} */
+    private static ProducerRecord<String, String> carrying(String topic, String name, byte[] value) {
+        RecordHeaders headers = new RecordHeaders();
+        headers.add(name, value);
+        return new ProducerRecord<>(topic, null, (String) null, "v", headers);
+    }
+
+    @Test
+    @DisplayName("KAF-01 a header application code set with a key's wire name is left unchanged and that key is not encoded")
+    void leavesApplicationSetHeadersUnchanged() {
+        AtomicInteger encodes = new AtomicInteger();
+        runner(TestPolicies.withTenantCodec(countingEncodes(encodes))).run(context -> {
+            KafkaTemplate<String, String> template = template(context);
+            String topic = KafkaBroker.topic();
+
+            Context.with(TENANT, "acme").with(ORDER_COUNT, 7L).run(() -> {
+                template.send(carrying(topic, "Tenant-Id", "app".getBytes(UTF_8))).join();
+                template.send(carrying(topic, "Tenant-Id", null)).join();
+                assertThat(encodes.get()).as("tenant not encoded while the record carries Tenant-Id").isZero();
+                template.send(carrying(topic, "Authorization", "Bearer app".getBytes(UTF_8))).join();
+            });
+            Context.with(TENANT, "acme").run(() -> template.send(carrying(topic, "tenant-id", "app".getBytes(UTF_8))).join());
+
+            List<ConsumerRecord<String, String>> records = KafkaBroker.read(topic, 4);
+            assertThat(header(records.get(0), "Tenant-Id")).as("exactly the application's header").isEqualTo("app");
+            assertThat(header(records.get(0), "Order-Count")).as("other keys still written").isEqualTo("7");
+            List<Header> nullValued = StreamSupport.stream(records.get(1).headers().headers("Tenant-Id").spliterator(), false).toList();
+            assertThat(nullValued).as("the null-valued header kept as is").singleElement()
+                    .satisfies(kept -> assertThat(kept.value()).isNull());
+            assertThat(header(records.get(2), "Authorization")).isEqualTo("Bearer app");
+            assertThat(header(records.get(2), "Tenant-Id")).as("Authorization is no wire name of tenant").isEqualTo("acme");
+            assertThat(header(records.get(3), "tenant-id")).isEqualTo("app");
+            assertThat(header(records.get(3), "Tenant-Id")).as("WIRE-06: tenant-id is another name").isEqualTo("acme");
+            assertThat(received).isEmpty();
+        });
+    }
+
+    static Stream<Arguments> encodingLengths() {
+        return Stream.of(
+                Arguments.of("257 a: not written", "a".repeat(257), false),
+                Arguments.of("256 a: written", "a".repeat(256), true),
+                Arguments.of("256 \u00e9 (512 bytes): written", "\u00e9".repeat(256), true));
+    }
+
+    @ParameterizedTest(name = "{displayName}: {0}")
+    @MethodSource("encodingLengths")
+    @DisplayName("KAF-01 an encoding longer than wire.max-value-length is not written, one OVERSIZED_VALUE with boundary MESSAGE and no"
+            + " destination is reported, and the record is sent")
+    void checksTheEncodingsLength(String row, String tenant, boolean written) {
+        runner().run(context -> {
+            KafkaTemplate<String, String> template = template(context);
+            String topic = KafkaBroker.topic();
+
+            Context.with(TENANT, tenant).with(ORDER_COUNT, 7L).call(() -> template.send(topic, "v").get());
+
+            ConsumerRecord<String, String> record = KafkaBroker.read(topic, 1).getFirst();
+            assertThat(header(record, "Order-Count")).as("other headers written").isEqualTo("7");
+            if (written) {
+                assertThat(header(record, "Tenant-Id")).isEqualTo(tenant);
+                assertThat(received).isEmpty();
+            } else {
+                assertThat(header(record, "Tenant-Id")).isNull();
+                assertThat(received)
+                        .extracting(Violation::kind, Violation::key, Violation::boundary, Violation::destination)
+                        .containsExactly(tuple(Violation.Kind.OVERSIZED_VALUE, "tenant", Boundary.MESSAGE, Optional.empty()));
+            }
         });
     }
 }
