@@ -8,6 +8,7 @@ import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextSnapshot;
+import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Initiator;
 import io.github.boundrail.context.Violation;
 import io.github.boundrail.context.spring.internal.AdapterSupport;
@@ -29,8 +30,8 @@ import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.metrics.KafkaMetric;
 
 /**
- * A producer that writes the {@code MESSAGE} headers of the sending thread's context on each record before delegating its send, and
- * delegates every other method unchanged (KAF-01).
+ * A producer that checks the required {@code MESSAGE} keys and writes the {@code MESSAGE} headers of the sending thread's context on each
+ * record before delegating its send, and delegates every other method unchanged (KAF-01).
  */
 final class ContextProducer<K, V> implements Producer<K, V> {
 
@@ -44,14 +45,35 @@ final class ContextProducer<K, V> implements Producer<K, V> {
 
     @Override
     public Future<RecordMetadata> send(ProducerRecord<K, V> record) {
+        checkRequiredKeys();
         writeHeaders(record);
         return delegate.send(record);
     }
 
     @Override
     public Future<RecordMetadata> send(ProducerRecord<K, V> record, Callback callback) {
+        checkRequiredKeys();
         writeHeaders(record);
         return delegate.send(record, callback);
+    }
+
+    /**
+     * Reports one {@code MISSING_REQUIRED} per required key that propagates to {@code MESSAGE} and is not bound, in ascending order of key
+     * name (POL-08, DIAG-02). It reads the context, not the record's headers. In {@code fail} mode it then throws one
+     * {@code ContextViolationException} carrying the first, so the record is not handed to the producer.
+     */
+    private void checkRequiredKeys() {
+        ContextPolicy policy = support.policy();
+        List<Violation> missing = policy.keys().stream()
+                .filter(key -> policy.isRequired(key) && policy.propagates(key, Boundary.MESSAGE) && !key.isBound())
+                .map(ContextKey::name)
+                .sorted()
+                .map(name -> support.violation(Violation.Kind.MISSING_REQUIRED, name, Boundary.MESSAGE))
+                .toList();
+        missing.forEach(support::report);
+        if (!missing.isEmpty() && support.failOnMissingRequired()) {
+            throw new ContextViolationException(missing.getFirst());
+        }
     }
 
     /**

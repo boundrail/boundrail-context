@@ -246,7 +246,7 @@ without the deadline or the authority.
   - Green: the "already carries" check and the length check in `kafka/ContextProducer.java`.
   - Completes: KAF-01 (application-set headers, WIRE-04).
   - Verify: Unit `ProducerHeadersTest`.
-- [ ] T008 [US1] The required-key check at send (KAF-01, POL-08, DIAG-02).
+- [x] T008 [US1] The required-key check at send (KAF-01, POL-08, DIAG-02).
   - Red, in `kafkatest/ProducerRequiredKeysTest.java` (the test policy with `tenant` and `order-count` required, and `priority` required but
     not propagating to `MESSAGE`):
     - `KAF-01 in fail mode each unbound required MESSAGE key is reported once as MISSING_REQUIRED in key-name order, then
