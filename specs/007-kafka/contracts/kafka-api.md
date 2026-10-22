@@ -24,4 +24,6 @@ The producer and consumer adapters (KAF-01 – KAF-04), including the `ProducerP
 after-rollback decorators (DESIGN D79), are not public types. The Kafka module adds no other public types in this feature beyond
 the properties record `BoundrailKafkaProperties` that binds `boundrail.context.kafka.*` (KAF-04), which lives in `boundrail-context-kafka`
 (DESIGN D70, D78). The types `boundrail-context-spring` exposes to it in `io.github.boundrail.context.spring.internal`, such as the
-interface `AdapterSupport`, are not part of any contract.
+interface `AdapterSupport`, are not part of any contract. Auto-configuration classes are not part of any contract either, although Spring
+Boot requires them to be public: `BoundrailKafkaAutoConfiguration` here, as `BoundrailContextAutoConfiguration` in `boundrail-context-spring`
+(DESIGN D81).

@@ -110,6 +110,8 @@ Batch listeners are not scoped automatically in v0.1; a helper returns the snaps
   a template bean, or through a producer created directly from that factory: KAF-01 (covered).
 - A `KafkaTemplate` bean whose `ProducerFactory` is not a `DefaultKafkaProducerFactory`, or a producer that the factory created and cached
   before the hook was added: KAF-01, KAF-06 (not covered).
+- The application sends the same `ProducerRecord` instance a second time: KAF-01, KAF-06 (outside the guarantee; the send may throw
+  `IllegalStateException` when it adds a header, and an `encode` that throws may leave the headers written before it on the record).
 - A listener container that no listener container factory bean created: KAF-03, KAF-06 (its listener is not scoped).
 - The application replaces a container's advice chain, for example with a `ContainerCustomizer` that calls `setAdviceChain`: KAF-03, KAF-06
   (not covered). The application adds advice to a factory's advice chain: KAF-03 (it runs inside the library's scope).
@@ -154,6 +156,9 @@ post-processor was added are not covered (KAF-06; DESIGN D71, D79).
 Any exception thrown by a codec's `encode` SHALL propagate unchanged from the send call, no violation SHALL be reported for it (WIRE-05), and
 the record SHALL NOT be handed to the producer. The violations of this requirement have the boundary `MESSAGE` and an empty destination
 (DESIGN D74). The deadline SHALL NOT be checked when a record is sent: an expired deadline neither fails nor changes a send (DESIGN D75).
+The headers are written into the application's own `ProducerRecord`, so sending the same `ProducerRecord` instance more than once is
+outside this requirement: Kafka makes a record's headers read-only once it is sent, so a later send that adds a header MAY throw
+`IllegalStateException`, and when an `encode` throws, the headers written before it MAY remain on the record (KAF-06; DESIGN D81).
 Verified by IT-3.8, IT-4.9 and unit tests.
 
 ### Consumer
@@ -241,6 +246,8 @@ temporary scope, so registered `ScopeListener`s (RT-07), such as the MDC bridge 
   `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, and producers the factory created and cached before the hook was added
   (KAF-01);
 - that the deadline is neither sent nor applied when a record is sent (KAF-01);
+- that the headers are written into the application's `ProducerRecord`, so re-sending the same record instance is not supported: the send
+  can throw `IllegalStateException` when it adds a header, and headers written before an `encode` that throws can stay on the record (KAF-01);
 - which listener containers are covered: those created by listener container factory beans; that `RecordInterceptor`s run outside the
   listener scope; and that a container whose advice chain the application replaces, for example with a `ContainerCustomizer`, is not
   covered (KAF-03). It SHALL NOT promise that a `@KafkaListener` container keeps the scope when its chain is replaced;
@@ -250,7 +257,7 @@ temporary scope, so registered `ScopeListener`s (RT-07), such as the MDC bridge 
 - that only the listener invocation and the container's error handling are scoped, so code that completes a `CompletableFuture` or `Mono` a
   listener returns runs with its own thread's context (KAF-03).
 
-Verified by the Javadoc of `KafkaContext`; the README takes it up in M7 (REL-01) (DESIGN D77, D79).
+Verified by the Javadoc of `KafkaContext`; the README takes it up in M7 (REL-01) (DESIGN D77, D79, D81).
 
 ### Configuration
 

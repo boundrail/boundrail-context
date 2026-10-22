@@ -24,7 +24,8 @@ with the requirement or scenario ID it covers.
   ThreadLocal side is exercised only by IT-3.8 and IT-4.9 on `integrationTestJdk21`.
 - A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code,
   which is then reverted; the leader reports it in the task report, the planner adds it to plan.md's Guard Tests table, and the reviewer
-  checks it. A negative assertion in the same test as a positive assertion that is red before the task is not a guard.
+  checks it. A negative assertion in the same test as a positive assertion that is red before the task is not a guard, and neither are
+  parametrized rows in the same test as rows that are red before the task.
 - Review follow-ups get a letter suffix (T004a, …).
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -263,6 +264,17 @@ without the deadline or the authority.
   - Green: the check at the start of `send` in `kafka/ContextProducer.java`.
   - Completes: KAF-01 (required keys, both modes, POL-08, transactions).
   - Verify: Unit `ProducerRequiredKeysTest`.
+  - [ ] Follow-up, accepted by the user on 2026-10-21, the DIAG-02 order at send. The ordering assertion above uses two required keys, and
+    `ContextPolicy` keeps its rules in `Map.copyOf`, whose iteration order depends on a per-JVM salt: the two keys come out ascending in
+    about half of JVM runs, and removing `.sorted()` stayed green in 6 of 7 runs. In `kafkatest/ProducerRequiredKeysTest.java`, with its
+    own policy (the test policy of the other tests is unchanged):
+    - `DIAG-02 MISSING_REQUIRED violations at send are reported in ascending key-name order`: six required string keys, each with its own
+      wire name, propagating to `MESSAGE`, declared out of name order and all unbound; in `fail` mode a send reports six `MISSING_REQUIRED`
+      whose key names are exactly the six names in ascending order (the full order, not only the first), and the exception carries the
+      first. A lucky iteration order has a chance of 1/720.
+    - This is a guard: `checkRequiredKeys` in `kafka/ContextProducer.java` already sorts. Show it red with `.sorted()` temporarily removed,
+      then revert ([plan.md](plan.md#guard-tests)).
+    - Verify: Unit `ProducerRequiredKeysTest`, then `./gradlew check`.
 - [x] T009 [US1] The listener scope advice (KAF-02, KAF-03).
   - Red, in `kafkatest/ListenerScopeAdviceTest.java` (the advice built with the `KafkaContext` of an `ApplicationContextRunner` context with
     the test policy, applied through a `ProxyFactory` around a hand-written `MessageListener` that records `Context.capture()`, as
@@ -405,7 +417,7 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
 
 ## Phase 6: Documentation and close
 
-- [ ] T013 The `KafkaContext` Javadoc (KAF-06, D79). [TDD-EXCEPTION: review of T013, and inspection in T014 against KAF-06's wording]
+- [ ] T013 The `KafkaContext` Javadoc (KAF-06, D79, D81). [TDD-EXCEPTION: review of T013, and inspection in T014 against KAF-06's wording]
   - In `kafka/KafkaContext.java`, the class Javadoc states each item of KAF-06:
     - batch listeners are not scoped, and `forRecord` gives each record's snapshot (KAF-05);
     - the sends covered: those through producers that the `ProducerFactory` of a `KafkaTemplate` bean creates, including
@@ -413,6 +425,9 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
       `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, and producers the factory created and cached before the hook was added
       (KAF-01);
     - the deadline is neither sent nor applied when a record is sent (KAF-01);
+    - the headers are written into the application's `ProducerRecord`, so re-sending the same record instance is not supported: the send
+      can throw `IllegalStateException` when it adds a header, and headers written before an `encode` that throws can stay on the record
+      (KAF-01, D81);
     - the containers covered: those created by listener container factory beans; `RecordInterceptor`s run outside the listener scope; a
       container whose advice chain the application replaces, for example with a `ContainerCustomizer`, is not covered, with no promise that a
       `@KafkaListener` container keeps the scope then (KAF-03);

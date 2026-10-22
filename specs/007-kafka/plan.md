@@ -114,7 +114,7 @@ then the record's bindings)
 | V Evidence only | Pass | Violations carry kind, key, `MESSAGE`, an empty destination and DIAG-04's thread evidence; no topic is added to `Violation` (D74) |
 | VI Interoperate | Pass | The hooks compose with the application's template interceptor, advice, error handler and after-rollback processor instead of replacing them, without reflection (T001, D79) |
 | VII Spec-first, test-first | Pass | Every task is one red-green cycle; IT-3.8 and IT-4.9 are T010's failing tests; the TDD exception row and T010's guard are approved; Q1 – Q8 are settled (D78 – D80); T011's new guard is approved |
-| VIII Simplicity | Pass | No switch to turn adapters off (D77); one internal interface for D70; no batch scoping (KAF-05); no new public type beyond `KafkaContext` and the properties record |
+| VIII Simplicity | Pass | No switch to turn adapters off (D77); one internal interface for D70; no batch scoping (KAF-05); no new public type beyond `KafkaContext` and the properties record (the auto-configuration classes are public but not part of any contract, D81) |
 | Technical constraints | Pass | Core unchanged; Spring confined to `-spring`/`-kafka`; Kafka to `-kafka`; Testcontainers for every client interaction, no mocked clients (BLD-07) |
 
 ## Spike (T001)
@@ -388,6 +388,9 @@ Settled by T001 and Q1 (D79): a `ProducerPostProcessor` on the template bean's `
   config overrides, whose copied factory copies the post-processors), and `factory.createProducer()`. Not covered, and stated in KAF-06: a
   `ProducerFactory` that is not a `DefaultKafkaProducerFactory` (its `addPostProcessor` is the interface's no-op default), and a producer the
   factory created and cached before the hook was added. No test pins these gaps; T013's Javadoc states them.
+- **Re-sending a record (KAF-01, D81).** Step 3 writes into the application's own `ProducerRecord`, with no copy. Sending the same record
+  instance again is outside KAF-01: Kafka makes its headers read-only once sent, so a later `add` may throw `IllegalStateException`, and
+  headers written before an `encode` that throws may stay on the record. No test; T013's Javadoc states it (KAF-06).
 
 ### Listener scope (KAF-02, KAF-03, D72)
 
@@ -479,30 +482,38 @@ T003, and open.
 
 These tests already pass before the task that introduces them. As in 002 – 006, each red is shown against a named temporary change, which
 is reverted before the commit. They are not TDD exceptions. The user approved T010's row on 2026-10-18, T011's row on 2026-10-18, and T009's
-two rows on 2026-10-22. The `RecordInterceptor` assertions in T010 and the "reported once" assertion in T011 sit in tests with red positive
-assertions, so they are not guards.
+two rows on 2026-10-22, and T008's follow-up row on 2026-10-21. The `RecordInterceptor` assertions in T010 and the "reported once"
+assertion in T011 sit in tests with red positive assertions, so they are not guards.
 
 A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code, which
 is then reverted; the leader reports it in the task report, the planner adds it to this table, and the reviewer checks it.
 
 A negative assertion that sits in the same test as a positive assertion that is red before its task is not a guard, and is not listed (for
 example, "no `Authorization` or `Boundrail-Deadline-Ms` header" sits with "a header per bound `MESSAGE` key" in T006, and "keys that do not
-propagate to `MESSAGE` are not checked" with the `MISSING_REQUIRED` assertions in T008).
+propagate to `MESSAGE` are not checked" with the `MISSING_REQUIRED` assertions in T008). Likewise, parametrized rows that sit in the same
+test as rows that are red before its task are not guards, and are not listed (for example, T007's `256 a` and `256 é` rows, which are
+written, sit with the red `257 a` row).
 
 | Task | Scenario or test | Why green first | Red shown against (temporary, reverted) |
 |---|---|---|---|
+| T008 | `DIAG-02 MISSING_REQUIRED violations at send are reported in ascending key-name order` (follow-up, six required, unbound `MESSAGE` keys) | `checkRequiredKeys` in `ContextProducer` already sorts the key names (1a18ec6); the original two-key ordering test stays green without the sort in about half of JVM runs, because `Map.copyOf`'s iteration order depends on a per-JVM salt | `checkRequiredKeys` without `.sorted()`: the six violations come in the policy map's iteration order, ascending by chance in 1 of 720 orders |
 | T009 | `KAF-05 a BatchMessageListener is not scoped: it runs in the current snapshot, and nothing is decoded or reported for its records` | Without T009's advice nothing is scoped, so the batch listener already runs in the current snapshot, with nothing decoded or reported | `ListenerScopeAdvice` without its `BatchMessageListener` check and scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant=acme` |
 | T009 | `KAF-03 listener methods other than onMessage with a record pass through unscoped` | Without T009's advice nothing is scoped, so `onPartitionsAssigned` already runs in the outer snapshot | `ListenerScopeAdvice` running invocations other than a record `onMessage` in `ContextSnapshot.EMPTY`: `onPartitionsAssigned` sees no `tenant` |
 | T010 | `KAF-05 a batch @KafkaListener is not scoped, and nothing is decoded or reported for its records` | T009's advice already passes `BatchMessageListener` invocations through | `ListenerScopeAdvice` without its `BatchMessageListener` check and scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant` and a repeated header is reported |
 | T011 | `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the empty snapshot` | Before T011 the error handler runs undecorated on the consumer thread, which has no binding, so it runs and sees an empty snapshot | `ContextErrorHandler` rethrowing the rebuild's exception instead of falling back to `ContextSnapshot.EMPTY`: the application's handler is not called |
 
+Outside 007: the Spring module's `ContextClientInterceptorTest` (`DIAG-02 several unbound required keys are each reported in ascending
+key-name order, and the exception carries the first`, around line 704) has the same weakness, with only the keys `region` and `tenant`. It
+will be fixed on a separate `test/...` branch, not in this feature.
+
 ## TDD Exceptions
 
-Approved by the user on 2026-10-18; its content follows KAF-06 as revised by D79. No new exception.
+Approved by the user on 2026-10-18; its content follows KAF-06 as revised by D79 and by D81 (the re-send item, accepted by the user on
+2026-10-21). No new exception.
 
 | Task | What | Verified by |
 |---|---|---|
-| T013 | The Javadoc of `KafkaContext` required by KAF-06 (D79): batch listeners are not scoped and `forRecord` gives each record's snapshot (KAF-05); the sends covered (producers the `ProducerFactory` of a `KafkaTemplate` bean creates, including `execute(ProducerCallback)`, non-bean templates sharing the factory and producers created directly from it) and the gaps (a `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, producers created and cached before the hook was added) (KAF-01); the deadline is neither sent nor applied at send (KAF-01, D75); the containers covered (those created by listener container factory beans), `RecordInterceptor`s outside the scope, and a container whose advice chain the application replaces not covered, with no promise for `@KafkaListener` containers (KAF-03); error handling in the failed record's snapshot, except containers created or registered after startup, `handleOtherException` and the batch paths, and a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered (KAF-03); only the listener invocation and error handling are scoped, so code completing a returned `CompletableFuture` or `Mono` runs with its own thread's context (KAF-03). Documentation, with no behaviour a test can fail on; the behaviour is tested in T004 – T012 | Review of T013, and inspection in T014 against KAF-06's wording |
+| T013 | The Javadoc of `KafkaContext` required by KAF-06 (D79, D81): batch listeners are not scoped and `forRecord` gives each record's snapshot (KAF-05); the sends covered (producers the `ProducerFactory` of a `KafkaTemplate` bean creates, including `execute(ProducerCallback)`, non-bean templates sharing the factory and producers created directly from it) and the gaps (a `ProducerFactory` that is not a `DefaultKafkaProducerFactory`, producers created and cached before the hook was added) (KAF-01); the deadline is neither sent nor applied at send (KAF-01, D75); the headers are written into the application's `ProducerRecord`, so re-sending the same record instance is not supported: the send can throw `IllegalStateException` when it adds a header, and headers written before an `encode` that throws can stay on the record (KAF-01, D81); the containers covered (those created by listener container factory beans), `RecordInterceptor`s outside the scope, and a container whose advice chain the application replaces not covered, with no promise for `@KafkaListener` containers (KAF-03); error handling in the failed record's snapshot, except containers created or registered after startup, `handleOtherException` and the batch paths, and a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered (KAF-03); only the listener invocation and error handling are scoped, so code completing a returned `CompletableFuture` or `Mono` runs with its own thread's context (KAF-03). Documentation, with no behaviour a test can fail on; the behaviour is tested in T004 – T012 | Review of T013, and inspection in T014 against KAF-06's wording |
 
 T001 is a spike, not an exception: no code from it is kept. Build changes (`-kafka`'s dependencies, the catalog alias, `integration-tests`'
 `spring-boot-kafka`) and topology test code are part of the red step of the task whose tests need them (T003, T006, T010). The
@@ -555,8 +566,9 @@ integration-tests/src/test/java/io/github/boundrail/context/it/
 └── topology/Topology.java  EdgeApp.java  BillingApp.java  ObservedContext.java
 ```
 
-**Structure Decision**: `KafkaContext` and `BoundrailKafkaProperties` are the only public types in `-kafka`; `AdapterSupport` is the only
-public type added to `-spring`, in a package no contract declares. Everything else is package-private.
+**Structure Decision**: `KafkaContext` and `BoundrailKafkaProperties` are the only public types in `-kafka`'s contract; `AdapterSupport` is
+the only public type added to `-spring`, in a package no contract declares. `BoundrailKafkaAutoConfiguration` is public because Spring Boot
+requires it, but auto-configuration classes are not part of any contract (D81). Everything else is package-private.
 
 ## Requirement Coverage
 
