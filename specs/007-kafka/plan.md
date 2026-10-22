@@ -478,9 +478,9 @@ T003, and open.
 ## Guard Tests
 
 These tests already pass before the task that introduces them. As in 002 – 006, each red is shown against a named temporary change, which
-is reverted before the commit. They are not TDD exceptions. The user approved T010's row on 2026-10-18; T011's row is new (D79) and awaits
-approval. The `RecordInterceptor` assertions in T010 and the "reported once" assertion in T011 sit in tests with red positive assertions, so
-they are not guards.
+is reverted before the commit. They are not TDD exceptions. The user approved T010's row on 2026-10-18, T011's row on 2026-10-18, and T009's
+two rows on 2026-10-22. The `RecordInterceptor` assertions in T010 and the "reported once" assertion in T011 sit in tests with red positive
+assertions, so they are not guards.
 
 A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code, which
 is then reverted; the leader reports it in the task report, the planner adds it to this table, and the reviewer checks it.
@@ -491,8 +491,10 @@ propagate to `MESSAGE` are not checked" with the `MISSING_REQUIRED` assertions i
 
 | Task | Scenario or test | Why green first | Red shown against (temporary, reverted) |
 |---|---|---|---|
+| T009 | `KAF-05 a BatchMessageListener is not scoped: it runs in the current snapshot, and nothing is decoded or reported for its records` | Without T009's advice nothing is scoped, so the batch listener already runs in the current snapshot, with nothing decoded or reported | `ListenerScopeAdvice` without its `BatchMessageListener` check and scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant=acme` |
+| T009 | `KAF-03 listener methods other than onMessage with a record pass through unscoped` | Without T009's advice nothing is scoped, so `onPartitionsAssigned` already runs in the outer snapshot | `ListenerScopeAdvice` running invocations other than a record `onMessage` in `ContextSnapshot.EMPTY`: `onPartitionsAssigned` sees no `tenant` |
 | T010 | `KAF-05 a batch @KafkaListener is not scoped, and nothing is decoded or reported for its records` | T009's advice already passes `BatchMessageListener` invocations through | `ListenerScopeAdvice` without its `BatchMessageListener` check and scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant` and a repeated header is reported |
-| T011 | `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the empty snapshot` (new, for the user's approval) | Before T011 the error handler runs undecorated on the consumer thread, which has no binding, so it runs and sees an empty snapshot | `ContextErrorHandler` rethrowing the rebuild's exception instead of falling back to `ContextSnapshot.EMPTY`: the application's handler is not called |
+| T011 | `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the empty snapshot` | Before T011 the error handler runs undecorated on the consumer thread, which has no binding, so it runs and sees an empty snapshot | `ContextErrorHandler` rethrowing the rebuild's exception instead of falling back to `ContextSnapshot.EMPTY`: the application's handler is not called |
 
 ## TDD Exceptions
 

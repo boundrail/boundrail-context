@@ -263,7 +263,7 @@ without the deadline or the authority.
   - Green: the check at the start of `send` in `kafka/ContextProducer.java`.
   - Completes: KAF-01 (required keys, both modes, POL-08, transactions).
   - Verify: Unit `ProducerRequiredKeysTest`.
-- [ ] T009 [US1] The listener scope advice (KAF-02, KAF-03).
+- [x] T009 [US1] The listener scope advice (KAF-02, KAF-03).
   - Red, in `kafkatest/ListenerScopeAdviceTest.java` (the advice built with the `KafkaContext` of an `ApplicationContextRunner` context with
     the test policy, applied through a `ProxyFactory` around a hand-written `MessageListener` that records `Context.capture()`, as
     `ContainerProperties` applies the advice chain; records built directly):
