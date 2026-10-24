@@ -14,6 +14,7 @@ dependencies {
     testImplementation(libs.spring.boot.starter.security.oauth2.resource.server)
     testImplementation(libs.spring.boot.test)
     testImplementation(libs.spring.kafka)
+    testImplementation(libs.spring.boot.kafka)
     testImplementation(libs.micrometer.core)
     testImplementation(libs.micrometer.context.propagation)
     testImplementation(libs.testcontainers.kafka)

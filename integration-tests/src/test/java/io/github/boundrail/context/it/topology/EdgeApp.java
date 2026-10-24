@@ -35,6 +35,7 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -44,6 +45,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -86,6 +88,7 @@ public class EdgeApp {
     private final RestClient externalPartner;
     private final RestClient undeclaredPartner;
     private final RestClient undeclaredOrders;
+    private final KafkaTemplate<String, String> kafkaTemplate;
 
     /**
      * Every client is built from edge's auto-configured {@code RestClient.Builder}, so it carries the library's interceptor. Only internal
@@ -94,7 +97,7 @@ public class EdgeApp {
     public EdgeApp(ObservedContext observed, Topology.Running topology, RestClient.Builder clients, EdgeAsyncWork asyncWork,
             @Qualifier("rawExecutor") ExecutorService rawExecutor, @Qualifier("boundExecutor") ExecutorService boundExecutor,
             @Qualifier("taskExecutor") ThreadPoolTaskExecutor taskExecutor, @Qualifier("attachedExecutor") ThreadPoolTaskExecutor attachedExecutor,
-            @Qualifier("boundAttachedExecutor") ExecutorService boundAttachedExecutor) {
+            @Qualifier("boundAttachedExecutor") ExecutorService boundAttachedExecutor, KafkaTemplate<String, String> kafkaTemplate) {
         this.observed = observed;
         this.taskExecutor = taskExecutor;
         this.attachedExecutor = attachedExecutor;
@@ -107,6 +110,7 @@ public class EdgeApp {
         this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
         this.undeclaredPartner = clients.clone().build();
         this.undeclaredOrders = clients.clone().apply(TestInboundTrustVerifier.peer()).build();
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     /** Verifies tokens with the run's public key; no network JWKS. */
@@ -216,6 +220,16 @@ public class EdgeApp {
     @Bean
     static JwtClaimContributor tenantClaimContributor() {
         return JwtClaimContributor.of("tenant", AppKeys.TENANT, Codecs.string());
+    }
+
+    /**
+     * Sends the marker as the value of a record to {@code orders.events} through Boot's {@code KafkaTemplate} and waits for the send, so a
+     * failed send is a 500 (IT-3.8, IT-4.9). The request's deadline is not applied to the send (DESIGN D75).
+     */
+    @PostMapping("/kafka/publish")
+    String kafkaPublish(@RequestParam("marker") String marker) throws Exception {
+        kafkaTemplate.send("orders.events", marker).get(10, TimeUnit.SECONDS);
+        return "edge";
     }
 
     @GetMapping("/ping")

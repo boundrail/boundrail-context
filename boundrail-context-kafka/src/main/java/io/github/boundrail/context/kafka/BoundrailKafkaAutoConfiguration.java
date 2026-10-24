@@ -34,4 +34,10 @@ public class BoundrailKafkaAutoConfiguration {
     static TemplatePostProcessor boundrailTemplatePostProcessor(ObjectProvider<AdapterSupport> support) {
         return new TemplatePostProcessor(support);
     }
+
+    /** Puts the listener scope first in the advice chain of every listener container factory bean (KAF-03, DESIGN D72, D79). */
+    @Bean
+    static ListenerContainerFactoryPostProcessor boundrailListenerContainerFactoryPostProcessor(ObjectProvider<KafkaContext> context) {
+        return new ListenerContainerFactoryPostProcessor(context);
+    }
 }

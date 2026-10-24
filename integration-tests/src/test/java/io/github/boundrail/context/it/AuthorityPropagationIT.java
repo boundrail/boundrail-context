@@ -16,6 +16,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -23,7 +24,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -251,11 +251,32 @@ class AuthorityPropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M6")
     @DisplayName("IT-4.9 Messages carry the initiator, never the authority")
-    void it49MessagesCarryTheInitiatorNeverTheAuthority() {
-        // IT-4.9: When edge publishes an event during alice's request, then billing's listener observes `initiator=user:alice`, no
-        // authority, and no `Authorization` record header exists. *(ID-06, KAF-04)*
+    void it49MessagesCarryTheInitiatorNeverTheAuthority(Topology.Running topology) throws Exception {
+        // IT-4.9: When the edge handler of a public request authenticated as alice publishes an event to `orders.events`, then billing's
+        // listener observes `initiator=user:alice` and no authority, and the record has a `Boundrail-Initiator` header and no
+        // `Authorization` header. *(ID-06, KAF-01, KAF-02, KAF-04)*
+        String marker = UUID.randomUUID().toString();
+
+        HttpResponse<String> response = HTTP.send(HttpRequest.newBuilder(topology.uri(Service.EDGE)
+                        .resolve("/kafka/publish?marker=" + marker))
+                        .header("Authorization", "Bearer " + topology.jwts().alice())
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (observedAll(topology, "billing", marker).isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(100);
+        }
+        Map<String, String> consumed = observed(topology, "billing", marker);
+        assertThat(consumed)
+                .containsEntry(ObservedContext.INITIATOR, "user:alice")
+                .doesNotContainKey(ObservedContext.AUTHORITY_SUBJECT);
+        assertThat(consumed.get(ObservedContext.KAFKA_HEADER_NAMES).split(","))
+                .contains("Boundrail-Initiator")
+                .doesNotContain("Authorization");
     }
 
     /** The exchange edge's {@code boundrail.context.violations{kind=missing_audience}} count, summed over keys and boundaries. */

@@ -300,7 +300,7 @@ without the deadline or the authority.
     ScopedValue backend these unit tests run on; the ThreadLocal side through IT-3.8 and IT-4.9 on `integrationTestJdk21` in T010); KAF-05
     (a batch listener passes through).
   - Verify: Unit `ListenerScopeAdviceTest`.
-- [ ] T010 [US1] The advice on every listener container factory bean, outermost; enable IT-3.8 and IT-4.9.
+- [x] T010 [US1] The advice on every listener container factory bean, outermost; enable IT-3.8 and IT-4.9.
   - Red:
     - in `kafkatest/ListenerScopeTest.java` (the broker; Boot's `KafkaAutoConfiguration` and both libraries' auto-configurations; records
       produced by a plain `KafkaProducer` with exact headers):
@@ -319,9 +319,10 @@ without the deadline or the authority.
       - `KAF-01 a record a listener sends carries the consumed record's MESSAGE keys`: the listener sends through the template bean; the
         record read back has `Tenant-Id: acme`;
       - guard: `KAF-05 a batch @KafkaListener is not scoped, and nothing is decoded or reported for its records`: a factory with
-        `setBatchListener(true)`; the listener sees no `tenant` and a repeated header reports nothing. Show it red with
-        `ListenerScopeAdvice` temporarily scoping a `List` argument in its first record's snapshot, then revert
-        ([plan.md](plan.md#guard-tests));
+        `setBatchListener(true)`; the listener sees no `tenant` and a repeated header reports nothing. Show it red twice, reverting
+        each time, with `ListenerScopeAdvice` temporarily without its `BatchMessageListener` check and (1) scoping a `List` argument
+        in its first record's snapshot (the listener sees `tenant`), then (2) building `snapshot(record)` for every record of a
+        `List` argument and proceeding unscoped (one `INVALID_VALUE` is reported) ([plan.md](plan.md#guard-tests));
     - `testImplementation(libs.spring.boot.kafka)` in `integration-tests/build.gradle.kts`;
     - enable IT-3.8 in `it/DeadlinePropagationIT.java`: alice's request to this class's edge `POST /kafka/publish` with a marker returns 200;
       billing's observation for the marker appears within 30 seconds, and after 2 more seconds it is still exactly one; it has no

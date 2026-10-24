@@ -194,9 +194,10 @@ as `ContextSnapshot.call`), so that it works on the ScopedValue backend. Set/res
 NOT be the scoping mechanism, because they cannot drive the ScopedValue backend (DESIGN §5.6). It SHALL cover the listeners of every
 listener container created by an `AbstractKafkaListenerContainerFactory` bean of the application context, including the factory Spring Boot
 auto-configures, by adding the library's advice first in the `ContainerProperties` advice chain of each such factory, so the listeners of
-the containers it creates, `@KafkaListener` containers included, are covered (DESIGN D72). Advice the application adds to a factory's advice
-chain SHALL run inside the library's scope. `RecordInterceptor`s run outside it, in `intercept`, `success`, `failure` and `afterRecord`. A
-container whose advice chain the application replaces, for example with a `ContainerCustomizer` that calls `setAdviceChain`, is not covered
+the containers it creates, `@KafkaListener` containers included, are covered (DESIGN D72). The library's advice SHALL appear in each such
+factory's advice chain exactly once, ahead of the application's advice. Advice the application adds to a factory's advice chain SHALL run
+inside the library's scope. `RecordInterceptor`s run outside it, in `intercept`, `success`, `failure` and `afterRecord`. A container whose
+advice chain the application replaces, for example with a `ContainerCustomizer` that calls `setAdviceChain`, is not covered
 (KAF-06; DESIGN D79).
 
 The container's handling of a record whose listener threw, including any recoverer such as `DeadLetterPublishingRecoverer`, SHALL run inside

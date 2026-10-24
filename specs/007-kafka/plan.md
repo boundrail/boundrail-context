@@ -482,8 +482,10 @@ T003, and open.
 
 These tests already pass before the task that introduces them. As in 002 – 006, each red is shown against a named temporary change, which
 is reverted before the commit. They are not TDD exceptions. The user approved T010's row on 2026-10-18, T011's row on 2026-10-18, and T009's
-two rows on 2026-10-22, and T008's follow-up row on 2026-10-21. The `RecordInterceptor` assertions in T010 and the "reported once"
-assertion in T011 sit in tests with red positive assertions, so they are not guards.
+two rows on 2026-10-22, and T008's follow-up row on 2026-10-21. On 2026-10-24 the user approved the amended T010 row, which names two
+temporary changes: the original single change could not report a repeated header, because both records arrive in one batch whose first record
+has a single `Tenant-Id`. The `RecordInterceptor` assertions in T010 and the "reported once" assertion in T011 sit in tests with red positive
+assertions, so they are not guards.
 
 A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code, which
 is then reverted; the leader reports it in the task report, the planner adds it to this table, and the reviewer checks it.
@@ -499,7 +501,7 @@ written, sit with the red `257 a` row).
 | T008 | `DIAG-02 MISSING_REQUIRED violations at send are reported in ascending key-name order` (follow-up, six required, unbound `MESSAGE` keys) | `checkRequiredKeys` in `ContextProducer` already sorts the key names (1a18ec6); the original two-key ordering test stays green without the sort in about half of JVM runs, because `Map.copyOf`'s iteration order depends on a per-JVM salt | `checkRequiredKeys` without `.sorted()`: the six violations come in the policy map's iteration order, ascending by chance in 1 of 720 orders |
 | T009 | `KAF-05 a BatchMessageListener is not scoped: it runs in the current snapshot, and nothing is decoded or reported for its records` | Without T009's advice nothing is scoped, so the batch listener already runs in the current snapshot, with nothing decoded or reported | `ListenerScopeAdvice` without its `BatchMessageListener` check and scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant=acme` |
 | T009 | `KAF-03 listener methods other than onMessage with a record pass through unscoped` | Without T009's advice nothing is scoped, so `onPartitionsAssigned` already runs in the outer snapshot | `ListenerScopeAdvice` running invocations other than a record `onMessage` in `ContextSnapshot.EMPTY`: `onPartitionsAssigned` sees no `tenant` |
-| T010 | `KAF-05 a batch @KafkaListener is not scoped, and nothing is decoded or reported for its records` | T009's advice already passes `BatchMessageListener` invocations through | `ListenerScopeAdvice` without its `BatchMessageListener` check and scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant` and a repeated header is reported |
+| T010 | `KAF-05 a batch @KafkaListener is not scoped, and nothing is decoded or reported for its records` | T009's advice already passes `BatchMessageListener` invocations through | Two changes, each shown red and reverted: (1) `ListenerScopeAdvice` without its `BatchMessageListener` check, scoping a `List` argument in its first record's snapshot: the batch listener sees `tenant`; (2) `ListenerScopeAdvice` without its `BatchMessageListener` check, building `snapshot(record)` for every record of a `List` argument and proceeding unscoped: one `INVALID_VALUE` is reported |
 | T011 | `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the empty snapshot` | Before T011 the error handler runs undecorated on the consumer thread, which has no binding, so it runs and sees an empty snapshot | `ContextErrorHandler` rethrowing the rebuild's exception instead of falling back to `ContextSnapshot.EMPTY`: the application's handler is not called |
 
 Outside 007: the Spring module's `ContextClientInterceptorTest` (`DIAG-02 several unbound required keys are each reported in ascending
