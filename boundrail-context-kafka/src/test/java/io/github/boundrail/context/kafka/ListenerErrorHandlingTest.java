@@ -572,6 +572,26 @@ class ListenerErrorHandlingTest {
                 });
     }
 
+    @Test
+    @DisplayName("KAF-03 with trust-headers=false, error handling of a record whose value fails deserialization reports no"
+            + " UNTRUSTED_HEADER")
+    void untrustedDeserializationFailureReportsNoUntrustedHeader() {
+        String topic = KafkaBroker.topic();
+        runner(topic).withPropertyValues(POISON_VALUES)
+                .withPropertyValues("boundrail.context.kafka.trust-headers=false", "boundrail.context.violations.mode=report",
+                        "test.seek-after-error=true")
+                .withUserConfiguration(BootHandler.class, BootFactoryListener.class).run(context -> {
+                    Recorder recorder = context.getBean(Recorder.class);
+
+                    produce(topic, "poison", "Tenant-Id", "acme");
+
+                    await().atMost(TIMEOUT).untilAsserted(() -> assertThat(recorder.handled).as("the application's handler").hasSize(1));
+                    assertThat(recorder.handled.getFirst().getValue().isEmpty()).as("the empty snapshot").isTrue();
+                    assertThat(recorder.listener).as("the listener is not invoked").isEmpty();
+                    assertThat(received).as("no violation reported").isEmpty();
+                });
+    }
+
     /** Records the {@code ConsumerStoppedEvent}s of the containers. */
     static final class StoppedEvents implements ApplicationListener<ConsumerStoppedEvent> {
 

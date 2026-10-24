@@ -52,8 +52,9 @@ public final class KafkaContext {
      * A decoding that throws {@code IllegalArgumentException} leaves the key unbound and is reported as {@code INVALID_VALUE} with boundary
      * {@code MESSAGE} and no destination (WIRE-05, DIAG-08), without the value (DIAG-09); any other exception propagates unchanged. A
      * repeated header, a {@code null} value or malformed UTF-8 is reported as {@code INVALID_VALUE}, and a longer value as
-     * {@code OVERSIZED_VALUE} (see {@code bind}). Every other header is ignored. The snapshot is built in a temporary scope, which is
-     * left before this returns (KAF-05, DESIGN D78).
+     * {@code OVERSIZED_VALUE} (see {@code bind}). Every other header is ignored. With {@code trust-headers=false}, the snapshot is empty
+     * and each policy wire header present is reported once as {@code UNTRUSTED_HEADER} (KAF-04). The snapshot is built in a temporary
+     * scope, which is left before this returns (KAF-05, DESIGN D78).
      */
     ContextSnapshot snapshot(ConsumerRecord<?, ?> record) {
         return build(record, true);
@@ -69,6 +70,12 @@ public final class KafkaContext {
 
     private ContextSnapshot build(ConsumerRecord<?, ?> record, boolean report) {
         ContextPolicy policy = support.policy();
+        if (!trustHeaders) {
+            if (report) {
+                reportUntrusted(policy, record);
+            }
+            return ContextSnapshot.EMPTY;
+        }
         ContextBinding binding = null;
         for (ContextKey<?> key : policy.keys()) {
             if (key != BuiltInKeys.DEADLINE && key != BuiltInKeys.AUTHORITY && policy.propagates(key, Boundary.MESSAGE)) {
@@ -120,6 +127,18 @@ public final class KafkaContext {
             return invalid(binding, Violation.Kind.INVALID_VALUE, key, report);
         }
         return binding == null ? Context.with(key, value) : binding.with(key, value);
+    }
+
+    /**
+     * Reports one {@code UNTRUSTED_HEADER} for each key of the policy whose wire header is present on the record, however often and
+     * whatever its value, {@code null} included, with boundary {@code MESSAGE} and no destination (KAF-04).
+     */
+    private void reportUntrusted(ContextPolicy policy, ConsumerRecord<?, ?> record) {
+        for (ContextKey<?> key : policy.keys()) {
+            if (policy.wireName(key).filter(name -> record.headers().headers(name).iterator().hasNext()).isPresent()) {
+                support.report(support.violation(Violation.Kind.UNTRUSTED_HEADER, key.name(), Boundary.MESSAGE));
+            }
+        }
     }
 
     /** Reports the key's violation if {@code report} is {@code true}, and returns {@code binding} unchanged. */

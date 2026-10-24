@@ -413,7 +413,7 @@ without the deadline or the authority.
 
 **Independent Test**: Unit tests whose display names start with `KAF-04`.
 
-- [ ] T012 [US2] Untrusted record headers (KAF-04).
+- [x] T012 [US2] Untrusted record headers (KAF-04).
   - Red, in `kafkatest/RecordTrustTest.java` (as `RecordSnapshotTest`, with `boundrail.context.kafka.trust-headers=false` unless stated):
     - `KAF-04 with trust-headers=false the snapshot is empty and one UNTRUSTED_HEADER is reported per policy wire header name present, however
       often and whatever its value`: `Tenant-Id` twice, `Boundrail-Initiator` with a `null` value, `Boundrail-Deadline-Ms: 5000`, `Priority: 5`
@@ -421,8 +421,14 @@ without the deadline or the authority.
       violations, one each for `tenant`, `boundrail.initiator`, `boundrail.deadline`, `priority` and `order-count`, each with boundary
       `MESSAGE` and no destination; none for the other names; no `INVALID_VALUE` or `OVERSIZED_VALUE`; a counting codec at zero `decode`
       calls; `AUTHORITY` and `DEADLINE` unbound (ID-02);
+      - guard (approved 2026-10-25), an added record in the same test with only `tenant-id`: its snapshot is empty and it adds no
+        violations. Show it red with header names temporarily matched ignoring case, then revert ([plan.md](plan.md#guard-tests));
     - `KAF-04 trust-headers=off disables trust and the default trusts`: the same `Tenant-Id: acme` record gives an empty snapshot with `off`
-      and `tenant=acme` with the property unset.
+      and `tenant=acme` with the property unset;
+    - guard (approved 2026-10-25), in `kafkatest/ListenerErrorHandlingTest.java`: `KAF-03 with trust-headers=false, error handling of a
+      record whose value fails deserialization reports no UNTRUSTED_HEADER`: a poison-value record carrying `Tenant-Id`; its handler runs in
+      the empty snapshot, and nothing is reported. Show it red with the untrusted branch of `KafkaContext` temporarily reporting regardless
+      of the report flag, then revert ([plan.md](plan.md#guard-tests)).
   - Green: the trust branch in `kafka/KafkaContext.java`'s `snapshot` ([plan.md](plan.md#record-snapshot-kaf-02-kaf-04-kaf-05)).
   - Completes: KAF-04 (untrusted path, policy wire header names, `AUTHORITY` and `DEADLINE` never bound regardless of configuration).
   - Verify: Unit `RecordTrustTest`.
@@ -513,8 +519,8 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.8, IT-4.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M6): CORE-17, KAF-01 – KAF-05; the Javadoc statement
   of KAF-06 checked by inspection (TDD exception)
-- [ ] The guards in T010 (batch `@KafkaListener`) and T011 (empty-snapshot fallback and the three D82 guards) shown red against their
-  temporary change, and the change reverted
+- [ ] The guards in T010 (batch `@KafkaListener`), T011 (empty-snapshot fallback and the three D82 guards) and T012 (no `UNTRUSTED_HEADER`
+  from the rebuild, exact name matching) shown red against their temporary change, and the change reverted
 - [ ] The consumer adapter works on the ScopedValue backend without set/restore interceptors (IT-3.8 on `integrationTestJdk25`, `-kafka`'s
   unit tests) and on ThreadLocal (IT-3.8 and IT-4.9 on `integrationTestJdk21`)
 - [ ] Every acceptance suite fully green; `boundrail-context-core` still has no runtime dependencies; Kafka confined to `-kafka`

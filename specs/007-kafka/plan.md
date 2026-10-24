@@ -485,10 +485,10 @@ T003, and open.
 
 These tests already pass before the task that introduces them. As in 002 – 006, each red is shown against a named temporary change, which
 is reverted before the commit. They are not TDD exceptions. The user approved T010's row on 2026-10-18, T011's row on 2026-10-18, and T009's
-two rows on 2026-10-22, and T008's follow-up row on 2026-10-21, and T011's three D82 rows on 2026-10-25. On 2026-10-24 the user approved
-the amended T010 row, which names two temporary changes: the original single change could not report a repeated header, because both
-records arrive in one batch whose first record has a single `Tenant-Id`. The `RecordInterceptor` assertions in T010 and the "reported once"
-assertion in T011 sit in tests with red positive assertions, so they are not guards.
+two rows on 2026-10-22, and T008's follow-up row on 2026-10-21, and T011's three D82 rows and T012's two rows on 2026-10-25. On
+2026-10-24 the user approved the amended T010 row, which names two temporary changes: the original single change could not report a
+repeated header, because both records arrive in one batch whose first record has a single `Tenant-Id`. The `RecordInterceptor` assertions
+in T010 and the "reported once" assertion in T011 sit in tests with red positive assertions, so they are not guards.
 
 A test that is green before its task is accepted as a guard when its red is shown against a named temporary change to the finished code, which
 is then reverted; the leader reports it in the task report, the planner adds it to this table, and the reviewer checks it.
@@ -509,6 +509,8 @@ written, sit with the red `257 a` row).
 | T011 | `KAF-03 an Error thrown while rebuilding the failed record's snapshot propagates, and the error handling does not run` (D82) | Written after T011's code, whose `ContextErrorHandler` already falls back to the empty snapshot only for a `RuntimeException` | `ContextErrorHandler` with `catch (Throwable e)` instead of `RuntimeException`: the consumer does not stop (no `ConsumerStoppedEvent` with `Reason.ERROR`) |
 | T011 | `KAF-03 a record whose value fails deserialization never has its header violations reported, and its error handling runs in its snapshot` (D82) | Written after T011's code, whose `rebuild(record)` already reports nothing, and the container throws `DeserializationException` before the listener's advice builds the snapshot | `rebuild(record)` reporting its violations: an `INVALID_VALUE` for `tenant` is reported |
 | T011 | `KAF-03 a container with a transaction manager that is not Kafka-aware is transactional: it gets no error handler, and its AfterRollbackProcessor is decorated` (a plain `PlatformTransactionManager` set through the deprecated `setTransactionManager`) | Written after T011's code, whose `transactional()` already checks `getTransactionManager()` | `transactional()` without the `getTransactionManager()` clause: the container's handler is a `ContextErrorHandler` instead of `null` |
+| T012 | `KAF-03 with trust-headers=false, error handling of a record whose value fails deserialization reports no UNTRUSTED_HEADER` (in `ListenerErrorHandlingTest`) | Written after T011's and T012's code: the rebuild reports nothing, in the untrusted branch of `KafkaContext` too | The untrusted branch of `KafkaContext` reporting regardless of the report flag: an `UNTRUSTED_HEADER` is reported |
+| T012 | `KAF-04 with trust-headers=false the snapshot is empty and one UNTRUSTED_HEADER is reported per policy wire header name present, however often and whatever its value`, an added record with only `tenant-id` | Written after T012's code, which matches header names exactly | Header names matched ignoring case: the record gives an `UNTRUSTED_HEADER` for `tenant` |
 
 Outside 007: the Spring module's `ContextClientInterceptorTest` (`DIAG-02 several unbound required keys are each reported in ascending
 key-name order, and the exception carries the first`, around line 704) has the same weakness, with only the keys `region` and `tenant`. It
