@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.boundrail.context.Codecs;
 import io.github.boundrail.context.Context;
+import io.github.boundrail.context.ContextKey;
 import io.github.boundrail.context.ContextPolicy;
 import io.github.boundrail.context.ContextViolationException;
 import io.github.boundrail.context.Violation;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -59,7 +61,25 @@ class ProducerRequiredKeysTest {
                 .build();
     }
 
+    /** The six required, unbound {@code MESSAGE} keys of the DIAG-02 order test, declared out of name order. */
+    private static final List<ContextKey<String>> SIX_KEYS = Stream.of("region", "account", "zone", "channel", "user", "batch")
+            .map(name -> ContextKey.of(name, String.class))
+            .toList();
+
+    /** {@return a policy with only {@link #SIX_KEYS}, each a required string key with its own wire name, propagating to {@code MESSAGE}} */
+    private static ContextPolicy sixRequiredPolicy() {
+        ContextPolicy.Builder builder = ContextPolicy.builder();
+        for (ContextKey<String> key : SIX_KEYS) {
+            builder.key(key, rules -> rules.codec(Codecs.string()).wireName("Wire-" + key.name()).propagateTo(MESSAGE).required());
+        }
+        return builder.build();
+    }
+
     private ApplicationContextRunner runner(String mode) {
+        return runner(mode, ProducerRequiredKeysTest::requiredPolicy);
+    }
+
+    private ApplicationContextRunner runner(String mode, Supplier<ContextPolicy> policy) {
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(KafkaAutoConfiguration.class, BoundrailContextAutoConfiguration.class,
                         BoundrailKafkaAutoConfiguration.class))
@@ -67,7 +87,7 @@ class ProducerRequiredKeysTest {
                         "boundrail.context.violations.mode=" + mode)
                 .withBean(SimpleMeterRegistry.class)
                 .withBean(ViolationListener.class, () -> received::add)
-                .withBean(ContextPolicy.class, ProducerRequiredKeysTest::requiredPolicy);
+                .withBean(ContextPolicy.class, policy);
     }
 
     @SuppressWarnings("unchecked")
@@ -107,6 +127,26 @@ class ProducerRequiredKeysTest {
             assertThat(((ContextViolationException) thrown).violation()).as("the first").isSameAs(received.getFirst());
             assertThat(KafkaBroker.read(topic, 1)).as("only the later record reached the topic").extracting(ConsumerRecord::value)
                     .containsExactly("marker");
+        });
+    }
+
+    @Test
+    @DisplayName("DIAG-02 MISSING_REQUIRED violations at send are reported in ascending key-name order")
+    void reportsInKeyNameOrder() {
+        runner("fail", ProducerRequiredKeysTest::sixRequiredPolicy).run(context -> {
+            Throwable thrown = catchThrowable(() -> template(context).send(KafkaBroker.topic(), "failed"));
+
+            assertThat(received).as("the full order, not only the first; a lucky iteration order has a chance of 1/720")
+                    .extracting(Violation::kind, Violation::key)
+                    .containsExactly(
+                            tuple(Violation.Kind.MISSING_REQUIRED, "account"),
+                            tuple(Violation.Kind.MISSING_REQUIRED, "batch"),
+                            tuple(Violation.Kind.MISSING_REQUIRED, "channel"),
+                            tuple(Violation.Kind.MISSING_REQUIRED, "region"),
+                            tuple(Violation.Kind.MISSING_REQUIRED, "user"),
+                            tuple(Violation.Kind.MISSING_REQUIRED, "zone"));
+            assertThat(thrown).isInstanceOf(ContextViolationException.class);
+            assertThat(((ContextViolationException) thrown).violation()).as("the first").isSameAs(received.getFirst());
         });
     }
 

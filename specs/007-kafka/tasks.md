@@ -264,7 +264,7 @@ without the deadline or the authority.
   - Green: the check at the start of `send` in `kafka/ContextProducer.java`.
   - Completes: KAF-01 (required keys, both modes, POL-08, transactions).
   - Verify: Unit `ProducerRequiredKeysTest`.
-  - [ ] Follow-up, accepted by the user on 2026-10-21, the DIAG-02 order at send. The ordering assertion above uses two required keys, and
+  - [x] Follow-up, accepted by the user on 2026-10-21, the DIAG-02 order at send. The ordering assertion above uses two required keys, and
     `ContextPolicy` keeps its rules in `Map.copyOf`, whose iteration order depends on a per-JVM salt: the two keys come out ascending in
     about half of JVM runs, and removing `.sorted()` stayed green in 6 of 7 runs. In `kafkatest/ProducerRequiredKeysTest.java`, with its
     own policy (the test policy of the other tests is unchanged):
