@@ -56,11 +56,23 @@ public final class KafkaContext {
      * left before this returns (KAF-05, DESIGN D78).
      */
     ContextSnapshot snapshot(ConsumerRecord<?, ?> record) {
+        return build(record, true);
+    }
+
+    /**
+     * {@return the record's snapshot, built as {@link #snapshot} builds it but reporting nothing, so the error handling of a delivery does
+     * not report its violations again (KAF-03, DESIGN D79)} Exceptions propagate as from {@code snapshot}.
+     */
+    ContextSnapshot rebuild(ConsumerRecord<?, ?> record) {
+        return build(record, false);
+    }
+
+    private ContextSnapshot build(ConsumerRecord<?, ?> record, boolean report) {
         ContextPolicy policy = support.policy();
         ContextBinding binding = null;
         for (ContextKey<?> key : policy.keys()) {
             if (key != BuiltInKeys.DEADLINE && key != BuiltInKeys.AUTHORITY && policy.propagates(key, Boundary.MESSAGE)) {
-                binding = bind(binding, policy, key, record);
+                binding = bind(binding, policy, key, record, report);
             }
         }
         if (binding == null) {
@@ -75,19 +87,20 @@ public final class KafkaContext {
      * or a {@code null} value is reported as {@code INVALID_VALUE}; a value longer than {@code maxValueLength()} once decoded as UTF-8 with
      * replacement, in UTF-16 code units, as {@code OVERSIZED_VALUE} (WIRE-04, checked first); a value that is not well-formed UTF-8 as
      * {@code INVALID_VALUE}. None of these is decoded. A key that propagates to {@code MESSAGE} has a wire name, and a codec unless it is
-     * the initiator (POL-03).
+     * the initiator (POL-03). Violations are reported only if {@code report} is {@code true}.
      */
-    private <T> ContextBinding bind(ContextBinding binding, ContextPolicy policy, ContextKey<T> key, ConsumerRecord<?, ?> record) {
+    private <T> ContextBinding bind(ContextBinding binding, ContextPolicy policy, ContextKey<T> key, ConsumerRecord<?, ?> record,
+            boolean report) {
         Iterator<Header> headers = record.headers().headers(policy.wireName(key).orElseThrow()).iterator();
         if (!headers.hasNext()) {
             return binding;
         }
         byte[] bytes = headers.next().value();
         if (headers.hasNext() || bytes == null) {
-            return invalid(binding, Violation.Kind.INVALID_VALUE, key);
+            return invalid(binding, Violation.Kind.INVALID_VALUE, key, report);
         }
         if (new String(bytes, UTF_8).length() > support.maxValueLength()) {
-            return invalid(binding, Violation.Kind.OVERSIZED_VALUE, key);
+            return invalid(binding, Violation.Kind.OVERSIZED_VALUE, key, report);
         }
         String text;
         try {
@@ -96,7 +109,7 @@ public final class KafkaContext {
                     .decode(ByteBuffer.wrap(bytes))
                     .toString();
         } catch (CharacterCodingException e) {
-            return invalid(binding, Violation.Kind.INVALID_VALUE, key);
+            return invalid(binding, Violation.Kind.INVALID_VALUE, key, report);
         }
         T value;
         try {
@@ -104,14 +117,16 @@ public final class KafkaContext {
                     ? key.type().cast(Initiator.of(text))
                     : policy.codec(key).orElseThrow().decode(text);
         } catch (IllegalArgumentException e) {
-            return invalid(binding, Violation.Kind.INVALID_VALUE, key);
+            return invalid(binding, Violation.Kind.INVALID_VALUE, key, report);
         }
         return binding == null ? Context.with(key, value) : binding.with(key, value);
     }
 
-    /** Reports the key's violation and returns {@code binding} unchanged. */
-    private ContextBinding invalid(ContextBinding binding, Violation.Kind kind, ContextKey<?> key) {
-        support.report(support.violation(kind, key.name(), Boundary.MESSAGE));
+    /** Reports the key's violation if {@code report} is {@code true}, and returns {@code binding} unchanged. */
+    private ContextBinding invalid(ContextBinding binding, Violation.Kind kind, ContextKey<?> key, boolean report) {
+        if (report) {
+            support.report(support.violation(kind, key.name(), Boundary.MESSAGE));
+        }
         return binding;
     }
 }

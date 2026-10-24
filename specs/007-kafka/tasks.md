@@ -342,7 +342,7 @@ without the deadline or the authority.
     outside; both backends through IT-3.8 on `integrationTestJdk21` and `integrationTestJdk25`); KAF-02 (the container's context reports);
     KAF-01 (a listener's send); KAF-05 (batch `@KafkaListener`, guard); IT-3.8; IT-4.9 (ID-06's `MESSAGE` clause).
   - Verify: Unit `ListenerScopeTest`; IT+.
-- [ ] T011 [US1] The container's error handling runs inside the failed record's snapshot (KAF-03, D73, D79).
+- [x] T011 [US1] The container's error handling runs inside the failed record's snapshot (KAF-03, D73, D79, D82).
   - Red, in `kafkatest/ListenerErrorHandlingTest.java` (the broker; the test policy with `tenant` required, `violations.mode=fail`; a
     recording `ViolationListener`):
     - `KAF-03 a CommonErrorHandler handling a record whose listener threw runs in that record's snapshot, and the previous snapshot is
@@ -361,24 +361,46 @@ without the deadline or the authority.
     - `KAF-03 an AfterRollbackProcessor of a transactional container processes the failed record in its snapshot`: a
       `DefaultAfterRollbackProcessor` bean with a `DeadLetterPublishingRecoverer`; the DLT record is committed with `Tenant-Id: acme`
       (`read_committed` reader); no `MISSING_REQUIRED`;
+    - `KAF-03 a CommonErrorHandler of a transactional container, which runs inside the transaction, handles the failed record in its
+      snapshot` (added with the review of T011, findings accepted by the user on 2026-10-25): a transactional container (Boot's
+      `KafkaTransactionManager`) with an application `CommonErrorHandler` bean has that handler decorated (`getCommonErrorHandler()` is the
+      library's decorator), and a `DeadLetterPublishingRecoverer` on it commits the DLT record with `Tenant-Id: acme` and no
+      `MISSING_REQUIRED`;
+    - guard (approved 2026-10-25): `KAF-03 a container with a transaction manager that is not Kafka-aware is transactional: it gets no
+      error handler, and its AfterRollbackProcessor is decorated`: a container whose properties get a plain `PlatformTransactionManager`
+      through the deprecated `setTransactionManager` has `getCommonErrorHandler()` `null` and a decorated after-rollback processor. Show it
+      red with `transactional()` temporarily without the `getTransactionManager()` clause (the handler is then a `ContextErrorHandler`), then
+      revert ([plan.md](plan.md#guard-tests));
     - `KAF-03 the error handler runs in the record's snapshot for a deserialization failure`: `ErrorHandlingDeserializer` around a
       deserializer that throws for `poison`, a recoverer with a `byte[]` template; the listener is not invoked and the raw record reaches the
       DLT with `Tenant-Id: acme`;
-    - guard (new, for the user's approval): `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the
+    - guard (approved 2026-10-25): `KAF-03 a record whose value fails deserialization never has its header violations reported, and its
+      error handling runs in its snapshot` (D82): a record that fails deserialization and repeats `Tenant-Id`; its error handling runs and
+      no violation is reported. Show it red with `rebuild(record)` temporarily reporting its violations (an `INVALID_VALUE` for `tenant`),
+      then revert ([plan.md](plan.md#guard-tests));
+    - guard (approved 2026-10-18): `KAF-03 when rebuilding the failed record's snapshot throws, the error handler still runs, in the
       empty snapshot`: a record whose `Order-Count` codec throws `IllegalStateException`; the listener is not invoked; the application's
       handler is called once per delivery and sees no binding; the record is redelivered (D79). Show it red with `ContextErrorHandler`
       temporarily rethrowing the rebuild's exception instead of using `ContextSnapshot.EMPTY` (the handler is then not called), then revert
+      ([plan.md](plan.md#guard-tests));
+    - guard (approved 2026-10-25): `KAF-03 an Error thrown while rebuilding the failed record's snapshot propagates, and the error
+      handling does not run` (D82). Show it red with `ContextErrorHandler` temporarily using `catch (Throwable e)` instead of
+      `RuntimeException` (the consumer then does not stop: no `ConsumerStoppedEvent` with `Reason.ERROR`), then revert
       ([plan.md](plan.md#guard-tests)).
   - Green ([plan.md](plan.md#listener-scope-kaf-02-kaf-03-d72)): `kafka/ContextErrorHandler.java` and
     `kafka/ContextAfterRollbackProcessor.java` (delegating every method; `handleOne`, `handleRemaining` and `process` in the first record's
     snapshot); `rebuild(record)` in `kafka/KafkaContext.java` (the same build, reporting nothing); `kafka/ErrorHandlingInstaller.java`, a
     `SmartLifecycle` with phase `AbstractMessageListenerContainer.DEFAULT_PHASE - 1` that takes `ObjectProvider<KafkaListenerEndpointRegistry>`
-    and looks the registry up in `start()` (never injected directly), wrapping every container of `getAllListenerContainers()` once: the
-    `AfterRollbackProcessor` of a transactional container, otherwise its `CommonErrorHandler` or a decorated `DefaultErrorHandler` where none
-    is set; registered in `kafka/BoundrailKafkaAutoConfiguration.java`.
-  - Not tested, documented in T013 (D79): containers created or registered after startup, `handleOtherException`, the batch paths.
+    and looks the registry up in `start()` (never injected directly), wrapping every container of `getAllListenerContainers()` once: its
+    `CommonErrorHandler` where one is set; a decorated `DefaultErrorHandler` on a non-transactional container with none; and also the
+    `AfterRollbackProcessor` of a transactional container (`getKafkaAwareTransactionManager()` or the deprecated `getTransactionManager()`
+    not `null`), which gets no handler if it has none ([plan.md](plan.md#listener-scope-kaf-02-kaf-03-d72)); registered in
+    `kafka/BoundrailKafkaAutoConfiguration.java`.
+  - Not tested, documented in T013 (D79, D82): containers created or registered after startup, `MessageListenerContainer` beans whose
+    phase is lower than `DEFAULT_PHASE`, `handleOtherException`, the batch paths.
   - Completes: KAF-03 (error handling in the failed record's snapshot: both decorators, the installer, the default handler only on
-    non-transactional containers, deserialization failures, the empty-snapshot fallback, no double reporting).
+    non-transactional containers, deserialization failures, the empty-snapshot fallback for a `RuntimeException` only, no double
+    reporting).
   - Verify: Unit `ListenerErrorHandlingTest`; then `./gradlew check`.
 
 **Checkpoint**: IT-3.8 and IT-4.9 green on JDK 21 and JDK 25; every acceptance suite fully green.
@@ -418,7 +440,7 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
 
 ## Phase 6: Documentation and close
 
-- [ ] T013 The `KafkaContext` Javadoc (KAF-06, D79, D81). [TDD-EXCEPTION: review of T013, and inspection in T014 against KAF-06's wording]
+- [ ] T013 The `KafkaContext` Javadoc (KAF-06, D79, D81, D82). [TDD-EXCEPTION: review of T013, and inspection in T014 against KAF-06's wording]
   - In `kafka/KafkaContext.java`, the class Javadoc states each item of KAF-06:
     - batch listeners are not scoped, and `forRecord` gives each record's snapshot (KAF-05);
     - the sends covered: those through producers that the `ProducerFactory` of a `KafkaTemplate` bean creates, including
@@ -433,8 +455,10 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
       container whose advice chain the application replaces, for example with a `ContainerCustomizer`, is not covered, with no promise that a
       `@KafkaListener` container keeps the scope then (KAF-03);
     - error handling runs in the failed record's snapshot, except for containers created or registered after startup,
-      `handleOtherException` and the batch paths; a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be
-      dead-lettered and is redelivered (KAF-03);
+      `MessageListenerContainer` beans whose phase is lower than `DEFAULT_PHASE`, `handleOtherException` and the batch paths; a record
+      whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered (KAF-03);
+    - a record whose deserialization fails never has its header violations reported, though its error handling still runs in its
+      snapshot (KAF-03, D82);
     - only the listener invocation and the container's error handling are scoped, so code that completes a `CompletableFuture` or `Mono` a
       listener returns runs with its own thread's context (KAF-03).
   - No test: documentation, approved as a TDD exception ([plan.md](plan.md#tdd-exceptions)).
@@ -484,11 +508,13 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
 - [x] The answers to Q1 – Q7 written into spec.md and design.md by the spec-creator
 - [x] Q8 settled by the user, and written into spec.md if it changes KAF-04
 - [x] The new guard in T011 (empty-snapshot fallback) approved by the user
+- [x] The three D82 guards in T011 (`Error` from the rebuild, deserialization failure not reported, deprecated transaction manager)
+  approved by the user on 2026-10-25
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.8, IT-4.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M6): CORE-17, KAF-01 – KAF-05; the Javadoc statement
   of KAF-06 checked by inspection (TDD exception)
-- [ ] The guards in T010 (batch `@KafkaListener`) and T011 (empty-snapshot fallback) shown red against their temporary change, and the
-  change reverted
+- [ ] The guards in T010 (batch `@KafkaListener`) and T011 (empty-snapshot fallback and the three D82 guards) shown red against their
+  temporary change, and the change reverted
 - [ ] The consumer adapter works on the ScopedValue backend without set/restore interceptors (IT-3.8 on `integrationTestJdk25`, `-kafka`'s
   unit tests) and on ThreadLocal (IT-3.8 and IT-4.9 on `integrationTestJdk21`)
 - [ ] Every acceptance suite fully green; `boundrail-context-core` still has no runtime dependencies; Kafka confined to `-kafka`

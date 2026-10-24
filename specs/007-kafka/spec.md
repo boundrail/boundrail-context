@@ -77,13 +77,19 @@ Batch listeners are not scoped automatically in v0.1; a helper returns the snaps
   the current one; nothing leaks).
 - A record with no context headers: KAF-02 (the listener runs in an empty snapshot, replacing whatever is current).
 - The listener throws: KAF-02 (the exception propagates unchanged and the previous snapshot is restored); the container's error handling for
-  that record, through its decorated `CommonErrorHandler` or, on a transactional container, its `AfterRollbackProcessor`, runs inside the
-  record's snapshot, so a `DeadLetterPublishingRecoverer` publishing it still has a required `MESSAGE` key bound (KAF-03).
+  that record runs inside the record's snapshot, so a `DeadLetterPublishingRecoverer` publishing it still has a required `MESSAGE` key bound:
+  KAF-03 (the decorated `CommonErrorHandler` runs in it, and on a transactional container the decorated `AfterRollbackProcessor` does too,
+  whichever of them handles the record).
 - A record whose decoding throws something other than `IllegalArgumentException` (KAF-02) goes to a dead-letter recoverer, in `fail` mode,
   with a required `MESSAGE` key: KAF-03 (the error handling runs in the empty snapshot, the dead-letter send fails, and the record is
-  redelivered).
-- A container created or registered after startup: KAF-03, KAF-06 (its error handling runs outside the record's snapshot). A failure that
-  reaches `handleOtherException`, which has no record, or a batch error handling path: KAF-03, KAF-06 (not scoped).
+  redelivered). An `Error` thrown while the error handling rebuilds the snapshot: KAF-03 (it propagates; the error handling does not run).
+- A record whose key or value fails deserialization, for example through an `ErrorHandlingDeserializer`, and that also repeats
+  `Tenant-Id`: KAF-03, KAF-06 (the listener and its advice never run, so KAF-02 reports nothing for it; the error handling runs in the
+  record's snapshot but reports nothing either, so the `INVALID_VALUE` is never reported).
+- A container created or registered after startup, or a `MessageListenerContainer` bean whose phase is lower than
+  `AbstractMessageListenerContainer.DEFAULT_PHASE`: KAF-03, KAF-06 (its error handling runs outside the record's snapshot). A container of
+  the `KafkaListenerEndpointRegistry` with such a phase: KAF-03 (covered; the registry starts it). A failure that reaches
+  `handleOtherException`, which has no record, or a batch error handling path: KAF-03, KAF-06 (not scoped).
 - A record redelivered after an error: KAF-02 (each delivery builds its snapshot again and reports its violations again).
 - The listener returns a `CompletableFuture` or a `Mono`: KAF-06 (only the invocation is scoped; code that completes the result runs with
   its own thread's context).
@@ -204,14 +210,21 @@ The container's handling of a record whose listener threw, including any recover
 that record's snapshot. The Kafka module SHALL decorate the `CommonErrorHandler` of each listener container, and the `AfterRollbackProcessor`
 of each container that has a transaction manager, so that `handleOne`, `handleRemaining` and `process` run inside the snapshot of the failed
 record, the first record they are given, and every other method is delegated unchanged. It SHALL install these decorators on every container
-of the `KafkaListenerEndpointRegistry` and every `MessageListenerContainer` bean before those containers start. On a non-transactional
-container that has no `CommonErrorHandler`, it SHALL set a decorated `DefaultErrorHandler`; on a transactional container it SHALL set none.
+of the `KafkaListenerEndpointRegistry`, whatever their phase, because the registry starts them in its own phase, and on every
+`MessageListenerContainer` bean whose phase is not lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, before those containers
+start. On a non-transactional container that has no `CommonErrorHandler`, it SHALL set a decorated `DefaultErrorHandler`; on a
+transactional container it SHALL set none.
 That snapshot SHALL be the failed record's, built as KAF-02 and KAF-04 define but without reporting its violations again; IF building it
-throws, THEN the error handling SHALL run in the empty snapshot. So a record whose decoding throws something other than
+throws a `RuntimeException`, THEN the error handling SHALL run in the empty snapshot; an `Error` thrown while building it SHALL propagate
+unchanged, and the error handling SHALL NOT run (DESIGN D82). So a record whose decoding throws something other than
 `IllegalArgumentException` (KAF-02), sent to a dead-letter recoverer in `fail` mode with a required `MESSAGE` key, cannot be dead-lettered
-and is redelivered. Not covered: containers created or registered after startup, `handleOtherException`, which has no record, and the batch
-paths `handleBatch` and `processBatch` (KAF-05, KAF-06; DESIGN D73, D79). Verified by IT-3.8 in `integrationTestJdk25` (ScopedValue backend)
-and unit tests.
+and is redelivered. A record whose key or value fails deserialization never reaches the listener or its advice, because the container
+throws `DeserializationException` before invoking them, so KAF-02 neither builds its snapshot nor reports its violations; its error
+handling SHALL still run in its snapshot, and because that build does not report, the record's header violations are never reported
+(KAF-06; DESIGN D82). Not covered: containers created or registered after startup; `MessageListenerContainer` beans whose phase is
+lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, which can start before the decorators are installed and keep the error
+handler they started with; `handleOtherException`, which has no record; and the batch paths `handleBatch` and `processBatch` (KAF-05, KAF-06;
+DESIGN D73, D79, D82). Verified by IT-3.8 in `integrationTestJdk25` (ScopedValue backend) and unit tests.
 
 **KAF-04** `[M6]` WHERE Spring Kafka and `boundrail-context-spring` are on the classpath, the Kafka module's auto-configuration SHALL be
 active and SHALL apply KAF-01 – KAF-05. Both are dependencies of `boundrail-context-kafka`: Spring Kafka as an `implementation` dependency,
@@ -253,12 +266,13 @@ temporary scope, so registered `ScopeListener`s (RT-07), such as the MDC bridge 
   listener scope; and that a container whose advice chain the application replaces, for example with a `ContainerCustomizer`, is not
   covered (KAF-03). It SHALL NOT promise that a `@KafkaListener` container keeps the scope when its chain is replaced;
 - that the container's error handling runs in the failed record's snapshot, except for containers created or registered after startup,
-  `handleOtherException` and the batch paths; and that a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot
-  be dead-lettered and is redelivered (KAF-03);
+  `MessageListenerContainer` beans whose phase is lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, `handleOtherException` and
+  the batch paths; that a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is
+  redelivered; and that the header violations of a record whose key or value fails deserialization are never reported (KAF-03);
 - that only the listener invocation and the container's error handling are scoped, so code that completes a `CompletableFuture` or `Mono` a
   listener returns runs with its own thread's context (KAF-03).
 
-Verified by the Javadoc of `KafkaContext`; the README takes it up in M7 (REL-01) (DESIGN D77, D79, D81).
+Verified by the Javadoc of `KafkaContext`; the README takes it up in M7 (REL-01) (DESIGN D77, D79, D81, D82).
 
 ### Configuration
 

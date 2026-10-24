@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
 
 /**
@@ -39,5 +40,11 @@ public class BoundrailKafkaAutoConfiguration {
     @Bean
     static ListenerContainerFactoryPostProcessor boundrailListenerContainerFactoryPostProcessor(ObjectProvider<KafkaContext> context) {
         return new ListenerContainerFactoryPostProcessor(context);
+    }
+
+    /** Decorates the error handling of every listener container before the containers start (KAF-03, DESIGN D73, D79). */
+    @Bean
+    ErrorHandlingInstaller boundrailErrorHandlingInstaller(KafkaContext context, ObjectProvider<KafkaListenerEndpointRegistry> registry) {
+        return new ErrorHandlingInstaller(context, registry);
     }
 }
