@@ -460,9 +460,10 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
     - the containers covered: those created by listener container factory beans; `RecordInterceptor`s run outside the listener scope; the
       listener of a container whose advice chain the application replaces, for example with a `ContainerCustomizer`, is not scoped, with no
       promise that a `@KafkaListener` container keeps the scope then (KAF-03);
-    - error handling runs in the failed record's snapshot, except for containers created or registered after startup,
-      `MessageListenerContainer` beans whose phase is lower than `DEFAULT_PHASE`, `handleOtherException` and the batch paths; a record
-      whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered (KAF-03);
+    - error handling runs in the failed record's snapshot, except for containers created or registered after startup, containers that
+      are neither beans nor registered with the `KafkaListenerEndpointRegistry` (added in T015), `MessageListenerContainer` beans whose
+      phase is lower than `DEFAULT_PHASE`, `handleOtherException` and the batch paths; a record whose decoding throws, with a required
+      `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered (KAF-03);
     - a record whose deserialization fails never has its header violations reported, though its error handling still runs in its
       snapshot (KAF-03, D82);
     - only the listener invocation and the container's error handling are scoped, so code that completes a `CompletableFuture` or `Mono` a
@@ -470,6 +471,22 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
   - No test: documentation, approved as a TDD exception ([plan.md](plan.md#tdd-exceptions)).
   - Completes: KAF-06.
   - Verify: `./gradlew :boundrail-context-kafka:javadoc` reports no warning for `KafkaContext`; then `./gradlew check`.
+- [ ] T015 Close-out fixes from T014's review (KAF-04, KAF-05, KAF-06; accepted by the user on 2026-10-26).
+  [TDD-EXCEPTION: review of T015, and the javadoc check below] Numbered after T014 but runs before it. The user's acceptance covers these
+  items, and the user approved its TDD exception on 2026-10-26 ([plan.md](plan.md#tdd-exceptions)).
+  - In `kafkatest/KafkaAutoConfigurationTest.java`, rename the test at line 74 to `KAF-04 without Spring Kafka, or without the Spring
+    module's auto-configuration, the Kafka auto-configuration backs off and the context starts` (it already checks both; no behaviour
+    changes).
+  - Fix the Javadoc warnings 007 introduced: the default constructor of `kafka/BoundrailKafkaAutoConfiguration.java` (an explicit
+    documented constructor) and the missing `@param` tags in `spring/internal/AdapterSupport.java`.
+  - In the class Javadoc of `kafka/KafkaContext.java`, add to the error handling item that containers that are neither beans nor
+    registered with the `KafkaListenerEndpointRegistry` are not covered (KAF-06).
+  - In `forRecord`'s Javadoc (`kafka/KafkaContext.java`) and in [contracts/kafka-api.md](contracts/kafka-api.md) (line 17), "may observe
+    one enter and exit pair" becomes "may observe enter and exit pairs", as KAF-05 and D78 now say (Q9).
+  - No test: no behaviour to test first ([plan.md](plan.md#tdd-exceptions)).
+  - Completes: KAF-04 (the back-off test's name); KAF-05 (`forRecord`'s Javadoc and the contract, Q9); KAF-06 (the new not-covered item).
+  - Verify: `./gradlew :boundrail-context-kafka:javadoc :boundrail-context-spring:javadoc` reports no warning for
+    `BoundrailKafkaAutoConfiguration`, `AdapterSupport` or `KafkaContext`; then `./gradlew check`.
 - [ ] T014 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-17, KAF-01 – KAF-06, as revised by the user's answers to Q1 – Q7.
@@ -488,6 +505,7 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
     `AdapterSupport` type is in `spring.internal` and no contract names it; the installer looks the registry up in `start()`; the error
     handling rebuild reports nothing.
   - spec.md's Status, roadmap.md's M6 and the README stay as they are, as for 002 – 006.
+  - Runs after T015.
 
   Run `./gradlew check` fresh, which covers JDK 21, JDK 25 and the forced ThreadLocal run. With the CI run green, this closes the feature.
 
@@ -502,7 +520,8 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
   `tenant` bound). T011 needs T010 and touches `KafkaContext` (after T005; not overlapping T012).
 - US2: T012 needs T005 (same file, `KafkaContext`); it is numbered after US1 by priority and can run any time after T005 that does not
   overlap another change to `KafkaContext`.
-- T013 needs T011 and T012. T014 comes last.
+- T013 needs T011 and T012. T015 needs T013 (same file, `KafkaContext`; also `KafkaAutoConfigurationTest`,
+  `BoundrailKafkaAutoConfiguration`, `AdapterSupport` and contracts/kafka-api.md). T014 comes last, after T015.
 - Tasks touching the same file run in sequence (`KafkaContext`, `BoundrailKafkaAutoConfiguration`, `ContextProducer`, `ProducerHeadersTest`,
   `RecordSnapshotTest` and the topology classes are touched by several).
 - Every task is committed and reviewed on its own, on branch `007-kafka`.
@@ -516,6 +535,8 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
 - [x] The new guard in T011 (empty-snapshot fallback) approved by the user
 - [x] The three D82 guards in T011 (`Error` from the rebuild, deserialization failure not reported, deprecated transaction manager)
   approved by the user on 2026-10-25
+- [x] Q9 settled by the user (2026-10-26: `forRecord` keeps its two scopes) and written into spec.md by the spec-creator
+- [x] T015's TDD exception approved by the user on 2026-10-26
 - [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.8, IT-4.9
 - [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M6): CORE-17, KAF-01 – KAF-05; the Javadoc statement
   of KAF-06 checked by inspection (TDD exception)

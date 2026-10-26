@@ -86,8 +86,9 @@ Batch listeners are not scoped automatically in v0.1; a helper returns the snaps
 - A record whose key or value fails deserialization, for example through an `ErrorHandlingDeserializer`, and that also repeats
   `Tenant-Id`: KAF-03, KAF-06 (the listener and its advice never run, so KAF-02 reports nothing for it; the error handling runs in the
   record's snapshot but reports nothing either, so the `INVALID_VALUE` is never reported).
-- A container created or registered after startup, or a `MessageListenerContainer` bean whose phase is lower than
-  `AbstractMessageListenerContainer.DEFAULT_PHASE`: KAF-03, KAF-06 (its error handling runs outside the record's snapshot). A container of
+- A container created or registered after startup, a `MessageListenerContainer` bean whose phase is lower than
+  `AbstractMessageListenerContainer.DEFAULT_PHASE`, or a container built in code at startup that is neither a bean nor registered with the
+  `KafkaListenerEndpointRegistry`: KAF-03, KAF-06 (its error handling runs outside the record's snapshot). A container of
   the `KafkaListenerEndpointRegistry` with such a phase: KAF-03 (covered; the registry starts it). A failure that reaches
   `handleOtherException`, which has no record, or a batch error handling path: KAF-03, KAF-06 (not scoped).
 - A record redelivered after an error: KAF-02 (each delivery builds its snapshot again and reports its violations again).
@@ -222,11 +223,11 @@ unchanged, and the error handling SHALL NOT run (DESIGN D82). So a record whose 
 and is redelivered. A record whose key or value fails deserialization never reaches the listener or its advice, because the container
 throws `DeserializationException` before invoking them, so KAF-02 neither builds its snapshot nor reports its violations; its error
 handling SHALL still run in its snapshot, and because that build does not report, the record's header violations are never reported
-(KAF-06; DESIGN D82). Not covered: containers created or registered after startup; `MessageListenerContainer` beans whose phase is
-lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, which can start before the decorators are installed and keep the error
-handler they started with; `handleOtherException`, which has no record; and the batch paths `handleBatch`,
-`handleBatchAndReturnRemaining` and `processBatch` (KAF-05, KAF-06; DESIGN D73, D79, D82). Verified by IT-3.8 in `integrationTestJdk25`
-(ScopedValue backend) and unit tests.
+(KAF-06; DESIGN D82). Not covered: containers created or registered after startup; containers that are neither beans nor registered
+with the `KafkaListenerEndpointRegistry`; `MessageListenerContainer` beans whose phase is lower than
+`AbstractMessageListenerContainer.DEFAULT_PHASE`, which can start before the decorators are installed and keep the error handler they
+started with; `handleOtherException`, which has no record; and the batch paths `handleBatch`, `handleBatchAndReturnRemaining` and
+`processBatch` (KAF-05, KAF-06; DESIGN D73, D79, D82). Verified by IT-3.8 in `integrationTestJdk25` (ScopedValue backend) and unit tests.
 
 **KAF-04** `[M6]` WHERE Spring Kafka and `boundrail-context-spring` are on the classpath, the Kafka module's auto-configuration SHALL be
 active and SHALL apply KAF-01 – KAF-05. Both are dependencies of `boundrail-context-kafka`: Spring Kafka as an `implementation` dependency,
@@ -248,9 +249,10 @@ Boot cannot convert to a boolean, THEN application startup SHALL fail, even when
 listener runs in the snapshot current on the consumer thread, and the Kafka module decodes and reports nothing for its records. The Kafka
 module SHALL provide a `KafkaContext` bean (DESIGN D76) whose `forRecord(record)` returns the snapshot KAF-02 would build for that record,
 under the trust setting of KAF-04, without entering it: the returned snapshot SHALL NOT be current when `forRecord` returns, and the
-snapshot current before the call SHALL be current again. Because core has no public snapshot factory, `forRecord` builds the snapshot in a
-temporary scope, so registered `ScopeListener`s (RT-07), such as the MDC bridge (LOG-01), MAY observe one enter and exit pair per call
-(DESIGN D78). Each call SHALL report the violations KAF-02 or KAF-04 would report for the record. Verified by unit tests.
+snapshot current before the call SHALL be current again. Because core has no public snapshot factory, `forRecord` builds the snapshot in
+temporary scopes, nested because a binding cannot remove a caller's `DEADLINE` (DL-11), so registered `ScopeListener`s (RT-07), such as
+the MDC bridge (LOG-01), MAY observe enter and exit pairs per call (DESIGN D78, D83). Each call SHALL report the violations KAF-02 or KAF-04
+would report for the record. Verified by unit tests.
 
 ### Documentation
 
@@ -268,9 +270,10 @@ temporary scope, so registered `ScopeListener`s (RT-07), such as the MDC bridge 
   listener scope; and that the listener of a container whose advice chain the application replaces, for example with a
   `ContainerCustomizer`, is not scoped (KAF-03). It SHALL NOT promise that a `@KafkaListener` container keeps the scope when its chain is replaced;
 - that the container's error handling runs in the failed record's snapshot, except for containers created or registered after startup,
-  `MessageListenerContainer` beans whose phase is lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, `handleOtherException` and
-  the batch paths; that a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is
-  redelivered; and that the header violations of a record whose key or value fails deserialization are never reported (KAF-03);
+  containers that are neither beans nor registered with the `KafkaListenerEndpointRegistry`, `MessageListenerContainer` beans whose phase
+  is lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, `handleOtherException` and the batch paths; that a record whose decoding
+  throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is redelivered; and that the header violations of a
+  record whose key or value fails deserialization are never reported (KAF-03);
 - that only the listener invocation and the container's error handling are scoped, so code that completes a `CompletableFuture` or `Mono` a
   listener returns runs with its own thread's context (KAF-03).
 
