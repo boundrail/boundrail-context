@@ -71,7 +71,8 @@ class KafkaAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("KAF-04 without Spring Kafka no Kafka bean is created and the context starts")
+    @DisplayName("KAF-04 without Spring Kafka, or without the Spring module's auto-configuration, the Kafka auto-configuration backs off and"
+            + " the context starts")
     void backsOffWithoutSpringKafkaOrTheSpringModule() {
         runner.run(context -> assertThat(context).as("control: default context").hasSingleBean(KafkaContext.class));
 

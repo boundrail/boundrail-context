@@ -19,9 +19,19 @@ public interface AdapterSupport {
     /** {@return {@code wire.max-value-length}} */
     int maxValueLength();
 
-    /** {@return a violation with the observed evidence of the current thread and no destination (DIAG-04)} */
+    /**
+     * {@return a violation with the observed evidence of the current thread and no destination (DIAG-04)}
+     *
+     * @param kind which rule was broken
+     * @param key the name of the context key concerned
+     * @param boundary the boundary where it was detected
+     */
     Violation violation(Violation.Kind kind, String key, Boundary boundary);
 
-    /** Logs and counts the violation, and passes it to the context's {@code ViolationListener} beans (DIAG-03, DIAG-11). */
+    /**
+     * Logs and counts the violation, and passes it to the context's {@code ViolationListener} beans (DIAG-03, DIAG-11).
+     *
+     * @param violation the violation to report
+     */
     void report(Violation violation);
 }

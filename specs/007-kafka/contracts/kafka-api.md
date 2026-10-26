@@ -14,7 +14,7 @@ application context (RT-09; DESIGN D76).
 public final class KafkaContext {
     /**
      * The snapshot KAF-02 would bind for the record, under KAF-04's trust setting; reports the same violations. The snapshot is not current
-     * when this returns; scope listeners may observe one enter and exit pair, because it is built in a temporary scope (KAF-05).
+     * when this returns; scope listeners may observe enter and exit pairs, because it is built in nested temporary scopes (KAF-05).
      */
     public ContextSnapshot forRecord(ConsumerRecord<?, ?> record);
 }

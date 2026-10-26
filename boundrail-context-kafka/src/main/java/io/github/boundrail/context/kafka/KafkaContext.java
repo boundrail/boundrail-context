@@ -57,7 +57,8 @@ import org.apache.kafka.common.header.Header;
  * The container's error handling for a record whose listener threw, including a recoverer such as {@code DeadLetterPublishingRecoverer},
  * runs in the failed record's snapshot, built without reporting its violations. Containers of the {@code KafkaListenerEndpointRegistry}
  * are covered whatever their phase. Not covered, so their error handling runs outside the record's snapshot: containers created or
- * registered after startup; {@code MessageListenerContainer} beans whose phase is lower than
+ * registered after startup; containers built in code at startup that are neither beans nor registered with the
+ * {@code KafkaListenerEndpointRegistry}; {@code MessageListenerContainer} beans whose phase is lower than
  * {@code AbstractMessageListenerContainer.DEFAULT_PHASE}; {@code handleOtherException}, which has no record; and the batch paths
  * {@code handleBatch}, {@code handleBatchAndReturnRemaining} and {@code processBatch} (DESIGN D73, D79, D82).
  *
@@ -84,7 +85,7 @@ public final class KafkaContext {
 
     /**
      * The snapshot KAF-02 would bind for the record, under KAF-04's trust setting; reports the same violations. The snapshot is not current
-     * when this returns; scope listeners may observe one enter and exit pair, because it is built in a temporary scope (KAF-05).
+     * when this returns; scope listeners may observe enter and exit pairs, because it is built in nested temporary scopes (KAF-05).
      *
      * @param record the record
      * @return the record's snapshot

@@ -471,7 +471,7 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
   - No test: documentation, approved as a TDD exception ([plan.md](plan.md#tdd-exceptions)).
   - Completes: KAF-06.
   - Verify: `./gradlew :boundrail-context-kafka:javadoc` reports no warning for `KafkaContext`; then `./gradlew check`.
-- [ ] T015 Close-out fixes from T014's review (KAF-04, KAF-05, KAF-06; accepted by the user on 2026-10-26).
+- [x] T015 Close-out fixes from T014's review (KAF-04, KAF-05, KAF-06; accepted by the user on 2026-10-26).
   [TDD-EXCEPTION: review of T015, and the javadoc check below] Numbered after T014 but runs before it. The user's acceptance covers these
   items, and the user approved its TDD exception on 2026-10-26 ([plan.md](plan.md#tdd-exceptions)).
   - In `kafkatest/KafkaAutoConfigurationTest.java`, rename the test at line 74 to `KAF-04 without Spring Kafka, or without the Spring

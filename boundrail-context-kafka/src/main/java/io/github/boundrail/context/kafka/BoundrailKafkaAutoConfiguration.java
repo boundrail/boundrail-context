@@ -23,6 +23,10 @@ import org.springframework.kafka.core.KafkaTemplate;
 @EnableConfigurationProperties(BoundrailKafkaProperties.class)
 public class BoundrailKafkaAutoConfiguration {
 
+    /** Creates the auto-configuration; Spring Boot instantiates it, so applications do not call this. */
+    public BoundrailKafkaAutoConfiguration() {
+    }
+
     /** The batch listener helper (KAF-05); not lazy, so {@code kafka.trust-headers} is bound at startup (KAF-04). */
     @Bean
     @Lazy(false)
