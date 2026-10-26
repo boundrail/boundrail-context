@@ -120,7 +120,8 @@ Batch listeners are not scoped automatically in v0.1; a helper returns the snaps
   `IllegalStateException` when it adds a header, and an `encode` that throws may leave the headers written before it on the record).
 - A listener container that no listener container factory bean created: KAF-03, KAF-06 (its listener is not scoped).
 - The application replaces a container's advice chain, for example with a `ContainerCustomizer` that calls `setAdviceChain`: KAF-03, KAF-06
-  (not covered). The application adds advice to a factory's advice chain: KAF-03 (it runs inside the library's scope).
+  (its listener is not scoped; its error handling still runs in the failed record's snapshot). The application adds advice to a factory's
+  advice chain: KAF-03 (it runs inside the library's scope).
 - An application `RecordInterceptor`: KAF-03 (`intercept`, `success`, `failure` and `afterRecord` run outside the listener scope).
 - A batch listener: KAF-05 (not scoped; `KafkaContext.forRecord` gives each record's snapshot).
 - `kafka.trust-headers` is not a boolean, with `spring.main.lazy-initialization=true`: KAF-04 (startup still fails).
@@ -202,9 +203,9 @@ listener container created by an `AbstractKafkaListenerContainerFactory` bean of
 auto-configures, by adding the library's advice first in the `ContainerProperties` advice chain of each such factory, so the listeners of
 the containers it creates, `@KafkaListener` containers included, are covered (DESIGN D72). The library's advice SHALL appear in each such
 factory's advice chain exactly once, ahead of the application's advice. Advice the application adds to a factory's advice chain SHALL run
-inside the library's scope. `RecordInterceptor`s run outside it, in `intercept`, `success`, `failure` and `afterRecord`. A container whose
-advice chain the application replaces, for example with a `ContainerCustomizer` that calls `setAdviceChain`, is not covered
-(KAF-06; DESIGN D79).
+inside the library's scope. `RecordInterceptor`s run outside it, in `intercept`, `success`, `failure` and `afterRecord`. The listener of a
+container whose advice chain the application replaces, for example with a `ContainerCustomizer` that calls `setAdviceChain`, is not
+scoped, though its error handling is still covered as below (KAF-06; DESIGN D79).
 
 The container's handling of a record whose listener threw, including any recoverer such as `DeadLetterPublishingRecoverer`, SHALL run inside
 that record's snapshot. The Kafka module SHALL decorate the `CommonErrorHandler` of each listener container, and the `AfterRollbackProcessor`
@@ -223,8 +224,9 @@ throws `DeserializationException` before invoking them, so KAF-02 neither builds
 handling SHALL still run in its snapshot, and because that build does not report, the record's header violations are never reported
 (KAF-06; DESIGN D82). Not covered: containers created or registered after startup; `MessageListenerContainer` beans whose phase is
 lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, which can start before the decorators are installed and keep the error
-handler they started with; `handleOtherException`, which has no record; and the batch paths `handleBatch` and `processBatch` (KAF-05, KAF-06;
-DESIGN D73, D79, D82). Verified by IT-3.8 in `integrationTestJdk25` (ScopedValue backend) and unit tests.
+handler they started with; `handleOtherException`, which has no record; and the batch paths `handleBatch`,
+`handleBatchAndReturnRemaining` and `processBatch` (KAF-05, KAF-06; DESIGN D73, D79, D82). Verified by IT-3.8 in `integrationTestJdk25`
+(ScopedValue backend) and unit tests.
 
 **KAF-04** `[M6]` WHERE Spring Kafka and `boundrail-context-spring` are on the classpath, the Kafka module's auto-configuration SHALL be
 active and SHALL apply KAF-01 – KAF-05. Both are dependencies of `boundrail-context-kafka`: Spring Kafka as an `implementation` dependency,
@@ -263,8 +265,8 @@ temporary scope, so registered `ScopeListener`s (RT-07), such as the MDC bridge 
 - that the headers are written into the application's `ProducerRecord`, so re-sending the same record instance is not supported: the send
   can throw `IllegalStateException` when it adds a header, and headers written before an `encode` that throws can stay on the record (KAF-01);
 - which listener containers are covered: those created by listener container factory beans; that `RecordInterceptor`s run outside the
-  listener scope; and that a container whose advice chain the application replaces, for example with a `ContainerCustomizer`, is not
-  covered (KAF-03). It SHALL NOT promise that a `@KafkaListener` container keeps the scope when its chain is replaced;
+  listener scope; and that the listener of a container whose advice chain the application replaces, for example with a
+  `ContainerCustomizer`, is not scoped (KAF-03). It SHALL NOT promise that a `@KafkaListener` container keeps the scope when its chain is replaced;
 - that the container's error handling runs in the failed record's snapshot, except for containers created or registered after startup,
   `MessageListenerContainer` beans whose phase is lower than `AbstractMessageListenerContainer.DEFAULT_PHASE`, `handleOtherException` and
   the batch paths; that a record whose decoding throws, with a required `MESSAGE` key in `fail` mode, cannot be dead-lettered and is
