@@ -47,7 +47,11 @@ public final class BoundrailClients {
     private BoundrailClients() {
     }
 
-    /** {@return a builder customizer declaring {@code Destination(INTERNAL, service)} for every request} */
+    /**
+     * {@return a builder customizer declaring {@code Destination(INTERNAL, service)} for every request}
+     *
+     * @param service the name of the destination service
+     */
     public static Consumer<RestClient.Builder> internal(String service) {
         return declare(new Destination(Destination.Kind.INTERNAL, Optional.of(Objects.requireNonNull(service, "service"))));
     }

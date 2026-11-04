@@ -53,6 +53,10 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 @EnableConfigurationProperties(BoundrailContextProperties.class)
 public class BoundrailContextAutoConfiguration {
 
+    /** Creates the auto-configuration; Spring Boot instantiates it, so applications do not call this. */
+    public BoundrailContextAutoConfiguration() {
+    }
+
     /** The built-in policy merged, in bean order, with every {@code ContextPolicy} bean; a conflict fails startup (POL-07, POL-05). */
     @Bean
     @Lazy(false)
