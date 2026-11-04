@@ -37,6 +37,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
@@ -703,24 +704,30 @@ class ContextClientInterceptorTest {
     @Test
     @DisplayName("DIAG-02 several unbound required keys are each reported in ascending key-name order, and the exception carries the first")
     void severalUnboundRequiredKeysAreEachReportedInAscendingKeyNameOrderAndTheExceptionCarriesTheFirst() {
-        ContextPolicy policy = ContextPolicy.builder()
-                .key(TENANT, rules -> rules.codec(Codecs.string()).wireName("Tenant-Id").required().propagateTo(INTERNAL_CALL))
-                .key(REGION, rules -> rules.codec(Codecs.string()).wireName("Region").required().propagateTo(INTERNAL_CALL))
-                .build();
+        // Six keys declared out of name order, because the policy's iteration order varies by JVM: with two, it is ascending half the time.
+        ContextPolicy.Builder builder = ContextPolicy.builder();
+        for (String name : List.of("region", "account", "zone", "channel", "user", "batch")) {
+            builder.key(ContextKey.of(name, String.class),
+                    rules -> rules.codec(Codecs.string()).wireName("Wire-" + name).required().propagateTo(INTERNAL_CALL));
+        }
+        ContextPolicy policy = builder.build();
+        Tuple[] ascending = Stream.of("account", "batch", "channel", "region", "user", "zone")
+                .map(name -> tuple(MISSING_REQUIRED, name))
+                .toArray(Tuple[]::new);
 
-        Attempt failed = attempt(policy, BoundrailClients.internal("orders"), Context.without(TENANT), NO_HEADERS);
+        Attempt failed = attempt(policy, BoundrailClients.internal("orders"), Context.without(UNREGISTERED), NO_HEADERS);
 
         assertThat(failed.violations()).extracting(Violation::kind, Violation::key)
-                .containsExactly(tuple(MISSING_REQUIRED, "region"), tuple(MISSING_REQUIRED, "tenant"));
+                .containsExactly(ascending);
         assertThat(failed.thrown()).isInstanceOf(ContextViolationException.class);
-        assertThat(((ContextViolationException) failed.thrown()).violation().key()).isEqualTo("region");
+        assertThat(((ContextViolationException) failed.thrown()).violation().key()).isEqualTo("account");
         assertThat(failed.requests()).isEmpty();
 
-        Attempt reported = attempt(policy, BoundrailClients.internal("orders"), Context.without(TENANT), NO_HEADERS,
+        Attempt reported = attempt(policy, BoundrailClients.internal("orders"), Context.without(UNREGISTERED), NO_HEADERS,
                 "boundrail.context.violations.mode=report");
 
         assertThat(reported.violations()).extracting(Violation::kind, Violation::key)
-                .containsExactly(tuple(MISSING_REQUIRED, "region"), tuple(MISSING_REQUIRED, "tenant"));
+                .containsExactly(ascending);
         assertThat(reported.thrown()).isNull();
         assertThat(reported.requests()).hasSize(1);
     }
