@@ -21,7 +21,11 @@ public final class Deadline {
         this.instant = instant;
     }
 
-    /** {@return a deadline {@code budget} from now; zero or negative is already expired, and the budget is capped} */
+    /**
+     * {@return a deadline {@code budget} from now; zero or negative is already expired, and the budget is capped}
+     *
+     * @param budget the time from now
+     */
     public static Deadline after(Duration budget) {
         Objects.requireNonNull(budget, "budget");
         long nanos;
@@ -52,13 +56,21 @@ public final class Deadline {
         }
     }
 
-    /** {@return whichever of this and {@code other} expires first; this one on a tie} */
+    /**
+     * {@return whichever of this and {@code other} expires first; this one on a tie}
+     *
+     * @param other the deadline to compare with
+     */
     public Deadline earliest(Deadline other) {
         Objects.requireNonNull(other, "other");
         return other.instant - instant < 0 ? other : this;
     }
 
-    /** {@return {@code earliest(Deadline.after(max))}} */
+    /**
+     * {@return {@code earliest(Deadline.after(max))}}
+     *
+     * @param max the longest time from now
+     */
     public Deadline within(Duration max) {
         Objects.requireNonNull(max, "max");
         return earliest(after(max));

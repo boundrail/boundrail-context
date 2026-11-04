@@ -7,6 +7,11 @@ public final class ContextViolationException extends RuntimeException {
 
     private final transient Violation violation;
 
+    /**
+     * Creates the exception with a message naming the violation's kind, key and boundary.
+     *
+     * @param violation the violation that failed the operation
+     */
     public ContextViolationException(Violation violation) {
         super(message(violation));
         this.violation = violation;

@@ -19,9 +19,25 @@ public record Violation(
         String thread, Optional<String> captureSite, Optional<String> executorEvidence) {
 
     /** The violation kinds the library recognises (DIAG-01). */
-    public enum Kind { MISSING_REQUIRED, UNTRUSTED_HEADER, INVALID_VALUE,
-                       OVERSIZED_VALUE, FORBIDDEN_HEADER, MISSING_AUDIENCE }
+    public enum Kind {
+        /** A required key is unbound at a remote boundary it propagates to (POL-08). */
+        MISSING_REQUIRED,
+        /** A policy wire header arrived where headers are not trusted, so it was not bound (IN-02, KAF-04). */
+        UNTRUSTED_HEADER,
+        /** A value is not valid, or its wire header was repeated, so it was not bound or sent. */
+        INVALID_VALUE,
+        /** A wire value is longer than the configured maximum, so it was not bound or sent (WIRE-04). */
+        OVERSIZED_VALUE,
+        /**
+         * A call to an external or unknown destination carried the wire header of a key that does not propagate to
+         * {@code EXTERNAL_CALL}, so it was removed (WIRE-07).
+         */
+        FORBIDDEN_HEADER,
+        /** A token exchange has no audience, because the destination has no service name, so no credential was sent (ID-05). */
+        MISSING_AUDIENCE
+    }
 
+    /** Creates a violation; every component must be non-null. */
     public Violation {
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(key, "key");

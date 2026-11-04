@@ -26,6 +26,8 @@ public final class HostPatternClassifier implements DestinationClassifier {
     /**
      * {@return a classifier with copies of {@code internalHosts} and {@code externalHosts}}
      *
+     * @param internalHosts the host patterns of internal destinations
+     * @param externalHosts the host patterns of external destinations
      * @throws IllegalArgumentException if a host pattern is not valid (DEST-04)
      */
     public static HostPatternClassifier of(List<String> internalHosts, List<String> externalHosts) {

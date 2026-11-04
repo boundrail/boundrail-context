@@ -22,14 +22,25 @@ public final class Authority {
         this.expiresAt = expiresAt;
     }
 
-    /** {@return an authority for {@code subject} holding {@code credential}} */
+    /**
+     * {@return an authority for {@code subject} holding {@code credential}}
+     *
+     * @param subject the subject
+     * @param credential the credential
+     */
     public static Authority of(String subject, String credential) {
         Objects.requireNonNull(subject, "subject");
         Objects.requireNonNull(credential, "credential");
         return new Authority(subject, credential, null);
     }
 
-    /** {@return an authority for {@code subject} holding {@code credential} that expires at {@code expiresAt}} */
+    /**
+     * {@return an authority for {@code subject} holding {@code credential} that expires at {@code expiresAt}}
+     *
+     * @param subject the subject
+     * @param credential the credential
+     * @param expiresAt when the credential expires
+     */
     public static Authority of(String subject, String credential, Instant expiresAt) {
         Objects.requireNonNull(subject, "subject");
         Objects.requireNonNull(credential, "credential");

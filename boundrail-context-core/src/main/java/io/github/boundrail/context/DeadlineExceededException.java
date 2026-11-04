@@ -5,6 +5,7 @@ import java.util.Objects;
 /** Thrown when a deadline has expired; {@link #stage()} tells where it was detected (DL-01). */
 public final class DeadlineExceededException extends RuntimeException {
 
+    /** Where the expired deadline was detected. */
     private final Stage stage;
 
     /**
@@ -40,5 +41,19 @@ public final class DeadlineExceededException extends RuntimeException {
     }
 
     /** Where an expired deadline was detected. */
-    public enum Stage { INBOUND, BEFORE_SEND, TIMEOUT, EXECUTOR, APPLICATION }
+    public enum Stage {
+        /**
+         * On an inbound request, before its handler ran; the filter sets the expired status and throws nothing, so this stage only
+         * tags the metric (DL-04, DL-09).
+         */
+        INBOUND,
+        /** Before an outbound call was sent. */
+        BEFORE_SEND,
+        /** After {@code BEFORE_SEND} passed: while an outbound call awaited its response headers (DL-07), or at its token exchange (ID-12). */
+        TIMEOUT,
+        /** When a task from {@code BoundExecutors.attached}, or a Spring MVC handler's {@code Callable}, was about to start (EXE-08). */
+        EXECUTOR,
+        /** In application code, through {@link Deadline#check()}. */
+        APPLICATION
+    }
 }

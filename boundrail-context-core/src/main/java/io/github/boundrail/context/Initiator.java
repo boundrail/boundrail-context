@@ -17,7 +17,11 @@ public final class Initiator {
         this.value = value;
     }
 
-    /** {@return an initiator with {@code value}, which must be 1 to 256 chars long} */
+    /**
+     * {@return an initiator with {@code value}, which must be 1 to 256 chars long}
+     *
+     * @param value the initiator's value
+     */
     public static Initiator of(String value) {
         Objects.requireNonNull(value, "value");
         if (value.isEmpty() || value.length() > MAX_LENGTH) {

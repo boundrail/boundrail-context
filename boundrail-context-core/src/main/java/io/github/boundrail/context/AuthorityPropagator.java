@@ -9,6 +9,11 @@ import java.util.Optional;
  */
 public interface AuthorityPropagator {
 
-    /** Credential to send to the destination, or empty to send none. */
+    /**
+     * {@return the credential to send to the destination, or empty to send none}
+     *
+     * @param authority the bound authority
+     * @param destination the destination of the call
+     */
     Optional<String> outboundCredential(Authority authority, Destination destination);
 }

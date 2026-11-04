@@ -12,6 +12,7 @@ import java.util.Optional;
  */
 public record OutboundRequest(URI uri, Optional<Destination> declared) {
 
+    /** Creates a request; both components must be non-null. */
     public OutboundRequest {
         Objects.requireNonNull(uri, "uri");
         Objects.requireNonNull(declared, "declared");

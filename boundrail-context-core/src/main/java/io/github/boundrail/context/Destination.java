@@ -12,8 +12,16 @@ import java.util.Optional;
 public record Destination(Kind kind, Optional<String> service) {
 
     /** How far a destination is trusted. Adapters treat {@code UNKNOWN} exactly like {@code EXTERNAL} (DEST-03). */
-    public enum Kind { INTERNAL, EXTERNAL, UNKNOWN }
+    public enum Kind {
+        /** A target classified as internal. */
+        INTERNAL,
+        /** A target classified as external. */
+        EXTERNAL,
+        /** A target classified as neither internal nor external. */
+        UNKNOWN
+    }
 
+    /** Creates a destination; both components must be non-null. */
     public Destination {
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(service, "service");
