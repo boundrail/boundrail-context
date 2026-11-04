@@ -1,6 +1,6 @@
 # boundrail-context — Roadmap
 
-> **Status:** plan for v0.1 · **Last updated:** 28 September 2026
+> **Status:** plan for v0.1 · **Last updated:** 4 November 2026
 > **Companion documents:** [design.md](design.md) (what and why) · [specs/](../specs/) (normative requirements and acceptance
 > tests)
 
@@ -30,16 +30,16 @@ Each milestone is one Spec Kit feature under [`specs/`](../specs/), numbered in 
 
 ## Overview
 
-| Milestone | Feature | Theme | Size | Done when |
-|---|---|---|---|---|
-| **M0** | [001](../specs/001-foundation/) | Foundation | M | Build, CI and docs are in place; all acceptance suites exist but are disabled |
-| **M1** | [002](../specs/002-core-runtime/) | Core and runtimes | M | Runtime conformance suite is green on both backends |
-| **M2** | [003](../specs/003-http-trust/) | HTTP boundaries and trust | L | IT-2 is green |
-| **M3** | [004](../specs/004-async-diagnostics/) | Async work and diagnostics | L | IT-1 is green |
-| **M4** | [005](../specs/005-deadlines/) | Deadlines | M | IT-3 is green, except the messaging scenario |
-| **M5** | [006](../specs/006-identity/) | Identity | M | IT-4 is green, except the messaging scenario |
-| **M6** | [007](../specs/007-kafka/) | Kafka | M | All acceptance suites are fully green |
-| **M7** | [008](../specs/008-release/) | v0.1 release and validation | M | 0.1.0 is on Maven Central and the go/no-go decision is recorded |
+| Milestone | Feature | Theme | Size | Done when | Status |
+|---|---|---|---|---|---|
+| **M0** | [001](../specs/001-foundation/) | Foundation | M | Build, CI and docs are in place; all acceptance suites exist but are disabled | Done |
+| **M1** | [002](../specs/002-core-runtime/) | Core and runtimes | M | Runtime conformance suite is green on both backends | Done |
+| **M2** | [003](../specs/003-http-trust/) | HTTP boundaries and trust | L | IT-2 is green | Done |
+| **M3** | [004](../specs/004-async-diagnostics/) | Async work and diagnostics | L | IT-1 is green | Done |
+| **M4** | [005](../specs/005-deadlines/) | Deadlines | M | IT-3 is green, except the messaging scenario | Done |
+| **M5** | [006](../specs/006-identity/) | Identity | M | IT-4 is green, except the messaging scenario | Done |
+| **M6** | [007](../specs/007-kafka/) | Kafka | M | All acceptance suites are fully green | Done |
+| **M7** | [008](../specs/008-release/) | v0.1 release and validation | M | 0.1.0 is on Maven Central and the go/no-go decision is recorded | Not started |
 
 ```
 M0 ─► M1 ─► M2 ─► M3 ─► M4 ─┐
