@@ -487,7 +487,7 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
   - Completes: KAF-04 (the back-off test's name); KAF-05 (`forRecord`'s Javadoc and the contract, Q9); KAF-06 (the new not-covered item).
   - Verify: `./gradlew :boundrail-context-kafka:javadoc :boundrail-context-spring:javadoc` reports no warning for
     `BoundrailKafkaAutoConfiguration`, `AdapterSupport` or `KafkaContext`; then `./gradlew check`.
-- [ ] T014 Verify each requirement one by one against the code and its tests, using the coverage table in
+- [x] T014 Verify each requirement one by one against the code and its tests, using the coverage table in
   [plan.md](plan.md#requirement-coverage):
   - Requirements: CORE-17, KAF-01 – KAF-06, as revised by the user's answers to Q1 – Q7.
   - SC-001: no `@Disabled` is left in any acceptance suite; IT-3.8 and IT-4.9 pass in `integrationTestJdk21` and `integrationTestJdk25`.
@@ -537,12 +537,12 @@ its trust setting in T012; the advice passing batch listeners through in T009; a
   approved by the user on 2026-10-25
 - [x] Q9 settled by the user (2026-10-26: `forRecord` keeps its two scopes) and written into spec.md by the spec-creator
 - [x] T015's TDD exception approved by the user on 2026-10-26
-- [ ] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.8, IT-4.9
-- [ ] Requirements implemented with tests named after their IDs (roadmap traceability row M6): CORE-17, KAF-01 – KAF-05; the Javadoc statement
+- [x] Scenarios enabled and green on JDK 21 and JDK 25: IT-3.8, IT-4.9
+- [x] Requirements implemented with tests named after their IDs (roadmap traceability row M6): CORE-17, KAF-01 – KAF-05; the Javadoc statement
   of KAF-06 checked by inspection (TDD exception)
-- [ ] The guards in T010 (batch `@KafkaListener`), T011 (empty-snapshot fallback and the three D82 guards) and T012 (no `UNTRUSTED_HEADER`
+- [x] The guards in T010 (batch `@KafkaListener`), T011 (empty-snapshot fallback and the three D82 guards) and T012 (no `UNTRUSTED_HEADER`
   from the rebuild, exact name matching) shown red against their temporary change, and the change reverted
-- [ ] The consumer adapter works on the ScopedValue backend without set/restore interceptors (IT-3.8 on `integrationTestJdk25`, `-kafka`'s
+- [x] The consumer adapter works on the ScopedValue backend without set/restore interceptors (IT-3.8 on `integrationTestJdk25`, `-kafka`'s
   unit tests) and on ThreadLocal (IT-3.8 and IT-4.9 on `integrationTestJdk21`)
-- [ ] Every acceptance suite fully green; `boundrail-context-core` still has no runtime dependencies; Kafka confined to `-kafka`
-- [ ] `./gradlew check` green
+- [x] Every acceptance suite fully green; `boundrail-context-core` still has no runtime dependencies; Kafka confined to `-kafka`
+- [x] `./gradlew check` green
