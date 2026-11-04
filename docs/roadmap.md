@@ -60,7 +60,7 @@ M4 and M5, because its scenarios assert that the deadline is absent and the init
 | M3 | 004-async-diagnostics | CORE-14, RT-07 – RT-09, IN-09, EXE-01 – EXE-07, EXE-09 – EXE-10, DIAG-04 – DIAG-07, DIAG-10 – DIAG-12, LOG-01 – LOG-02, TEST-02 – TEST-04 | RC-9, IT-1.1 – IT-1.9 |
 | M4 | 005-deadlines | CORE-15, DL-03 – DL-09, DL-12, OUT-05, EXE-08 | IT-3.1 – IT-3.7 |
 | M5 | 006-identity | CORE-16, ID-02 – ID-06, ID-08 – ID-12 | IT-4.1 – IT-4.8 |
-| M6 | 007-kafka | KAF-01 – KAF-05 | IT-3.8, IT-4.9 |
+| M6 | 007-kafka | CORE-17, KAF-01 – KAF-06 | IT-3.8, IT-4.9 |
 | M7 | 008-release | REL-01 – REL-05 | none |
 
 ---
@@ -231,9 +231,11 @@ documented limitation in v0.1 (D52, was Q7).
 **Scope**
 
 - A producer adapter that writes headers on the calling thread.
-- A consumer adapter that scopes each record's listener invocation. Run a spike on Q4 first: the container advice chain versus AOP around listener
-  methods.
-- Header trust defaults, and the `KafkaContext.forRecord` helper for batch listeners.
+- A consumer adapter that scopes each record's listener invocation through the listener container factories' advice chain (D72, was Q4).
+  The T001 spike confirmed it, the `ProducerPostProcessor` on each template bean's `ProducerFactory` (D71), and the error-handler and
+  after-rollback decorators (D73); D79 records its outcome and the limits KAF-06 documents.
+- Header trust defaults (D74, D77), and the `KafkaContext` bean whose `forRecord` serves batch listeners (D76).
+- The Javadoc of `KafkaContext` states the coverage limits (KAF-06).
 
 **Exit criteria**
 

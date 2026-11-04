@@ -12,13 +12,13 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -202,12 +202,29 @@ class DeadlinePropagationIT {
     }
 
     @Test
-    @Disabled("Pending: M6")
     @DisplayName("IT-3.8 Kafka event outlives the request")
-    void it38KafkaEventOutlivesTheRequest() {
-        // IT-3.8: When edge publishes an event to `orders.events` during a request with a 500ms deadline, and billing's listener starts
-        // processing it at least 4 seconds later, then processing succeeds, and billing observes no deadline, `tenant=acme` and
-        // `initiator=user:alice`. *(KAF-01, KAF-02, KAF-04)*
+    void it38KafkaEventOutlivesTheRequest(Topology.Running topology) throws Exception {
+        // IT-3.8: Given a public request authenticated as alice to edge, which binds edge's 500ms default deadline, when the edge handler
+        // publishes an event to `orders.events` and billing's listener starts processing it at least 4 seconds after it was published,
+        // then the listener returns normally and records exactly one observation for the event, with no deadline, `tenant=acme` and
+        // `initiator=user:alice`, and the record has no `Boundrail-Deadline-Ms` header. *(KAF-01, KAF-02, KAF-03, KAF-04)*
+        String marker = UUID.randomUUID().toString();
+
+        int status = HTTP.send(HttpRequest.newBuilder(topology.uri(edge).resolve("/kafka/publish?marker=" + marker))
+                        .header("Authorization", "Bearer " + topology.jwts().alice())
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.discarding()).statusCode();
+
+        assertThat(status).isEqualTo(200);
+        Map<String, String> consumed = consumed(topology, marker);
+        assertThat(consumed)
+                .doesNotContainKey(ObservedContext.DEADLINE_REMAINING_NANOS)
+                .containsEntry(ObservedContext.TENANT, "acme")
+                .containsEntry(ObservedContext.INITIATOR, "user:alice");
+        assertThat(Long.parseLong(consumed.get(ObservedContext.KAFKA_DELAY_MILLIS))).as("processing started at least 4s after publishing")
+                .isGreaterThanOrEqualTo(4000L);
+        assertThat(consumed.get(ObservedContext.KAFKA_HEADER_NAMES).split(",")).doesNotContain("Boundrail-Deadline-Ms");
     }
 
     /** Calls an endpoint of this class's edge as alice with the marker, and returns the status. */
@@ -235,11 +252,29 @@ class DeadlinePropagationIT {
         return Long.parseLong(seen.get(ObservedContext.DEADLINE_REMAINING_NANOS));
     }
 
-    /** The single request a service observed with this marker. */
-    private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
-        List<Map<String, String>> marked = topology.observed().of(service).stream()
+    /**
+     * The single observation billing's listener recorded for the record with this marker: waits up to 30 seconds for the first, then 2 more
+     * seconds, and asserts there is exactly one (a failed listener would be retried and record again).
+     */
+    private static Map<String, String> consumed(Topology.Running topology, String marker) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (marked(topology, "billing", marker).isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(100);
+        }
+        assertThat(marked(topology, "billing", marker)).as("billing observations marked %s within 30s", marker).isNotEmpty();
+        Thread.sleep(2000);
+        return observed(topology, "billing", marker);
+    }
+
+    private static List<Map<String, String>> marked(Topology.Running topology, String service, String marker) {
+        return topology.observed().of(service).stream()
                 .filter(seen -> marker.equals(seen.get(EdgeApp.MARKER.toLowerCase(Locale.ROOT))))
                 .toList();
+    }
+
+    /** The single request a service observed with this marker. */
+    private static Map<String, String> observed(Topology.Running topology, String service, String marker) {
+        List<Map<String, String>> marked = marked(topology, service, marker);
         assertThat(marked).as("%s requests marked %s", service, marker).hasSize(1);
         return marked.getFirst();
     }

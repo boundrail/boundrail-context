@@ -128,7 +128,8 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                     // Logging is initialised once per JVM, so the first service's name would label every log line.
                     "logging.include-application-name=false",
                     // Every log line shows the MDC's tenant (LOG-01, IT-1.6).
-                    "logging.pattern.console=%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%t] %logger{40} tenant=%X{tenant} : %m%n"));
+                    "logging.pattern.console=%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%t] %logger{40} tenant=%X{tenant} : %m%n",
+                    "spring.kafka.bootstrap-servers=" + kafka.getBootstrapServers()));
             if (service != Service.EDGE) {
                 properties.add("spring.autoconfigure.exclude=" + SECURITY_AUTO_CONFIGURATIONS);
             } else {
@@ -139,6 +140,10 @@ public final class Topology implements BeforeAllCallback, ParameterResolver {
                 // IT-3.2: billing's clients use the JDK HttpClient request factory with a configured read timeout of 10s.
                 properties.add("spring.http.clients.imperative.factory=jdk");
                 properties.add("spring.http.clients.read-timeout=10s");
+                // IT-3.8, IT-4.9: billing's listener reads orders.events from the start, so a record published before its partitions are
+                // assigned is not lost; the broker creates the topic on first use.
+                properties.add("spring.kafka.consumer.group-id=billing");
+                properties.add("spring.kafka.consumer.auto-offset-reset=earliest");
             }
             properties.addAll(List.of(extraProperties));
             return new SpringApplicationBuilder(service.application)

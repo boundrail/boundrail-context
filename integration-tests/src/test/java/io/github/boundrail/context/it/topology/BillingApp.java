@@ -7,9 +7,11 @@ import io.github.boundrail.context.spring.BoundrailClients;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.http.HttpHeaders;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,6 +35,19 @@ public class BillingApp {
         this.observed = observed;
         this.topology = topology;
         this.externalPartner = clients.clone().apply(BoundrailClients.external()).build();
+    }
+
+    /**
+     * Billing's record-mode listener on Boot's factory: waits until 4 seconds after the record's timestamp, then records under
+     * {@code billing} what it observed (IT-3.8, IT-4.9, DESIGN D77).
+     */
+    @KafkaListener(topics = "orders.events")
+    void onOrderEvent(ConsumerRecord<String, String> record) throws InterruptedException {
+        long wait = record.timestamp() + 4000 - System.currentTimeMillis();
+        if (wait > 0) {
+            Thread.sleep(wait);
+        }
+        observed.record("billing", ObservedContext.consumed(record));
     }
 
     @GetMapping("/ping")
