@@ -161,7 +161,8 @@ which caps trusted headers only. IF either is zero, negative or cannot be conver
 `boundrail.context.deadline.expired-status` (default 504), with an empty body and without calling `sendError`, and SHALL NOT invoke the rest of
 the filter chain (DESIGN D53). The check SHALL be made once, on the request's initial dispatch; an `ASYNC` dispatch is not checked again (IN-09).
 `expired-status` SHALL be from 400 to 599; IF it is outside that range or cannot be converted to an integer, THEN application startup SHALL
-fail, even when `spring.main.lazy-initialization` is `true`. Verified by IT-3.4 and unit tests.
+fail, even when `spring.main.lazy-initialization` is `true`. Stage `INBOUND` is metric-only: it tags the expiry in the DL-09 counter, and the
+library creates no `DeadlineExceededException` with that stage. Verified by IT-3.4 and unit tests.
 
 ### Outbound HTTP
 
@@ -221,8 +222,8 @@ to a boolean, THEN application startup SHALL fail, even when `spring.main.lazy-i
 **DL-09** `[M4]` WHERE the application context has a unique or primary `MeterRegistry` bean, the Spring module SHALL count deadline expiries in the
 counter `boundrail.context.deadline.exceeded` in that registry, tagged with `stage` in lowercase, and never in Micrometer's global registry, as
 DIAG-03 does for violations (RT-09). Each expiry SHALL be counted once, where the Spring module detects it: `inbound` (DL-04), `before_send`
-(DL-06), `timeout` (DL-07) and `executor` (EXE-08, for the `Callable` path the Spring module manages). DL-08 SHALL count only the exceptions with
-stage `APPLICATION` it maps; the others were counted when detected. Expiries detected by `BoundExecutors` in `boundrail-context-core` are not
+(DL-06), `timeout` (DL-07, ID-12) and `executor` (EXE-08, for the `Callable` path the Spring module manages). DL-08 SHALL count only the exceptions
+with stage `APPLICATION` it maps; the others were counted when detected. Expiries detected by `BoundExecutors` in `boundrail-context-core` are not
 counted, because core has no registry (DESIGN D54). Verified by unit tests.
 
 ### Executors
