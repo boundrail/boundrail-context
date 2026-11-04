@@ -188,7 +188,7 @@ rely on it. Thread pools, `CompletableFuture` and `@Async` never inherit context
 |---|---|---|
 | `ATTACHED` | In-process work the caller awaits | a task on an executor declared attached |
 | `DETACHED` | In-process fire-and-forget work | `@Async void`; the default for executors |
-| `INTERNAL_CALL` | Synchronous call to a service inside the trust domain | RestClient call to the orders service |
+| `INTERNAL_CALL` | Synchronous call to a service inside the trust domain. Inbound HTTP uses it too, from any caller: a `TRUSTED_INTERNAL` request binds the keys whose policy includes it (IN-02), and a violation found on an inbound HTTP value, including `UNTRUSTED_HEADER` (IN-02) and a value taken from the request's authentication, such as a JWT claim, has this boundary and an empty destination (DIAG-08) | RestClient call to the orders service |
 | `EXTERNAL_CALL` | Synchronous call outside it, or to an unknown destination | a payment provider's API |
 | `MESSAGE` | Asynchronous message on an internal broker | a Kafka record |
 
