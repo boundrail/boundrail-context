@@ -55,7 +55,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: `./examples/propagation-demo/run-demo.sh` from a clean copy of the repository.
 
-- [ ] T001 [US1] Demo 1. Red: `demotest/ContextLossDemoTest.java`, `REL-02 demo 1 a plain executor loses the tenant and the test catches
+- [x] T001 [US1] Demo 1. Red: `demotest/ContextLossDemoTest.java`, `REL-02 demo 1 a plain executor loses the tenant and the test catches
       MISSING_REQUIRED`: a `@BoundrailTest` that runs an internal `orders` call on a plain executor inside a `tenant` scope, and asserts that its
       future fails with `ContextViolationException` and that `ContextAssertions.assertThatViolations()` holds one `MISSING_REQUIRED`; it prints the
       Demo 1 title and at most three lines. It does not compile. Green: `demo/build.gradle.kts` (`application`, Spring Boot BOM, `project(...)`
