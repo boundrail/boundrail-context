@@ -39,6 +39,7 @@ A public release good enough to put in front of experienced Spring developers.
 specs/008-release/{spec.md, plan.md, tasks.md}
 
 README.md
+docs/examples.md
 examples/propagation-demo/
 build-logic/src/main/kotlin/        # publishing conventions
 ```
