@@ -1,4 +1,4 @@
-# Feature Specification: v0.1 Release and Validation
+# Feature Specification: v0.1 Release
 
 **Feature Branch**: `008-release`
 
@@ -8,8 +8,8 @@
 
 **Milestone**: M7
 
-**Input**: Roadmap milestone [M7](../../docs/roadmap.md#m7--v01-release-and-validation) and design.md §15 (validation
-plan). The REL requirements restate the roadmap's scope and exit criteria as testable requirements.
+**Input**: Roadmap milestone [M7](../../docs/roadmap.md#m7--v01-release) and design.md §15 (the three
+demos). The REL requirements restate the roadmap's scope and exit criteria as testable requirements.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -45,40 +45,24 @@ Version 0.1.0 of the four published projects is available on Maven Central under
 
 ---
 
-### User Story 3 - A recorded go/no-go decision (Priority: P2)
-
-The maintainers run the validation plan with experienced Spring developers and record what happens next.
-
-**Why this priority**: Proves demand for the policy layer before building a platform (DESIGN D17).
-
-**Independent Test**: design.md's decision log contains the decision with its evidence.
-
-**Acceptance Scenarios**:
-
-1. **Given** sessions with 5–10 developers, **When** they are complete, **Then** their reactions and a go/no-go decision are recorded in design.md.
-   *(REL-05)*
-
----
-
 ### Edge Cases
 
-- The `boundrail.io` domain is acquired before release: P7 resolves to that group and package instead of `io.github.boundrail`.
+- Central does not register `io.github.boundrail` automatically, because it names an organization: the request needs manual
+  verification, and publishing waits for it (REL-04, DESIGN D84).
 
 ## Requirements *(mandatory)*
 
-**REL-01** `[M7]` The README SHALL contain the headline from design.md §1, a quick start, a "Guarantees" section that links each guarantee to the
-acceptance test that proves it, and a GIF of the three demos.
+**REL-01** `[M7]` The README SHALL contain the headline from design.md §1, a quick start, usage examples ordered from simple to advanced, a
+"Guarantees" section that links each guarantee to the acceptance test that proves it, and a GIF of the three demos.
 
 **REL-02** `[M7]` `examples/propagation-demo` SHALL run with Docker Compose and SHALL show the three demos of design.md §15.
 
 **REL-03** `[M7]` The user-facing configuration reference SHALL be generated from, or checked in the build against, the Configuration tables in
 the feature specs (002–007).
 
-**REL-04** `[M7]` Proposal P7 (group and package) and question Q5 (publishing tooling) SHALL be resolved in design.md, and 0.1.0 of the four
-published projects SHALL be published to Maven Central.
-
-**REL-05** `[M7]` The validation plan (design.md §15) SHALL be run with 5–10 experienced Spring developers, and a written go/no-go decision SHALL be
-recorded in design.md's decision log: continue to v0.2 (with named themes), change positioning, or stop.
+**REL-04** `[M7]` 0.1.0 of the four published projects SHALL be published to Maven Central under the group `io.github.boundrail`, through the
+Central Portal, with the tooling DESIGN D85 names (DESIGN D84, D85). The `developers` section of each POM SHALL give the maintainer as `jordi1st`
+with the URL `https://github.com/jordi1st`, and SHALL NOT contain an email address.
 
 ### Key Entities
 
@@ -91,7 +75,6 @@ recorded in design.md's decision log: continue to v0.2 (with named themes), chan
 
 - **SC-001**: 0.1.0 is on Maven Central.
 - **SC-002**: A developer new to the project runs the demo from the README in under 10 minutes.
-- **SC-003**: A go/no-go decision is recorded in design.md's decision log.
 
 ## Assumptions
 

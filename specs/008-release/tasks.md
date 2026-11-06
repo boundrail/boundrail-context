@@ -2,7 +2,7 @@
 description: "Task list for 008-release (stub)"
 ---
 
-# Tasks: v0.1 Release and Validation
+# Tasks: v0.1 Release
 
 **Input**: Design documents from `/specs/008-release/`
 
@@ -10,6 +10,5 @@ description: "Task list for 008-release (stub)"
 
 ## Exit Checklist
 
-- [ ] Requirements done: REL-01 – REL-05
+- [ ] Requirements done: REL-01 – REL-04
 - [ ] 0.1.0 on Maven Central
-- [ ] Go/no-go decision recorded in design.md's decision log

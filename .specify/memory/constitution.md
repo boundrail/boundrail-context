@@ -1,6 +1,7 @@
 <!--
 Sync Impact Report
-- Version: 1.2.0 → 1.2.1 (PATCH: the Test names rule states that a `@ParameterizedTest` counts by its method's `@DisplayName`,
+- Version: 1.2.1 → 1.2.2 (PATCH: the base package cites DESIGN D84, which resolves proposal P7.)
+- 1.2.0 → 1.2.1 (PATCH: the Test names rule states that a `@ParameterizedTest` counts by its method's `@DisplayName`,
   not its invocation names; principle VII points to it)
 - 1.1.2 → 1.2.0 (MINOR: principle VII adds approved TDD exceptions and debugging to root cause; the
   workflow adds per-task review and commits on the feature branch, following the superpowers skills test-driven-development,
@@ -80,7 +81,7 @@ changed line traces to the task at hand; unrelated problems are reported, not fi
 
 - **Where things live.** Each feature's requirements, acceptance scenarios and configuration properties live in `specs/###-feature-name/spec.md`;
   `###` is the development order. Signatures live in the feature's `contracts/`, as signatures only; the base package is
-  `io.github.boundrail.context` (proposal P7 in design.md). The shared test topology is defined in `specs/001-foundation/spec.md`, the glossary in
+  `io.github.boundrail.context` (DESIGN D84). The shared test topology is defined in `specs/001-foundation/spec.md`, the glossary in
   design.md Appendix A, and traceability by milestone in roadmap.md.
 - **Precedence.** The specs are the source of truth for behaviour. design.md explains why; if the two disagree, the specs win and design.md gets
   fixed.
@@ -113,4 +114,4 @@ This constitution supersedes other practices. Principles I–VI restate the froz
 in the design.md decision log and a matching update here. Versioning follows semantic versioning: MAJOR for removing or redefining a principle,
 MINOR for adding one, PATCH for wording. Every plan's Constitution Check and every review verifies compliance.
 
-**Version**: 1.2.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-09-30
+**Version**: 1.2.2 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-05

@@ -4,7 +4,7 @@
 > **Companion documents:** [design.md](design.md) (what and why) · [specs/](../specs/) (normative requirements and acceptance
 > tests)
 
-This roadmap takes `boundrail-context` from an empty repository to a public v0.1 release and a go/no-go decision based on developer feedback.
+This roadmap takes `boundrail-context` from an empty repository to a public v0.1 release.
 
 ---
 
@@ -39,7 +39,7 @@ Each milestone is one Spec Kit feature under [`specs/`](../specs/), numbered in 
 | **M4** | [005](../specs/005-deadlines/) | Deadlines | M | IT-3 is green, except the messaging scenario | Done |
 | **M5** | [006](../specs/006-identity/) | Identity | M | IT-4 is green, except the messaging scenario | Done |
 | **M6** | [007](../specs/007-kafka/) | Kafka | M | All acceptance suites are fully green | Done |
-| **M7** | [008](../specs/008-release/) | v0.1 release and validation | M | 0.1.0 is on Maven Central and the go/no-go decision is recorded | Not started |
+| **M7** | [008](../specs/008-release/) | v0.1 release | M | 0.1.0 is on Maven Central | Not started |
 
 ```
 M0 ─► M1 ─► M2 ─► M3 ─► M4 ─┐
@@ -61,7 +61,7 @@ M4 and M5, because its scenarios assert that the deadline is absent and the init
 | M4 | 005-deadlines | CORE-15, DL-03 – DL-09, DL-12, OUT-05, EXE-08 | IT-3.1 – IT-3.7 |
 | M5 | 006-identity | CORE-16, ID-02 – ID-06, ID-08 – ID-12 | IT-4.1 – IT-4.8 |
 | M6 | 007-kafka | CORE-17, KAF-01 – KAF-06 | IT-3.8, IT-4.9 |
-| M7 | 008-release | REL-01 – REL-05 | none |
+| M7 | 008-release | REL-01 – REL-04 | none |
 
 ---
 
@@ -246,30 +246,29 @@ documented limitation in v0.1 (D52, was Q7).
 
 ---
 
-## M7 — v0.1 release and validation
+## M7 — v0.1 release
 
 **Feature:** [specs/008-release](../specs/008-release/spec.md)
 
-**Goal:** a public release good enough to put in front of experienced Spring developers, and a recorded decision about what happens next.
+**Goal:** a public release good enough to put in front of experienced Spring developers.
 
 **Scope**
 
-- A README with the headline, a quick start, a "Guarantees" section that links to the acceptance tests, and a GIF of the three demos.
+- A README with the headline, a quick start, usage examples from simple to advanced, a "Guarantees" section that links to the acceptance tests,
+  and a GIF of the three demos.
 - `examples/propagation-demo`, runnable with Docker Compose.
 - A configuration reference generated from, or checked against, the Configuration tables in the feature specs.
-- Resolve proposal P7 (group and package) and Q5 (publishing tooling), then publish 0.1.0 to Maven Central.
-- Run the validation plan (design.md §15) with 5–10 experienced Spring developers and record their reactions.
+- Publish 0.1.0 to Maven Central under `io.github.boundrail` (D84), with the tooling D85 names.
 
 **Exit criteria**
 
 - 0.1.0 is on Maven Central.
-- A written go/no-go decision is recorded in design.md's decision log: continue to v0.2 (with named themes), change positioning, or stop.
 
 ---
 
 ## Beyond v0.1
 
-These are candidates, ordered by expected value. Re-rank them after the M7 validation.
+These are candidates, ordered by expected value. Re-rank them after M7.
 
 1. **Boundrail core integration.** Failure contracts consume the deadline and context. This is the reason the module exists.
 2. **Interop bridges** to Micrometer context-propagation and OpenTelemetry.
