@@ -119,8 +119,10 @@ what the tests call, so the output the script prints is the output the tests pin
 - Demo 2: `edge` sets `Tenant-Id` on a call declared `BoundrailClients.external()`. `partner` returns the headers it received, and `edge` returns
   them with the `FORBIDDEN_HEADER` violation it recorded through a `ViolationListener` bean (WIRE-07, IT-2.4).
 - Demo 3: `edge` has `deadline.default-inbound=2s` and calls `orders` through `BoundrailClients.internal("orders")`; both return the budget left on
-  arrival. `orders` publishes an event through its `KafkaTemplate`; a listener in `edge` waits until the budget has passed, and records that it
-  has `tenant` and no deadline (DL-05, KAF-01, KAF-02, IT-3.1, IT-3.8).
+  arrival. `orders` publishes an event through its `KafkaTemplate`; a listener in `edge` waits until the budget has passed (`demo.event-wait`), and
+  records that it has `tenant` and no deadline (DL-05, KAF-01, KAF-02, IT-3.1, IT-3.8). The record's value is an event id that `orders` returns, so
+  a run is judged on its own event, and `DemoClient` polls `GET /events/{event}` on `edge`, because the request must end before the listener's result
+  exists.
 
 **Tenant at the edge.** `edge` binds the tenant in its handler with `Context.with(TENANT, "acme")`, and keeps the default `inbound.trust=none`. A JWT
 would add a key pair and a token issuer to a demo about something else, and trusting the demo client's network at the edge would contradict the
@@ -237,6 +239,8 @@ commit. They are not TDD exceptions. They need the user's approval with the plan
 
 | Task | Test | Why it is green first | Temporary change that shows it red |
 |---|---|---|---|
+| T004 | `REL-02 demo 3 a consumer group that joins after the event was published still handles it` (approved 2026-11-06) | `auto-offset-reset=earliest` is already set | Remove that line from `edge.properties` |
+| T004 | `REL-02 demo 3 a run is judged on its own event, not the warm-up's` (approved 2026-11-06) | The `/events` handler already looks up the event id | Return the first handled event instead |
 | T016 | `REL-04 no published POM or module metadata contains an email address` | No POM contains an address, with or without `developers`, and adding one would be the bug | `email = "jordi1st@example.com"` on the `developer` block of `boundrail.published`; a second run with the address in the POM's `description`, which an `<email>` check alone misses |
 
 The "no email" assertion has its own test, and is not a negative assertion beside T015's positive ones, because a released POM cannot be removed:

@@ -72,9 +72,9 @@ Verify commands, each followed by `./gradlew check` before the commit:
       `DemoClient.deadline()` reports a budget on `edge` greater than the budget on `orders`, which is greater than 0, and never asserts a number.
       Green: `demomain/OrdersService.java` (`inbound.trust=cidr`, `127.0.0.1/32` in the test), the `edge` endpoint and `deadline.default-inbound=2s`,
       `spring.http.clients.imperative.factory=jdk`, the warm-up call in `DemoClient`. Verify: **Demo**. (REL-02, §15 demo 3)
-- [ ] T004 [US1] Demo 3, Kafka. Red: add to `demotest/DeadlineDemoTest.java`, `REL-02 demo 3 a Kafka event handled after the deadline keeps the tenant
-      and carries no deadline`, against a Testcontainers broker (`apache/kafka:4.2.1`, BLD-07): `orders` publishes, the listener in `edge` starts
-      after the budget has passed, `DemoClient.deadline()` prints the `event` line with `tenant` and no deadline, and the demo stays within a title
+- [x] T004 [US1] Demo 3, Kafka. Red: add to `demotest/DeadlineDemoTest.java`, `REL-02 demo 3 a Kafka event handled after the deadline keeps the tenant
+      and carries no deadline`, against a Testcontainers broker (`apache/kafka:4.2.1`, BLD-07): `orders` publishes, the listener in `edge` waits
+      until the budget has passed, `DemoClient.deadline()` prints the `event` line with `tenant` and no deadline, and the demo stays within a title
       and three lines. Green: `-kafka` project dependency and `spring-boot-starter-kafka` in `demo/build.gradle.kts`, `testcontainers-kafka` for
       tests, the `KafkaTemplate` send in `OrdersService`, the listener in `EdgeService`, `spring.kafka.*` properties (`auto-offset-reset=earliest`).
       Verify: **Demo**. (REL-02, §15 demo 3)
@@ -83,8 +83,12 @@ Verify commands, each followed by `./gradlew check` before the commit:
       `demo/Dockerfile.dockerignore`, `demo/compose.yaml` and `demo/run-demo.sh` (executable, mode 100755), as in
       [plan.md](plan.md#demo). Add `DemoClient`'s `main`, which waits for `edge`, the `main` methods of
       `EdgeService`, `OrdersService` and `PartnerService`, and the `application` plugin's `mainClass`. Print the blank lines between demos, and set
-      `boundrail.context.inbound.trusted-cidrs` for `orders` to the Compose subnet. Report the real gap between `edge` and `orders`: the user decides
-      after this task whether `edge` gets labelled simulated work. Report the measured
+      `boundrail.context.inbound.trusted-cidrs` for `orders` to the Compose subnet. The image build runs only `ContextLossDemoTest`, because the
+      other demo tests need Docker.
+      Name the broker `kafka`, advertise `kafka:9092`, and keep topic auto-creation on or create `orders.events`. `DemoClient.deadline()` declares
+      `InterruptedException`. Run several cold starts: if a slow first Kafka send makes the real call time out, warm up until a call succeeds. Report
+      the
+      real gap between `edge` and `orders`: the user decides after this task whether `edge` gets labelled simulated work. Report the measured
       time (SC-002). Verify as tagged:
 
       ```bash
@@ -192,9 +196,11 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: A fresh Gradle project resolves the four artifacts at `0.1.0` from Maven Central.
 
-- [ ] T019 [P] [USER] [US2] Create the release credentials. Needs only T009's Portal account, so it can start at once. Generate a GPG signing key, with the
+- [ ] T019 [P] [USER] [US2] Create the release credentials. Needs only T009's Portal account, so it can start at once. Generate a GPG signing key,
+      with the
       name `jordi1st` alone as its user ID and no email, and send the public key to a key server Central reads. Generate a Portal user token.
-      Put `mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyId` and `signingInMemoryKeyPassword` in `~/.gradle/gradle.properties`, or in
+      Put `mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyId` and `signingInMemoryKeyPassword` in
+      `~/.gradle/gradle.properties`, or in
       `ORG_GRADLE_PROJECT_*` environment variables; never in the repository. Back up the key. (REL-04)
 - [ ] T020 [USER] [US2] Needs T018, T019. Upload rehearsal under the personal namespace, from the PR C branch:
       `./gradlew publishToMavenCentral -Pgroup=io.github.jordi1st`. The command should succeed, and the Portal should accept the deployment and hold

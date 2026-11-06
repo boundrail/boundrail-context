@@ -18,9 +18,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-/** Demo 1 of design.md §15: context loss is caught by a test. The same scenario as the README's {@code ContextLossTest}. */
+/**
+ * Demo 1 of design.md §15: context loss is caught by a test. The same scenario as the README's {@code ContextLossTest}. It also runs during the
+ * image build, where there is no broker and no Docker for Testcontainers, so {@code edge}'s listener stays stopped.
+ */
 @BoundrailTest
-@SpringBootTest(classes = EdgeService.class)
+@SpringBootTest(classes = EdgeService.class, properties = "spring.kafka.listener.auto-startup=false")
 class ContextLossDemoTest {
 
     @Autowired
@@ -30,7 +33,7 @@ class ContextLossDemoTest {
     @DisplayName("REL-02 demo 1 a plain executor loses the tenant and the test catches MISSING_REQUIRED")
     void aPlainExecutorLosesTheTenant() {
         try (ExecutorService plain = Executors.newSingleThreadExecutor()) {
-            Future<Long> call = Context.with(DemoPolicy.TENANT, "acme").call(() -> plain.submit(edge::callOrders));
+            Future<OrdersService.OrderPlaced> call = Context.with(DemoPolicy.TENANT, "acme").call(() -> plain.submit(edge::callOrders));
 
             Throwable failure = catchThrowable(call::get);
 

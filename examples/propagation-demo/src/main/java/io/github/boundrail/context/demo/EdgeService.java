@@ -2,21 +2,28 @@ package io.github.boundrail.context.demo;
 
 import io.github.boundrail.context.Context;
 import io.github.boundrail.context.ContextPolicy;
+import io.github.boundrail.context.Deadlines;
 import io.github.boundrail.context.Violation;
+import io.github.boundrail.context.demo.OrdersService.OrderPlaced;
 import io.github.boundrail.context.spring.BoundrailClients;
 import io.github.boundrail.context.spring.ViolationListener;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
 
@@ -30,13 +37,17 @@ public class EdgeService {
     private final RestClient orders;
     private final RestClient partner;
     private final ReportedViolations reported;
+    private final Duration eventWait;
+    private final Map<String, HandledEvent> handledEvents = new ConcurrentHashMap<>();
 
     EdgeService(RestClient.Builder clients, ReportedViolations reported,
             @Value("${demo.orders-url:http://orders:8080}") String ordersUrl,
-            @Value("${demo.partner-url:http://partner:8080}") String partnerUrl) {
+            @Value("${demo.partner-url:http://partner:8080}") String partnerUrl,
+            @Value("${demo.event-wait}") Duration eventWait) {
         orders = clients.clone().apply(BoundrailClients.internal("orders")).baseUrl(ordersUrl).build();
         partner = clients.clone().apply(BoundrailClients.external()).baseUrl(partnerUrl).build();
         this.reported = reported;
+        this.eventWait = eventWait;
     }
 
     @Bean
@@ -49,8 +60,8 @@ public class EdgeService {
         return new ReportedViolations();
     }
 
-    Long callOrders() {
-        return orders.get().uri("/orders").retrieve().body(Long.class);
+    OrderPlaced callOrders() {
+        return orders.get().uri("/orders").retrieve().body(OrderPlaced.class);
     }
 
     /** Demo 2: sets {@code Tenant-Id} on a call declared external, and returns what {@code partner} received and what was reported. */
@@ -65,11 +76,31 @@ public class EdgeService {
         });
     }
 
-    /** Demo 3: returns the budget left on arrival here, and the one {@code orders} found on arrival there. */
+    /** Demo 3: returns the budget left on arrival here, the one {@code orders} found on arrival there, and the event {@code orders} published. */
     @GetMapping("/deadline")
     DeadlineCall deadline() {
         long budget = DemoPolicy.budgetMillis();
-        return Context.with(DemoPolicy.TENANT, "acme").call(() -> new DeadlineCall(budget, callOrders()));
+        return Context.with(DemoPolicy.TENANT, "acme").call(() -> {
+            OrderPlaced placed = callOrders();
+            return new DeadlineCall(DemoPolicy.TENANT.get(), budget, placed.budgetMillis(), placed.event());
+        });
+    }
+
+    /** Demo 3: waits until the request's budget has passed since the event was published, then records what it finds bound. */
+    @KafkaListener(topics = "orders.events")
+    void onOrderEvent(ConsumerRecord<String, String> record) throws InterruptedException {
+        long wait = record.timestamp() + eventWait.toMillis() - System.currentTimeMillis();
+        if (wait > 0) {
+            Thread.sleep(wait);
+        }
+        handledEvents.put(record.value(), new HandledEvent(DemoPolicy.TENANT.find().orElse(null), Deadlines.current().isPresent(),
+                System.currentTimeMillis() - record.timestamp()));
+    }
+
+    /** Demo 3: returns what the listener found for the event; an empty body until it has handled the event. */
+    @GetMapping("/events/{event}")
+    HandledEvent handledEvent(@PathVariable("event") String event) {
+        return handledEvents.get(event);
     }
 
     /** What {@code edge} returns for demo 2. */
@@ -77,7 +108,11 @@ public class EdgeService {
     }
 
     /** What {@code edge} returns for demo 3; a budget of 0 means that service had no deadline, or under 1 ms left. */
-    record DeadlineCall(long edgeMillis, long ordersMillis) {
+    record DeadlineCall(String tenant, long edgeMillis, long ordersMillis, String event) {
+    }
+
+    /** What the listener found bound; {@code tenant} is {@code null} if none was. */
+    record HandledEvent(String tenant, boolean deadlineBound, long millisAfterPublish) {
     }
 
     /**
