@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-28
 
-**Status**: Draft
+**Status**: Approved
 
 **Milestone**: M7
 
@@ -35,7 +35,7 @@ stripped from an external call, and a deadline shrinking across hops while a Kaf
 
 Version 0.1.0 of the four published projects is available on Maven Central under the final group and package names.
 
-**Why this priority**: Without a published artifact there is nothing to validate.
+**Why this priority**: Without a published artifact there is nothing for developers to use.
 
 **Independent Test**: A fresh Gradle project resolves `0.1.0` from Maven Central.
 
@@ -53,16 +53,19 @@ Version 0.1.0 of the four published projects is available on Maven Central under
 ## Requirements *(mandatory)*
 
 **REL-01** `[M7]` The README SHALL contain the headline from design.md §1, a quick start, usage examples ordered from simple to advanced, a
-"Guarantees" section that links each guarantee to the acceptance test that proves it, and a GIF of the three demos.
+"Guarantees" section that links each guarantee to the acceptance test that proves it, the instructions to run the demo, and a sample of the
+output of the three demos (DESIGN D89).
 
-**REL-02** `[M7]` `examples/propagation-demo` SHALL run with Docker Compose and SHALL show the three demos of design.md §15.
+**REL-02** `[M7]` `examples/propagation-demo` SHALL run with Docker Compose and one script, and SHALL show the three demos of design.md §15, in a
+compact output of a few lines per demo. It SHALL use in-repo project dependencies and SHALL NOT be published (DESIGN D87).
 
-**REL-03** `[M7]` The user-facing configuration reference SHALL be generated from, or checked in the build against, the Configuration tables in
-the feature specs (002–007).
+**REL-03** `[M7]` The user-facing configuration reference SHALL be a committed `docs/configuration.md`, generated from the Configuration tables in
+the feature specs (002–007), and `./gradlew check` SHALL fail when it is stale (DESIGN D88).
 
 **REL-04** `[M7]` 0.1.0 of the four published projects SHALL be published to Maven Central under the group `io.github.boundrail`, through the
 Central Portal, with the tooling DESIGN D85 names (DESIGN D84, D85). The `developers` section of each POM SHALL give the maintainer as `jordi1st`
-with the URL `https://github.com/jordi1st`, and SHALL NOT contain an email address.
+with the URL `https://github.com/jordi1st`, and SHALL NOT contain an email address. Each POM SHALL also give the project's name, its description from
+the Contents cell of design.md §12, the GitHub repository as its URL and SCM, and the Apache-2.0 licence.
 
 ### Key Entities
 
