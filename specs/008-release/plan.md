@@ -1,4 +1,4 @@
-# Implementation Plan: v0.1 Release and Validation
+# Implementation Plan: v0.1 Release
 
 **Branch**: `008-release` | **Date**: 2026-09-28 | **Spec**: [spec.md](spec.md)
 
@@ -8,7 +8,7 @@
 
 ## Summary
 
-A public release good enough to put in front of experienced Spring developers, and a recorded decision about what happens next.
+A public release good enough to put in front of experienced Spring developers.
 
 ## Technical Context
 
@@ -32,7 +32,6 @@ A public release good enough to put in front of experienced Spring developers, a
 - `examples/propagation-demo`, runnable with Docker Compose.
 - A configuration reference generated from, or checked against, the Configuration tables in the feature specs.
 - Publish 0.1.0 to Maven Central under `io.github.boundrail` (D84), with the tooling D85 names.
-- Run the validation plan (design.md §15) with 5–10 experienced Spring developers and record their reactions.
 
 ## Project Structure
 
@@ -42,7 +41,6 @@ specs/008-release/{spec.md, plan.md, tasks.md}
 README.md
 examples/propagation-demo/
 build-logic/src/main/kotlin/        # publishing conventions
-docs/design.md                      # go/no-go decision
 ```
 
 ## Risks

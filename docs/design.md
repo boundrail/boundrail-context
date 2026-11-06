@@ -464,21 +464,13 @@ The following are out of scope for v0.1. Most are candidates in roadmap.md.
 
 ---
 
-## 15. Validation plan
+## 15. Demos
 
-Before investing beyond v0.1, test the idea with experienced Spring developers using three demos:
+Three demos show the guarantees to experienced Spring developers:
 
 1. context loss caught by a test;
 2. a tenant stripped from an external call;
 3. a deadline shrinking across hops while a Kafka event is unaffected.
-
-Reactions like these identify the real product:
-
-- *"Can it tell me when one of my executors isn't propagating context?"*
-- *"Can I declare that this header must never leave my network?"*
-- *"Can the deadline automatically become my HTTP client timeout?"*
-
-"Would you use it?" is not a useful question.
 
 ---
 
