@@ -207,8 +207,8 @@ off redirect following on internal clients.
 
 ## 6. Inbound requests
 
-HTTP context headers are trusted only when you say so. By default no caller is trusted: a `Tenant-Id` header is ignored, reported as `UNTRUSTED_HEADER`,
-and the request carries on. Trust your own network explicitly:
+HTTP context headers are trusted only when you say so. By default no caller is trusted: a `Tenant-Id` header is ignored, reported as
+`UNTRUSTED_HEADER`, and the request carries on. Trust your own network explicitly:
 
 ```yaml
 boundrail:
