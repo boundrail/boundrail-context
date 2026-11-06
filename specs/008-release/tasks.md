@@ -68,7 +68,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       `partner` did receive the header fails. Green: `demomain/PartnerService.java` (returns the headers it received), the `edge` endpoint with a
       client declared `BoundrailClients.external()`, a `ViolationListener` bean and the tenant bound by `Context.with`, and
       `demomain/DemoClient.java`. Verify: **Demo**. (REL-02, §15 demo 2)
-- [ ] T003 [US1] Demo 3, deadline. Red: `demotest/DeadlineDemoTest.java`, `REL-02 demo 3 the deadline shrinks from edge to orders`:
+- [x] T003 [US1] Demo 3, deadline. Red: `demotest/DeadlineDemoTest.java`, `REL-02 demo 3 the deadline shrinks from edge to orders`:
       `DemoClient.deadline()` reports a budget on `edge` greater than the budget on `orders`, which is greater than 0, and never asserts a number.
       Green: `demomain/OrdersService.java` (`inbound.trust=cidr`, `127.0.0.1/32` in the test), the `edge` endpoint and `deadline.default-inbound=2s`,
       `spring.http.clients.imperative.factory=jdk`, the warm-up call in `DemoClient`. Verify: **Demo**. (REL-02, §15 demo 3)
@@ -81,7 +81,10 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [ ] T005 [US1] [TDD-EXCEPTION: from a clean copy of the repository with no build cache, `run-demo.sh` exits 0 in under 10 minutes and prints the
       three demos; with a temporary break of `DemoClient`'s Demo 2 check it exits non-zero; no container remains afterwards] Create `demo/Dockerfile`,
       `demo/Dockerfile.dockerignore`, `demo/compose.yaml` and `demo/run-demo.sh` (executable, mode 100755), as in
-      [plan.md](plan.md#demo). Add `DemoClient`'s `main`, which waits for `edge`, and the `application` plugin's `mainClass`. Report the measured
+      [plan.md](plan.md#demo). Add `DemoClient`'s `main`, which waits for `edge`, the `main` methods of
+      `EdgeService`, `OrdersService` and `PartnerService`, and the `application` plugin's `mainClass`. Print the blank lines between demos, and set
+      `boundrail.context.inbound.trusted-cidrs` for `orders` to the Compose subnet. Report the real gap between `edge` and `orders`: the user decides
+      after this task whether `edge` gets labelled simulated work. Report the measured
       time (SC-002). Verify as tagged:
 
       ```bash
@@ -235,7 +238,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 ## Exit Checklist
 
-- [x] The user approved the plan, tasks, TDD exceptions (T005, T006, T017, T026) and guard test (T016)
+- [x] The user approved the plan, tasks, TDD exceptions (T003's `factory` line, T005, T006, T017, T026) and guard test (T016)
 - [x] Q1 settled and written into spec.md; Q2 – Q7 answered
 - [ ] T018's outcome recorded in plan.md, and T020's if it ran
 - [ ] Requirements done: REL-01 – REL-04

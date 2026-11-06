@@ -106,7 +106,7 @@ reviewed while the namespace request is pending. The upload runs from `main` aft
 
 ### Demo
 
-**Shape.** One Gradle project, main classes `EdgeService`, `OrdersService`, `PartnerService` and `DemoClient`, each a `@SpringBootConfiguration` with
+**Shape.** One Gradle project, main classes `EdgeService`, `OrdersService` and `PartnerService`, each a `@SpringBootConfiguration` with
 `@EnableAutoConfiguration` and no component scan, as the topology's `EdgeApp` is, so the services in one package do not pick each other up.
 `DemoClient` is a plain main class: it calls `edge`, prints the lines, and fails if a service did not observe what the demo claims. Its methods are
 what the tests call, so the output the script prints is the output the tests pin down.
@@ -248,7 +248,8 @@ For the user's approval. Each names the check that verifies it.
 
 | Task | What | Why there is no failing test first | Verified by |
 |---|---|---|---|
-| T005 | `Dockerfile`, `Dockerfile.dockerignore`, `compose.yaml`, `run-demo.sh` | Config and a shell script; the behaviour inside them is pinned by T001 – T004, and running Compose inside `./gradlew check` would make every build slow and depend on Compose | `./examples/propagation-demo/run-demo.sh` exits 0 and prints the three demos, from a clean copy of the repository with no build cache, in under 10 minutes; with a temporary break of `DemoClient`'s Demo 2 check, it exits non-zero; `docker compose ps -a` is empty afterwards |
+| T003 | `spring.http.clients.imperative.factory=jdk` in `edge.properties` (added 2026-11-06) | Boot already picks the JDK client on this classpath, so removing the line changes nothing; capping itself is proved by IT-3.2 | No `not the JDK HttpClient` WARN in the demo's test output |
+| T005 | `Dockerfile`, `Dockerfile.dockerignore`, `compose.yaml`, `run-demo.sh`, the `main` methods of `EdgeService`, `OrdersService`, `PartnerService` and `DemoClient`, and the blank lines between demos (widened 2026-11-06) | Config and a shell script; the behaviour inside them is pinned by T001 – T004, and running Compose inside `./gradlew check` would make every build slow and depend on Compose | `./examples/propagation-demo/run-demo.sh` exits 0 and prints the three demos, from a clean copy of the repository with no build cache, in under 10 minutes; with a temporary break of `DemoClient`'s Demo 2 check, it exits non-zero; `docker compose ps -a` is empty afterwards |
 | T006 | README demo section and output sample | Documentation | The sample equals a real run's output with digits normalised (command in the task); the markdown line check passes; each Guarantees link resolves and the IDs it cites exist in its test class |
 | T017 | Signing and manual release in `boundrail.published` | Exercising them in `check` would need a key in the build and a nested Gradle run | T018, and `./gradlew publishToMavenCentral --dry-run` lists sign and publish tasks of exactly the four projects; `./gradlew check` stays green with no key |
 | T026 | The roadmap's M7 status row, the README's Pre-release note and the Maven Central badge | Documentation | `./gradlew check` is green, and the markdown line check passes |

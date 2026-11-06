@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.PropertySource;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,6 +23,7 @@ import org.springframework.web.client.RestClient;
 /** Service {@code edge}: the demo's entry point. No component scan, so the services in this package do not pick each other up. */
 @SpringBootConfiguration(proxyBeanMethods = false)
 @EnableAutoConfiguration
+@PropertySource("classpath:edge.properties")
 @RestController
 public class EdgeService {
 
@@ -30,8 +32,9 @@ public class EdgeService {
     private final ReportedViolations reported;
 
     EdgeService(RestClient.Builder clients, ReportedViolations reported,
+            @Value("${demo.orders-url:http://orders:8080}") String ordersUrl,
             @Value("${demo.partner-url:http://partner:8080}") String partnerUrl) {
-        orders = clients.clone().apply(BoundrailClients.internal("orders")).baseUrl("http://orders:8080").build();
+        orders = clients.clone().apply(BoundrailClients.internal("orders")).baseUrl(ordersUrl).build();
         partner = clients.clone().apply(BoundrailClients.external()).baseUrl(partnerUrl).build();
         this.reported = reported;
     }
@@ -46,8 +49,8 @@ public class EdgeService {
         return new ReportedViolations();
     }
 
-    String callOrders() {
-        return orders.get().uri("/orders").retrieve().body(String.class);
+    Long callOrders() {
+        return orders.get().uri("/orders").retrieve().body(Long.class);
     }
 
     /** Demo 2: sets {@code Tenant-Id} on a call declared external, and returns what {@code partner} received and what was reported. */
@@ -62,8 +65,19 @@ public class EdgeService {
         });
     }
 
+    /** Demo 3: returns the budget left on arrival here, and the one {@code orders} found on arrival there. */
+    @GetMapping("/deadline")
+    DeadlineCall deadline() {
+        long budget = DemoPolicy.budgetMillis();
+        return Context.with(DemoPolicy.TENANT, "acme").call(() -> new DeadlineCall(budget, callOrders()));
+    }
+
     /** What {@code edge} returns for demo 2. */
     record ExternalCall(String tenant, Map<String, String> partnerHeaders, List<Violation.Kind> reported) {
+    }
+
+    /** What {@code edge} returns for demo 3; a budget of 0 means that service had no deadline, or under 1 ms left. */
+    record DeadlineCall(long edgeMillis, long ordersMillis) {
     }
 
     /**

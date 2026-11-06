@@ -60,6 +60,16 @@ class ExternalCallDemoTest {
         assertThat(printed.toString()).isEmpty();
     }
 
+    @Test
+    @DisplayName("REL-02 demo 2 a first call that runs out of budget is discarded as the warm-up")
+    void aFirstCallThatRunsOutOfBudgetIsDiscarded() {
+        try (DemoServices services = DemoServices.start(DemoServices.FirstCallTimesOut.class)) {
+            client(services).externalCall();
+        }
+
+        assertThat(printed.toString().lines().toList()).hasSize(4);
+    }
+
     private DemoClient client(DemoServices services) {
         return new DemoClient(services.edge(), new PrintStream(printed, true));
     }

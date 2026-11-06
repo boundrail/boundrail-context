@@ -30,7 +30,7 @@ class ContextLossDemoTest {
     @DisplayName("REL-02 demo 1 a plain executor loses the tenant and the test catches MISSING_REQUIRED")
     void aPlainExecutorLosesTheTenant() {
         try (ExecutorService plain = Executors.newSingleThreadExecutor()) {
-            Future<String> call = Context.with(DemoPolicy.TENANT, "acme").call(() -> plain.submit(edge::callOrders));
+            Future<Long> call = Context.with(DemoPolicy.TENANT, "acme").call(() -> plain.submit(edge::callOrders));
 
             Throwable failure = catchThrowable(call::get);
 
