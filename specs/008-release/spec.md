@@ -76,8 +76,8 @@ The maintainers run the validation plan with experienced Spring developers and r
 the feature specs (002–007).
 
 **REL-04** `[M7]` 0.1.0 of the four published projects SHALL be published to Maven Central under the group `io.github.boundrail`, through the
-Central Portal, with the tooling DESIGN D85 names (DESIGN D84, D85). The `developers` section of each POM SHALL give the maintainer's name and
-GitHub URL, and SHALL NOT contain an email address.
+Central Portal, with the tooling DESIGN D85 names (DESIGN D84, D85). The `developers` section of each POM SHALL give the maintainer as `jordi1st`
+with the URL `https://github.com/jordi1st`, and SHALL NOT contain an email address.
 
 **REL-05** `[M7]` The validation plan (design.md §15) SHALL be run with 5–10 experienced Spring developers, and a written go/no-go decision SHALL be
 recorded in design.md's decision log: continue to v0.2 (with named themes), change positioning, or stop.
