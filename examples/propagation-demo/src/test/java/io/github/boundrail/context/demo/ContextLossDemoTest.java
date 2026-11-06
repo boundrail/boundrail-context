@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-/** Demo 1 of design.md §15: context loss is caught by a test. The same code as the README's {@code ContextLossTest}. */
+/** Demo 1 of design.md §15: context loss is caught by a test. The same scenario as the README's {@code ContextLossTest}. */
 @BoundrailTest
 @SpringBootTest(classes = EdgeService.class)
 class ContextLossDemoTest {

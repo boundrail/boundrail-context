@@ -62,7 +62,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       dependencies on `-spring` and, for tests, `-test`, the catalog's webmvc, restclient and test starters; `testLogging` that shows the printed
       lines), `demomain/DemoPolicy.java` (`TENANT`, as in the README), `demomain/EdgeService.java` with its internal `orders` client. Verify:
       **Demo**. (REL-02)
-- [ ] T002 [US1] Demo 2. Red: `demotest/ExternalCallDemoTest.java`, `REL-02 demo 2 the tenant set on the partner call is stripped and reported`,
+- [x] T002 [US1] Demo 2. Red: `demotest/ExternalCallDemoTest.java`, `REL-02 demo 2 the tenant set on the partner call is stripped and reported`,
       using a new `demotest/DemoServices.java` that starts services on random ports, real HTTP throughout (BLD-07): `DemoClient.externalCall()` prints
       a title and at most three lines stating that `partner` received no `Tenant-Id` and that `edge` reported `FORBIDDEN_HEADER`, and a run in which
       `partner` did receive the header fails. Green: `demomain/PartnerService.java` (returns the headers it received), the `edge` endpoint with a
