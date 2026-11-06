@@ -254,10 +254,11 @@ documented limitation in v0.1 (D52, was Q7).
 
 **Scope**
 
-- A README with the headline, a quick start, a "Guarantees" section that links to the acceptance tests, and a GIF of the three demos.
+- A README with the headline, a quick start, usage examples from simple to advanced, a "Guarantees" section that links to the acceptance tests,
+  and a GIF of the three demos.
 - `examples/propagation-demo`, runnable with Docker Compose.
 - A configuration reference generated from, or checked against, the Configuration tables in the feature specs.
-- Resolve proposal P7 (group and package) and Q5 (publishing tooling), then publish 0.1.0 to Maven Central.
+- Publish 0.1.0 to Maven Central under `io.github.boundrail` (D84), with the tooling D85 names.
 - Run the validation plan (design.md §15) with 5–10 experienced Spring developers and record their reactions.
 
 **Exit criteria**

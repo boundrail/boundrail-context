@@ -29,7 +29,7 @@ When this skill and a generic skill (`java`, `spring-boot`) disagree, this one w
 
 Spring dependencies stay out of core entirely.
 
-Base package: `io.github.boundrail.context` (proposal P7 — still open until M7).
+Base package: `io.github.boundrail.context` (DESIGN D84).
 
 ## Java levels and the multi-release JAR
 

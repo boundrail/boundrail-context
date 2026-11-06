@@ -62,20 +62,22 @@ The maintainers run the validation plan with experienced Spring developers and r
 
 ### Edge Cases
 
-- The `boundrail.io` domain is acquired before release: P7 resolves to that group and package instead of `io.github.boundrail`.
+- Central does not register `io.github.boundrail` automatically, because it names an organization: the request needs manual
+  verification, and publishing waits for it (REL-04, DESIGN D84).
 
 ## Requirements *(mandatory)*
 
-**REL-01** `[M7]` The README SHALL contain the headline from design.md §1, a quick start, a "Guarantees" section that links each guarantee to the
-acceptance test that proves it, and a GIF of the three demos.
+**REL-01** `[M7]` The README SHALL contain the headline from design.md §1, a quick start, usage examples ordered from simple to advanced, a
+"Guarantees" section that links each guarantee to the acceptance test that proves it, and a GIF of the three demos.
 
 **REL-02** `[M7]` `examples/propagation-demo` SHALL run with Docker Compose and SHALL show the three demos of design.md §15.
 
 **REL-03** `[M7]` The user-facing configuration reference SHALL be generated from, or checked in the build against, the Configuration tables in
 the feature specs (002–007).
 
-**REL-04** `[M7]` Proposal P7 (group and package) and question Q5 (publishing tooling) SHALL be resolved in design.md, and 0.1.0 of the four
-published projects SHALL be published to Maven Central.
+**REL-04** `[M7]` 0.1.0 of the four published projects SHALL be published to Maven Central under the group `io.github.boundrail`, through the
+Central Portal, with the tooling DESIGN D85 names (DESIGN D84, D85). The `developers` section of each POM SHALL give the maintainer's name and
+GitHub URL, and SHALL NOT contain an email address.
 
 **REL-05** `[M7]` The validation plan (design.md §15) SHALL be run with 5–10 experienced Spring developers, and a written go/no-go decision SHALL be
 recorded in design.md's decision log: continue to v0.2 (with named themes), change positioning, or stop.
