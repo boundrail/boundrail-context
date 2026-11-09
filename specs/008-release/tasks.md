@@ -184,7 +184,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [x] T017 [US2] [TDD-EXCEPTION: T018; `./gradlew publishToMavenCentral --dry-run` lists sign and publish tasks of exactly the four projects;
       `./gradlew check` is green with no key] In `published`, add `publishToMavenCentral(false, DeploymentValidation.VALIDATED)` and
       `signAllPublications()`. Nothing about keys or tokens enters the repository. Verify also with `--warning-mode=all`. (REL-04, D85)
-- [ ] T018 [US2] Rehearsal, no commit, no credentials, and nothing kept but the outcome. With a throwaway key in a temporary `GNUPGHOME`, passed as
+- [x] T018 [US2] Rehearsal, no commit, no credentials, and nothing kept but the outcome. With a throwaway key in a temporary `GNUPGHOME`, passed as
       `ORG_GRADLE_PROJECT_signingInMemoryKey` and `ORG_GRADLE_PROJECT_signingInMemoryKeyPassword`, run on the wrapper's Gradle 9.8.0
       `./gradlew publishToMavenLocal -Dmaven.repo.local=<temporary directory> --warning-mode=all`. Confirm and report:
       1. all four projects have a JAR, sources JAR, Javadoc JAR, POM and module file, each with an `.asc` that passes `gpg --verify`;
@@ -253,7 +253,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 - [x] The user approved the plan, tasks, TDD exceptions (T003's `factory` line, T005, T006, T017, T026) and guard test (T016)
 - [x] Q1 settled and written into spec.md; Q2 – Q7 answered
-- [ ] T018's outcome recorded in plan.md, and T020's if it ran
+- [x] T018's outcome recorded in plan.md, and T020's if it ran
 - [ ] Requirements done: REL-01 – REL-04
 - [x] T016's guard shown red against both temporary changes, and the changes reverted
 - [ ] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted

@@ -225,6 +225,18 @@ maintainer's review.
 **Rehearsal (T018).** No credentials are needed to exercise signing: a throwaway key in a temporary `GNUPGHOME` and a temporary Maven repository
 (`-Dmaven.repo.local`) sign all four projects on Gradle 9.8.0. Nothing from it is kept.
 
+**T018 outcome (2026-11-09, at 207452c, Gradle 9.8.0, an empty Gradle user home).** Passed on every point, with no change to the repository:
+
+1. All four projects published a JAR, sources JAR, Javadoc JAR, POM and module file, each with an `.asc`; `gpg --verify` reported a good
+   signature for all 20 files.
+2. Core's JAR has `META-INF/versions/25/` and `Multi-Release: true`; its sources JAR has the three `java25` sources there, byte-identical to
+   `src/main/java25` (T013a).
+3. Without a key the build fails at `:boundrail-context-core:signMavenPublication` with "No configured signatory", and writes nothing.
+4. `-Pgroup=io.github.jordi1st` puts every POM and module file, including the dependencies between the projects, under `io.github.jordi1st`.
+
+`--warning-mode=all` reported nothing from the plugins. In an empty Gradle user home the toolchains need
+`-Dorg.gradle.java.installations.paths=<JDK 21>,<JDK 25>`; the `-P` form is deprecated in Gradle 9.
+
 **Upload rehearsal (T020).** D84 says Central registers `io.github.<username>` automatically, so the maintainer owns
 `io.github.jordi1st` as soon as they sign in. An upload with `-Pgroup=io.github.jordi1st` exercises the real upload and the Portal's checks while
 `io.github.boundrail` is still being verified, with no change to the repository. The deployment is then dropped, never published. T018 confirms that
