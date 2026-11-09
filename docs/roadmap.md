@@ -255,9 +255,10 @@ documented limitation in v0.1 (D52, was Q7).
 **Scope**
 
 - A README with the headline, a quick start, usage examples from simple to advanced, a "Guarantees" section that links to the acceptance tests,
-  and a GIF of the three demos.
-- `examples/propagation-demo`, runnable with Docker Compose.
-- A configuration reference generated from, or checked against, the Configuration tables in the feature specs.
+  the instructions to run the demo, and a sample of the output of the three demos (D89).
+- `examples/propagation-demo`, runnable with Docker Compose and one script (D87).
+- A configuration reference generated from the Configuration tables in the feature specs (D88).
+- Make the repository public once the demo is on `main`, before the Central namespace request (D86).
 - Publish 0.1.0 to Maven Central under `io.github.boundrail` (D84), with the tooling D85 names.
 
 **Exit criteria**
