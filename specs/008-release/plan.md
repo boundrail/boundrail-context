@@ -63,8 +63,8 @@ remains:
 - No secret ever enters the repository: credentials and keys live in the maintainer's `~/.gradle/gradle.properties` or environment.
 - A released POM cannot be removed from Central (D85), so nothing is uploaded until T021's review has passed.
 
-**Scale/Scope**: 4 requirements (REL-01 – REL-04); 26 tasks: 18 for the agents (14 red-green or exception tasks, the signing rehearsal, the
-feature review, the consumer check and the close) and 8 owned by the user ([tasks.md](tasks.md))
+**Scale/Scope**: 4 requirements (REL-01 – REL-04); 29 tasks: 20 for the agents (15 red-green or exception tasks, the signing rehearsal, the
+feature review and its fixes, the consumer check and the close) and 9 owned by the user ([tasks.md](tasks.md))
 
 ## Constitution Check
 
@@ -96,7 +96,7 @@ the demo on `main` (D86). So the demo comes first, and the rest of the work runs
 |---|---|---|---|
 | A: demo and README | T001 – T006, with the uncommitted spec, plan, tasks, design and roadmap edits | T007 | Going public, the namespace request |
 | B: configuration reference | T010 – T011 | T022 | REL-03 |
-| C: publishing build | T012 – T017 | T022 | The rehearsal, the upload |
+| C: publishing build | T012 – T018, T013a, the T020 record, T021 and T021a | T022 | The upload |
 | D: close | T026 | After T026 | M7 closed |
 
 All four use branch `008-release`, as PR #1 did, one at a time, each starting from the merged `main`. PR B and PR C need no credentials, and can be
@@ -310,7 +310,7 @@ build-logic/src/main/kotlin/
 boundrail-context-{core,spring,kafka,test}/build.gradle.kts   # apply the convention (T012)
 integration-tests/build.gradle.kts          # POM inputs (T012), reference task and inputs (T011)
 integration-tests/src/test/java/io/github/boundrail/context/it/
-├── BuildSmokeIT.java                       # REL-04 tests (T012 – T016)
+├── BuildSmokeIT.java                       # REL-04 tests (T012 – T016, T013a)
 ├── ConfigurationReferenceIT.java           # new (T010, T011)
 └── docs/ConfigurationReference.java        # new: the generator (T010, T011)
 examples/propagation-demo/

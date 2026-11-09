@@ -111,7 +111,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Goal**: The repository is public and the namespace request is running, while the agents continue with Phases 3 and 4.
 
-- [ ] T007 [USER] Review PR A (T001 – T006 and the docs), and merge it to `main`.
+- [x] T007 [USER] Review PR A (T001 – T006 and the docs), and merge it to `main`.
 - [x] T008 [USER] [US2] Make the repository public, once the demo is on `main` and CI is green there (D86). First confirm the check in
       [plan.md](plan.md#risks): the history and tracked files hold nothing private, and `.claude/` and `.specify/` are meant to be public. Then:
       `gh repo edit boundrail/boundrail-context --visibility public --accept-visibility-change-consequences`. Check that the README's links and CI
@@ -213,9 +213,13 @@ Verify commands, each followed by `./gradlew check` before the commit:
       `./gradlew publishToMavenCentral -Pgroup=io.github.jordi1st`. The command should succeed, and the Portal should accept the deployment and hold
       it for review, with all files signed. Then **drop the deployment; do not publish it**. Report the outcome, including what `VALIDATED` did, for
       the planner to record. On a failure, follow [plan.md](plan.md#risks). (REL-04, D85 risk)
-- [ ] T021 [US2] Before anything is released: the whole-feature review (`requesting-code-review`, `reviewer` agent) of REL-01 – REL-04, and a fresh
+- [x] T021 [US2] Before anything is released: the whole-feature review (`requesting-code-review`, `reviewer` agent) of REL-01 – REL-04, and a fresh
       `./gradlew check`. Read one generated POM per project in full. Fix findings as follow-up tasks (T021a, …), then report to the user that the
       build is ready for release.
+- [x] T021a [US2] Fixes from T021, settled with the user 2026-11-09: core's description in design.md §12, its build script and
+      `BuildSmokeIT` starts with a capital ("Keys, …"), red first; D85 records that the spring and kafka POMs publish the Spring Boot BOM as a
+      platform (accepted); plan.md's task counts and PR table include T013a, T021a and T024a; T007 and the T011 stale-check item are ticked.
+      Verify: **IT**, `./gradlew check`.
 - [ ] T022 [USER] Review and merge PR B and PR C to `main`; CI is green on `main`.
 - [ ] T023 [USER] [US2] Needs T009 verified, T019, T021, T022. Upload from a clean `main`: `./gradlew publishToMavenCentral`. Never run
       `publishAndReleaseToMavenCentral`. The deployment stops for review in the Portal. (REL-04)
@@ -256,7 +260,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [x] T018's outcome recorded in plan.md, and T020's if it ran
 - [ ] Requirements done: REL-01 – REL-04
 - [x] T016's guard shown red against both temporary changes, and the changes reverted
-- [ ] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted
+- [x] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted (T011, and again in T021)
 - [x] `run-demo.sh` ran from a clean copy of the repository in under 10 minutes (SC-002): 248 s, T005
 - [ ] 0.1.0 on Maven Central, and resolved by a fresh project (T025)
 - [ ] `./gradlew check` green

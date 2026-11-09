@@ -224,7 +224,7 @@ class BuildSmokeIT {
         String repository = "https://github.com/boundrail/boundrail-context";
         Map<String, String> descriptions = Map.of(
                 "boundrail-context-core",
-                "keys, snapshots, scopes, policy, codecs, destination classification, deadline and identity types, both backends;"
+                "Keys, snapshots, scopes, policy, codecs, destination classification, deadline and identity types, both backends;"
                         + " zero runtime dependencies",
                 "boundrail-context-spring",
                 "Spring Boot 4 auto-configuration: servlet filters, trust, RestClient/RestTemplate, executors, @Scheduled, MDC, audit,"
