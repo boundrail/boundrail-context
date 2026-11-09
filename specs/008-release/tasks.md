@@ -197,7 +197,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: A fresh Gradle project resolves the four artifacts at `0.1.0` from Maven Central.
 
-- [ ] T019 [P] [USER] [US2] Create the release credentials. Needs only T009's Portal account, so it can start at once. Generate a GPG signing key,
+- [x] T019 [P] [USER] [US2] Create the release credentials. Needs only T009's Portal account, so it can start at once. Generate a GPG signing key,
       with the name `jordi1st` alone as its user ID and no email, and send the public key to a key server Central reads. Generate a Portal user token.
       Put `mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyId` and `signingInMemoryKeyPassword` in
       `~/.gradle/gradle.properties`, or in
