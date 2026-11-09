@@ -177,9 +177,13 @@ JUnit and AssertJ, so the generator is a small class in its test sources, `Confi
 own, because `build-logic` has none.
 
 **Input.** The six specs each have one `### Configuration` section with one `| Property | Default | Meaning |` table, under
-`Properties use the prefix boundrail.context.`, and no row contains a link or an escaped pipe (checked 2026-11-06).
+`Properties use the prefix boundrail.context.`, and no row contains a link or an escaped pipe (checked 2026-11-06). The generator reads every
+`specs/*/spec.md` and includes each one that has a `### Configuration` section, so a later feature's table joins without a change here (settled
+with the user 2026-11-09). A spec with that section but no `| Property | Default | Meaning |` table fails generation and the check, naming the
+spec, so a reworded header can't drop a feature unnoticed.
 
-**Output.** A generated-file notice with the regeneration command, then one section per feature, in number order, titled from the spec's first
+**Output.** A generated-file notice with the regeneration command, which also says that property names in the Meaning column are relative to
+`boundrail.context.` (settled with the user 2026-11-09), then one section per feature, in number order, titled from the spec's first
 heading without `Feature Specification: `, with the rows copied in spec order and the property shown with its full `boundrail.context.` name. A
 suffix in the cell, such as `(JVM system property)`, stays. Only the tables are copied: the prose about startup failures stays in the specs, and
 REL-03 asks for the tables.

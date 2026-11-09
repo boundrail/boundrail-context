@@ -253,7 +253,7 @@ or `deadline.max-inbound` that is zero, negative or not a duration (DL-03), a `d
 
 | Property | Default | Meaning |
 |---|---|---|
-| `deadline.default-inbound` | unset | Budget applied when no trusted deadline is present (DL-03); a `Duration` with Spring Boot's binding, greater than zero; blank counts as not set; may exceed `max-inbound`; any other value fails startup, even under lazy initialization |
+| `deadline.default-inbound` | unset | Budget applied when no trusted deadline is present (DL-03); a `Duration` with Spring Boot's binding, greater than zero; blank counts as not set; may exceed `deadline.max-inbound`; any other value fails startup, even under lazy initialization |
 | `deadline.max-inbound` | `30s` | Cap on trusted inbound deadlines (DL-03); a `Duration` with Spring Boot's binding, greater than zero; blank means `30s`; any other value fails startup, even under lazy initialization |
 | `deadline.expired-status` | `504` | Status for expired requests (DL-04, DL-08), from 400 to 599; any other value fails startup, even under lazy initialization |
 | `deadline.map-exception` | `true` | Map `DeadlineExceededException` to the status (DL-08); a boolean with Spring Boot's binding, and a value Boot cannot convert fails startup, even under lazy initialization |

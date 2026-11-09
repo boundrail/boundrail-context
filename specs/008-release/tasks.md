@@ -112,11 +112,11 @@ Verify commands, each followed by `./gradlew check` before the commit:
 **Goal**: The repository is public and the namespace request is running, while the agents continue with Phases 3 and 4.
 
 - [ ] T007 [USER] Review PR A (T001 – T006 and the docs), and merge it to `main`.
-- [ ] T008 [USER] [US2] Make the repository public, once the demo is on `main` and CI is green there (D86). First confirm the check in
+- [x] T008 [USER] [US2] Make the repository public, once the demo is on `main` and CI is green there (D86). First confirm the check in
       [plan.md](plan.md#risks): the history and tracked files hold nothing private, and `.claude/` and `.specify/` are meant to be public. Then:
       `gh repo edit boundrail/boundrail-context --visibility public --accept-visibility-change-consequences`. Check that the README's links and CI
       badge work signed out. (D86)
-- [ ] T009 [USER] [US2] Sign in to the Central Portal with GitHub, and request the namespace `io.github.boundrail`. Verify it with the temporary
+- [x] T009 [USER] [US2] Sign in to the Central Portal with GitHub, and request the namespace `io.github.boundrail`. Verify it with the temporary
       public repository named after the verification key, or through Central Support (D84), and delete the temporary repository once the Portal shows
       the namespace as verified. Publishing waits for this. (REL-04, D84)
 
@@ -130,13 +130,15 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: Change a Default in a spec's Configuration table: `./gradlew check` fails and names the command that fixes it.
 
-- [ ] T010 [P] [US1] Red: `it/ConfigurationReferenceIT.java`, `REL-03 the reference has one section per feature in number order with full property
+- [x] T010 [P] [US1] Red: `it/ConfigurationReferenceIT.java`, `REL-03 the reference has one section per feature in number order with full property
       names`, on two small spec texts given to `it/docs/ConfigurationReference.java`: the section titles come from the first heading, rows keep their
       order, `violations.mode` becomes `boundrail.context.violations.mode`, the suffix of `` `backend` (JVM system property) `` stays, and text
       outside the table is left out. It does not compile. Green: `ConfigurationReference` with the parsing and rendering of
       [plan.md](plan.md#configuration-reference). Verify: **IT**. (REL-03)
-- [ ] T011 [US1] Red: add `REL-03 the committed docs/configuration.md matches the Configuration tables of specs 002 – 007`, which regenerates from
-      `specs/` and compares; it fails because the file doesn't exist. Green: `main` in `ConfigurationReference`; in
+- [x] T011 [US1] Red: add `REL-03 the committed docs/configuration.md matches the Configuration tables of specs 002 – 007`, which regenerates from
+      `specs/` and compares; it fails because the file doesn't exist. Also red first: `REL-03 a spec with a Configuration section but no table
+      fails generation, naming the spec`, and the notice sentence on Meaning names (plan, settled 2026-11-09), updating T010's expected text.
+      Green: `main` in `ConfigurationReference`, reading every `specs/*/spec.md` and keeping those with a `### Configuration` section; in
       `integration-tests/build.gradle.kts`, a `JavaExec` task `generateConfigurationReference`, a system property for the repository root, and
       `specs/` and `docs/configuration.md` as inputs of the test tasks; generate and commit `docs/configuration.md`. Prove the check, with both
       changes reverted afterwards: a changed Default in `specs/005-deadlines/spec.md`, and a changed line in `docs/configuration.md`, each make a
