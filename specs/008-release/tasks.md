@@ -112,11 +112,11 @@ Verify commands, each followed by `./gradlew check` before the commit:
 **Goal**: The repository is public and the namespace request is running, while the agents continue with Phases 3 and 4.
 
 - [ ] T007 [USER] Review PR A (T001 – T006 and the docs), and merge it to `main`.
-- [ ] T008 [USER] [US2] Make the repository public, once the demo is on `main` and CI is green there (D86). First confirm the check in
+- [x] T008 [USER] [US2] Make the repository public, once the demo is on `main` and CI is green there (D86). First confirm the check in
       [plan.md](plan.md#risks): the history and tracked files hold nothing private, and `.claude/` and `.specify/` are meant to be public. Then:
       `gh repo edit boundrail/boundrail-context --visibility public --accept-visibility-change-consequences`. Check that the README's links and CI
       badge work signed out. (D86)
-- [ ] T009 [USER] [US2] Sign in to the Central Portal with GitHub, and request the namespace `io.github.boundrail`. Verify it with the temporary
+- [x] T009 [USER] [US2] Sign in to the Central Portal with GitHub, and request the namespace `io.github.boundrail`. Verify it with the temporary
       public repository named after the verification key, or through Central Support (D84), and delete the temporary repository once the Portal shows
       the namespace as verified. Publishing waits for this. (REL-04, D84)
 
