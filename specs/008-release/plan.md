@@ -140,11 +140,11 @@ the tests.
 - `compose.yaml` runs `kafka`, `edge`, `orders` and `partner`, each service with `java` and its main class, on the image's `CLASSPATH`. `client` and
   `context-loss-test` sit under a `demo` profile, so `up` does not start them. Nothing is published to a host port, so the demo can't collide with
   a local service.
-- `Dockerfile.dockerignore` sits beside the Dockerfile and keeps `.git`, `build`, `.gradle` and `.idea` out of the context, and nothing is added to
-  the repository root.
+- `Dockerfile.dockerignore` sits beside the Dockerfile and keeps `.git`, `build`, `.gradle`, `.idea`, `.kotlin`, `.claude` and
+  `.env` files out of the context, and nothing is added to the repository root.
 - `run-demo.sh` runs `docker compose up --build --detach`, then the test (`./gradlew --offline --rerun ... --tests '*ContextLossDemoTest'`), then
   `client`, and always ends with `docker compose down`. Gradle's output is filtered to the lines Demo 1 prints. With `set -euo pipefail`, a failed
-  demo fails the script. It uses nothing newer than bash 3.2, for macOS.
+  demo fails the script, and the last log lines go to stderr. It uses nothing newer than bash 3.2, for macOS.
 - `DemoClient` retries until `edge` answers, so the services need no health checks; `kafka` has one, for `depends_on`.
 
 **Warm-up.** A cold JVM can eat a 2-second budget, as `DeadlinePropagationIT`'s warm-up shows, so `DemoClient` calls each flow until one call

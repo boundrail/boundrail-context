@@ -180,7 +180,7 @@ boundrail:
 
 ## Demo
 
-Three demos run against services in Docker Compose. You need only Docker; the demo is built inside the image.
+Three demos run in Docker Compose. You need only Docker with Compose v2; the demo is built inside the image.
 
 ```bash
 ./examples/propagation-demo/run-demo.sh

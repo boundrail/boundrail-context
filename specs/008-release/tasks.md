@@ -86,9 +86,9 @@ Verify commands, each followed by `./gradlew check` before the commit:
       `boundrail.context.inbound.trusted-cidrs` for `orders` to the private ranges. The image build runs only `ContextLossDemoTest`, because the
       other demo tests need Docker.
       Name the broker `kafka`, advertise `kafka:9092`, and keep topic auto-creation on or create `orders.events`. `DemoClient.deadline()` declares
-      `InterruptedException`. Run several cold starts: if a slow first Kafka send makes the real call time out, warm up until a call succeeds. Report the
-      real gap between `edge` and `orders`: the user decides after this task whether `edge` gets labelled simulated work. Report the measured
-      time (SC-002). Verify as tagged:
+      `InterruptedException`. Run several cold starts: if a slow first Kafka send makes the real call time out, warm up until a call succeeds. Report
+      the real gap between `edge` and `orders`. The user decided on 2026-11-06 that `edge` gets 100 ms of labelled simulated work
+      (`demo.simulated-work`), written test-first in this task. Report the measured time (SC-002). Verify as tagged:
 
       ```bash
       copy="$(mktemp -d)"                                       # the task is not committed yet, so a clone would miss it
@@ -248,6 +248,6 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [ ] Requirements done: REL-01 – REL-04
 - [ ] T016's guard shown red against both temporary changes, and the changes reverted
 - [ ] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted
-- [ ] `run-demo.sh` ran from a clean copy of the repository in under 10 minutes (SC-002)
+- [x] `run-demo.sh` ran from a clean copy of the repository in under 10 minutes (SC-002): 248 s, T005
 - [ ] 0.1.0 on Maven Central, and resolved by a fresh project (T025)
 - [ ] `./gradlew check` green
