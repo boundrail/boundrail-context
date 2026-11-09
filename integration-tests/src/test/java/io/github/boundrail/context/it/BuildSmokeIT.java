@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
@@ -209,6 +210,59 @@ class BuildSmokeIT {
                             .as("%s in %s has no version and the POM imports no BOM", module, pom)
                             .isTrue();
                 }
+            }
+        }
+        softly.assertAll();
+    }
+
+    @Test
+    @DisplayName("REL-04 each published POM has the metadata Central requires")
+    void eachPublishedPomHasTheMetadataCentralRequires() throws Exception {
+        String poms = System.getProperty("boundrail.it.published-poms");
+        assertThat(poms).as("system property boundrail.it.published-poms (set by the integration test task)").isNotNull();
+        String repository = "https://github.com/boundrail/boundrail-context";
+        Map<String, String> descriptions = Map.of(
+                "boundrail-context-core",
+                "keys, snapshots, scopes, policy, codecs, destination classification, deadline and identity types, both backends;"
+                        + " zero runtime dependencies",
+                "boundrail-context-spring",
+                "Spring Boot 4 auto-configuration: servlet filters, trust, RestClient/RestTemplate, executors, @Scheduled, MDC, audit,"
+                        + " security contributors",
+                "boundrail-context-kafka",
+                "Spring Kafka producer and consumer adapters",
+                "boundrail-context-test",
+                "JUnit Jupiter extension, assertions, test trust verifier");
+
+        SoftAssertions softly = new SoftAssertions();
+        for (String path : poms.split(File.pathSeparator)) {
+            Path pom = Path.of(path);
+            Element project = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile()).getDocumentElement();
+            String artifactId = childText(project, "artifactId");
+            softly.assertThat(childText(project, "name")).as("name in %s", pom).isEqualTo(artifactId);
+            softly.assertThat(childText(project, "description")).as("description in %s", pom).isEqualTo(descriptions.get(artifactId));
+            softly.assertThat(childText(project, "url")).as("url in %s", pom).isEqualTo(repository);
+
+            Element licenses = childElement(project, "licenses");
+            List<String> licenceEntries = new ArrayList<>();
+            if (licenses != null) {
+                for (Element license : childElements(licenses, "license")) {
+                    licenceEntries.add(childText(license, "name") + " " + childText(license, "url"));
+                }
+            }
+            softly.assertThat(licenceEntries)
+                    .as("licences in %s", pom)
+                    .containsExactly("Apache-2.0 https://www.apache.org/licenses/LICENSE-2.0");
+
+            Element scm = childElement(project, "scm");
+            softly.assertThat(scm).as("scm in %s", pom).isNotNull();
+            if (scm != null) {
+                softly.assertThat(childText(scm, "url")).as("scm url in %s", pom).isEqualTo(repository);
+                softly.assertThat(childText(scm, "connection"))
+                        .as("scm connection in %s", pom)
+                        .isEqualTo("scm:git:https://github.com/boundrail/boundrail-context.git");
+                softly.assertThat(childText(scm, "developerConnection"))
+                        .as("scm developerConnection in %s", pom)
+                        .isEqualTo("scm:git:ssh://git@github.com/boundrail/boundrail-context.git");
             }
         }
         softly.assertAll();

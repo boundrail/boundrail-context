@@ -174,7 +174,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       `boundrail.multi-release` (or core's build script), add the `java25` source set's sources to `sourcesJar` under `META-INF/versions/25/`,
       mirroring the binary JAR. Javadoc stays `main` only: `java25` holds no public API. Settled with the user 2026-11-09, after T012's review.
       Verify: **IT**. (REL-04)
-- [ ] T014 [US2] Red: `REL-04 each published POM has the metadata Central requires`: the name, description, URL, Apache-2.0 licence
+- [x] T014 [US2] Red: `REL-04 each published POM has the metadata Central requires`: the name, description, URL, Apache-2.0 licence
       and SCM that REL-04 lists. Green: the `pom` block in `published`, and a `description` per project. Verify: **IT**. (REL-04, constitution)
 - [ ] T015 [US2] Red: `REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st`, exactly one developer.
       Green: the `developers` block in `published`, with no `email`. Verify: **IT**. (REL-04, D85)

@@ -4,3 +4,6 @@ plugins {
     `java-library`
     id("boundrail.published")
 }
+
+// The Contents cell of design.md §12 (REL-04).
+description = "keys, snapshots, scopes, policy, codecs, destination classification, deadline and identity types, both backends; zero runtime dependencies"

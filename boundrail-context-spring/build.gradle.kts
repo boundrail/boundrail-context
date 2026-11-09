@@ -4,6 +4,9 @@ plugins {
     id("boundrail.published")
 }
 
+// The Contents cell of design.md §12 (REL-04).
+description = "Spring Boot 4 auto-configuration: servlet filters, trust, RestClient/RestTemplate, executors, @Scheduled, MDC, audit, security contributors"
+
 dependencies {
     api(project(":boundrail-context-core"))
     implementation(platform(libs.spring.boot.bom))
