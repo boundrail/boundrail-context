@@ -130,7 +130,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: Change a Default in a spec's Configuration table: `./gradlew check` fails and names the command that fixes it.
 
-- [ ] T010 [P] [US1] Red: `it/ConfigurationReferenceIT.java`, `REL-03 the reference has one section per feature in number order with full property
+- [x] T010 [P] [US1] Red: `it/ConfigurationReferenceIT.java`, `REL-03 the reference has one section per feature in number order with full property
       names`, on two small spec texts given to `it/docs/ConfigurationReference.java`: the section titles come from the first heading, rows keep their
       order, `violations.mode` becomes `boundrail.context.violations.mode`, the suffix of `` `backend` (JVM system property) `` stays, and text
       outside the table is left out. It does not compile. Green: `ConfigurationReference` with the parsing and rendering of
