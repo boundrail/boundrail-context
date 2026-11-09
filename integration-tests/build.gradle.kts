@@ -50,6 +50,15 @@ tasks.withType<Test>().configureEach {
     systemProperty("boundrail.it.published-poms", publishedPoms.joinToString(File.pathSeparator) { it.asFile.absolutePath })
 }
 
+// BuildSmokeIT checks that core's sources JAR mirrors its multi-release binary JAR (REL-04).
+val coreSourcesJar = rootProject.layout.projectDirectory.file("boundrail-context-core/build/libs/boundrail-context-core-$version-sources.jar")
+
+tasks.withType<Test>().configureEach {
+    dependsOn(":boundrail-context-core:sourcesJar")
+    inputs.file(coreSourcesJar).withPropertyName("coreSourcesJar").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("boundrail.it.core-sources-jar", coreSourcesJar.asFile.absolutePath)
+}
+
 // ConfigurationReferenceIT compares docs/configuration.md with the Configuration tables in specs/*/spec.md (REL-03). Both are inputs,
 // so a change to either reruns the test instead of reporting it up to date.
 val repositoryRoot = rootProject.layout.projectDirectory

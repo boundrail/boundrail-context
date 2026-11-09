@@ -167,6 +167,13 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [x] T013 [US2] Red: `REL-04 every dependency in each published POM has a version`, directly or through an imported BOM; it fails on
       `junit-jupiter-api` and `assertj-core` in `boundrail-context-test`, and project dependencies must be at `0.1.0`. Green:
       `versionMapping { allVariants { fromResolutionResult() } }` in `published` (D85). Verify: **IT**. (REL-04)
+- [x] T013a [US2] Red: `REL-04 core's sources JAR holds the java25 sources under META-INF/versions/25`, reading
+      `boundrail-context-core`'s sources JAR from a new system property: `internal/RuntimeVersionMarker.java` at the root equals the `src/main/java`
+      file, and `META-INF/versions/25/` holds `internal/RuntimeVersionMarker.java` and `internal/ScopedValueSlot.java` equal to the `src/main/java25`
+      files (`ScopedValueSlot` exists only in `java25`). Green: in
+      `boundrail.multi-release` (or core's build script), add the `java25` source set's sources to `sourcesJar` under `META-INF/versions/25/`,
+      mirroring the binary JAR. Javadoc stays `main` only: `java25` holds no public API. Settled with the user 2026-11-09, after T012's review.
+      Verify: **IT**. (REL-04)
 - [ ] T014 [US2] Red: `REL-04 each published POM has the metadata Central requires`: the name, description, URL, Apache-2.0 licence
       and SCM that REL-04 lists. Green: the `pom` block in `published`, and a `description` per project. Verify: **IT**. (REL-04, constitution)
 - [ ] T015 [US2] Red: `REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st`, exactly one developer.
@@ -232,12 +239,12 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - Demo: T001 → T002 → T003 → T004 → T005 → T006 → T007.
 - Going public: T007 → T008 → T009 (D86). T019 needs T009's Portal account, not the verified namespace.
 - Configuration reference: T010 → T011.
-- Publishing build: T012 → T013 → T014 → T015 → T016 → T017 → T018.
+- Publishing build: T012 → T013 → T013a → T014 → T015 → T016 → T017 → T018.
 - Rehearsal upload: T020 needs T018 and T019.
 - Release: T021 needs T011 and T018, and T020 if it runs. Then T021 → T022. T023 needs T009 verified, T019 and T022. Then T023 → T024 → T025 → T026.
 - T001 – T004 touch `EdgeService`, `DemoClient` and `demo/build.gradle.kts`, so they run in sequence.
 - T010 has no dependency on the demo or the publishing build. T011 and T012 both change `integration-tests/build.gradle.kts`, so they run in sequence.
-- T012 – T017 all change `published` or `BuildSmokeIT`, so they run in sequence.
+- T012 – T017 and T013a all change `published` or `BuildSmokeIT`, so they run in sequence.
 - T016 comes after T015, so its temporary change has a `developer` block to add to.
 - PR A comes first in practice, because T008 and T009 wait for it (D86); the agents continue with Phases 3 and 4 during the namespace wait.
 - Every task that commits is reviewed and committed on its own, on branch `008-release`; pushing and merging need the user.

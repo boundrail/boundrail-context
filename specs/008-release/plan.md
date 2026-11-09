@@ -198,7 +198,9 @@ that, Gradle would report the task up to date and a stale file would pass, so T0
 `versionMapping { allVariants { fromResolutionResult() } }` on the publications (D85). It is applied only in the four published projects. The
 Javadoc JAR comes from Gradle's `java { withJavadocJar() }`, with the plugin's own turned off
 (`JavaLibrary(JavadocJar.None(), SourcesJar.Sources())`): the plugin's `plainJavadocJar` reaches the Maven publication but not the module metadata,
-so it would have no `javadocElements` variant (settled with the user 2026-11-09, found in T012).
+so it would have no `javadocElements` variant (settled with the user 2026-11-09, found in T012). Core's sources JAR mirrors its binary JAR: the
+`java25` sources go under `META-INF/versions/25/`, so a user on JDK 25 can step into the classes that run there; the Javadoc covers `main` only,
+because `java25` holds no public API (settled with the user 2026-11-09, T013a).
 
 **Coordinates.** A root `gradle.properties` with `group=io.github.boundrail` and `version=0.1.0`. Today neither is set anywhere, and the published
 `artifactId` is the project name. Nothing else reads them: JAR names change, and `BuildSmokeIT` only checks the `.jar` suffix.

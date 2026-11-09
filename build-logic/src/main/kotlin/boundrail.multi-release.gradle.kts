@@ -20,3 +20,10 @@ tasks.jar {
         attributes("Multi-Release" to "true")
     }
 }
+
+// The sources JAR mirrors the binary layout, so a debugger on JDK 25 finds the java25 sources (REL-04). Javadoc stays main only.
+tasks.withType<Jar>().matching { it.name == "sourcesJar" }.configureEach {
+    into("META-INF/versions/25") {
+        from(java25.allSource)
+    }
+}

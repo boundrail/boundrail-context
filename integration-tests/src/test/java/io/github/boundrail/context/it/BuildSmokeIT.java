@@ -215,6 +215,31 @@ class BuildSmokeIT {
     }
 
     @Test
+    @DisplayName("REL-04 core's sources JAR holds the java25 sources under META-INF/versions/25")
+    void coreSourcesJarHoldsTheJava25SourcesUnderMetaInfVersions25() throws Exception {
+        String sourcesJar = System.getProperty("boundrail.it.core-sources-jar");
+        assertThat(sourcesJar).as("system property boundrail.it.core-sources-jar (set by the integration test task)").isNotNull();
+        String root = System.getProperty("boundrail.it.repository-root");
+        assertThat(root).as("system property boundrail.it.repository-root (set by the integration test task)").isNotNull();
+        Path sources = Path.of(root, "boundrail-context-core/src/main");
+        String internal = "io/github/boundrail/context/internal/";
+
+        try (JarFile file = new JarFile(Path.of(sourcesJar).toFile())) {
+            SoftAssertions softly = new SoftAssertions();
+            softly.assertThat(entryText(file, internal + "RuntimeVersionMarker.java"))
+                    .as("base RuntimeVersionMarker.java")
+                    .isEqualTo(Files.readString(sources.resolve("java/" + internal + "RuntimeVersionMarker.java")));
+            softly.assertThat(entryText(file, "META-INF/versions/25/" + internal + "RuntimeVersionMarker.java"))
+                    .as("versioned RuntimeVersionMarker.java")
+                    .isEqualTo(Files.readString(sources.resolve("java25/" + internal + "RuntimeVersionMarker.java")));
+            softly.assertThat(entryText(file, "META-INF/versions/25/" + internal + "ScopedValueSlot.java"))
+                    .as("versioned ScopedValueSlot.java")
+                    .isEqualTo(Files.readString(sources.resolve("java25/" + internal + "ScopedValueSlot.java")));
+            softly.assertAll();
+        }
+    }
+
+    @Test
     @DisplayName("TEST-01 the boundrail-context-test JAR auto-configures only the TEST-02 violation recorder")
     void testModuleJarAutoConfiguresOnlyTheViolationRecorder() throws Exception {
         Path jar = Path.of(TestInboundTrustVerifier.class.getProtectionDomain().getCodeSource().getLocation().toURI());
@@ -260,6 +285,17 @@ class BuildSmokeIT {
             }
         }
         return children;
+    }
+
+    /** Returns the UTF-8 text of a JAR entry, or {@code null} if the JAR has no such entry. */
+    private static String entryText(JarFile file, String name) throws IOException {
+        JarEntry entry = file.getJarEntry(name);
+        if (entry == null) {
+            return null;
+        }
+        try (InputStream in = file.getInputStream(entry)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     /** Reads the class file major version of a core JAR entry, bypassing multi-release resolution. */
