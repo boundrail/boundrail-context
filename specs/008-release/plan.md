@@ -97,7 +97,7 @@ the demo on `main` (D86). So the demo comes first, and the rest of the work runs
 | A: demo and README | T001 – T006, with the uncommitted spec, plan, tasks, design and roadmap edits | T007 | Going public, the namespace request |
 | B: configuration reference | T010 – T011 | T022 | REL-03 |
 | C: publishing build | T012 – T018, T013a, the T020 record, T021 and T021a | T022 | The upload |
-| D: close | T026 | After T026 | M7 closed |
+| D: close | T025 record, T026 | After T026 | M7 closed |
 
 All four use branch `008-release`, as PR #1 did, one at a time, each starting from the merged `main`. PR B and PR C need no credentials, and can be
 reviewed while the namespace request is pending. The upload runs from `main` after PR C is merged.
@@ -245,6 +245,10 @@ maintainer then dropped it; nothing was published.
 "Monthly publishing limits are now in effect" notice. The limits were not the cause: the release is far below them. The response asked for cookies
 to be accepted. Clearing the Portal's site data in the browser, then signing out and back in, fixed it, and the next Publish was accepted.
 
+**T025 outcome (2026-11-09).** A new Gradle 9.8.0 project with only `mavenCentral()` and `--refresh-dependencies` resolved
+`boundrail-context-core`, `-spring` and `-kafka` (`implementation`) and `-test` (`testImplementation`) at `0.1.0`, each with its internal
+dependencies at `0.1.0`, and compiled a class declaring `ContextKey.of("tenant", String.class)` on JDK 21.
+
 **Upload rehearsal (T020).** D84 says Central registers `io.github.<username>` automatically, so the maintainer owns
 `io.github.jordi1st` as soon as they sign in. An upload with `-Pgroup=io.github.jordi1st` exercises the real upload and the Portal's checks while
 `io.github.boundrail` is still being verified, with no change to the repository. The deployment is then dropped, never published. T018 confirms that
@@ -347,7 +351,7 @@ test sources of a project `check` already runs.
 | REL-01 | Done: headline, quick start, examples, Guarantees. T006: demo instructions, output sample, link check |
 | REL-02 | T001 – T004 (the three demos, compact output, project dependencies), T005 (Docker Compose, one script), T012 (not published) |
 | REL-03 | T010 (generator), T011 (committed file, stale check) |
-| REL-04 | T012 – T017 (build, POM rules), T018 (signing), T009, T019, T020, T023, T024 (maintainer steps), T025 (resolves from Central) |
+| REL-04 | T012 – T017, T013a (build, POM rules), T018 (signing), T009, T019, T020, T023, T024 (maintainer steps), T025 (resolves from Central) |
 | US1 scenario 1 | T005, T006 |
 | US1 scenario 2 | T006 |
 | US2 scenario 1 | T025 |

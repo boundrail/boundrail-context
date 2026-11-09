@@ -7,6 +7,7 @@
 Micrometer can move context. `boundrail-context` defines its contract.
 
 [![CI](https://github.com/boundrail/boundrail-context/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/boundrail/boundrail-context/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.boundrail/boundrail-context-core)](https://central.sonatype.com/artifact/io.github.boundrail/boundrail-context-core)
 ![Java 21+](https://img.shields.io/badge/Java-21%2B-blue)
 ![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4-brightgreen)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
@@ -15,10 +16,6 @@ Micrometer can move context. `boundrail-context` defines its contract.
 [Guarantees](#guarantees) · [Design](docs/design.md) · [Roadmap](docs/roadmap.md)
 
 </div>
-
-> [!NOTE]
-> **Pre-release.** The v0.1 features are implemented, but nothing is published yet, so the coordinates below only resolve once 0.1.0 is on Maven
-> Central.
 
 ## One declaration, every boundary
 
