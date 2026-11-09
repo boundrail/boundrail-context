@@ -98,7 +98,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       ```
 
       (REL-02, SC-002, US1 scenario 1)
-- [ ] T006 [US1] [TDD-EXCEPTION: the README sample equals a real run with digits normalised; **Lines**; each Guarantees link resolves and its IDs
+- [x] T006 [US1] [TDD-EXCEPTION: the README sample equals a real run with digits normalised; **Lines**; each Guarantees link resolves and its IDs
       exist in the linked test class] In `README.md`, add a `## Demo` section after the quick start, with the one command, what it needs (Docker
       only), and a text sample pasted from a real run of T005, and add `Demo` to the navigation line. No other README change. Verify the sample with
       `diff <(run-demo.sh | sed 's/[0-9]\+/N/g') <(sample | sed 's/[0-9]\+/N/g')`. (REL-01, D89, US1 scenarios 1 and 2)

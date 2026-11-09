@@ -11,7 +11,8 @@ Micrometer can move context. `boundrail-context` defines its contract.
 ![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4-brightgreen)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
-[Quick start](#quick-start) · [Examples](docs/examples.md) · [Guarantees](#guarantees) · [Design](docs/design.md) · [Roadmap](docs/roadmap.md)
+[Quick start](#quick-start) · [Demo](#demo) · [Examples](docs/examples.md) ·
+[Guarantees](#guarantees) · [Design](docs/design.md) · [Roadmap](docs/roadmap.md)
 
 </div>
 
@@ -176,6 +177,32 @@ boundrail:
 > Set this only on services that public traffic can't reach, and never on a range that contains your ingress or load balancer. The check uses
 > `getRemoteAddr()`, so a proxy inside the range makes every public request trusted, and a trusted header wins over a token claim. With
 > forwarded-header processing on, a client that can forge those headers can decide the address that is checked.
+
+## Demo
+
+Three demos run against services in Docker Compose. You need only Docker; the demo is built inside the image.
+
+```bash
+./examples/propagation-demo/run-demo.sh
+```
+
+Output from a real run (the numbers vary per run):
+
+```text
+Demo 1: context loss is caught by a test
+  test      a plain executor lost the tenant
+  caught    MISSING_REQUIRED, key tenant, boundary INTERNAL_CALL
+
+Demo 2: a tenant is stripped from an external call
+  edge      set Tenant-Id: acme on the call to partner
+  partner   received no Tenant-Id
+  edge      reported FORBIDDEN_HEADER
+
+Demo 3: a deadline shrinks across hops, and a Kafka event is unaffected
+  edge      1999 ms left, then 100 ms of simulated work
+  orders    1898 ms left
+  event     handled after the deadline passed, tenant acme, no deadline
+```
 
 ## Examples
 
