@@ -3,6 +3,10 @@ plugins {
     application
 }
 
+application {
+    mainClass = "io.github.boundrail.context.demo.DemoClient"
+}
+
 dependencies {
     implementation(platform(libs.spring.boot.bom))
     implementation(project(":boundrail-context-spring"))

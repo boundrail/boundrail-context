@@ -1,6 +1,7 @@
 package io.github.boundrail.context.demo;
 
 import java.util.Map;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.http.HttpHeaders;
@@ -13,6 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 @EnableAutoConfiguration
 @RestController
 public class PartnerService {
+
+    public static void main(String[] args) {
+        SpringApplication.run(PartnerService.class, args);
+    }
 
     @GetMapping("/headers")
     Map<String, String> headers(@RequestHeader HttpHeaders headers) {

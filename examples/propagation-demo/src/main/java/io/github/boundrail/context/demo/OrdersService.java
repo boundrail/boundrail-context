@@ -2,6 +2,7 @@ package io.github.boundrail.context.demo;
 
 import io.github.boundrail.context.ContextPolicy;
 import java.util.UUID;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrdersService {
 
     private final KafkaTemplate<String, String> kafka;
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrdersService.class, args);
+    }
 
     OrdersService(KafkaTemplate<String, String> kafka) {
         this.kafka = kafka;

@@ -118,16 +118,18 @@ what the tests call, so the output the script prints is the output the tests pin
   It asserts the failure, so it passes, and `./gradlew check` stays green.
 - Demo 2: `edge` sets `Tenant-Id` on a call declared `BoundrailClients.external()`. `partner` returns the headers it received, and `edge` returns
   them with the `FORBIDDEN_HEADER` violation it recorded through a `ViolationListener` bean (WIRE-07, IT-2.4).
-- Demo 3: `edge` has `deadline.default-inbound=2s` and calls `orders` through `BoundrailClients.internal("orders")`; both return the budget left on
-  arrival. `orders` publishes an event through its `KafkaTemplate`; a listener in `edge` waits until the budget has passed (`demo.event-wait`), and
+- Demo 3: `edge` has `deadline.default-inbound=2s`, does 100 ms of labelled simulated work (`demo.simulated-work`), because a real hop costs about
+  1 ms, and calls `orders` through `BoundrailClients.internal("orders")`; both return the budget left on arrival. `orders` publishes an event through
+  its `KafkaTemplate`; a listener in `edge` waits until the budget has passed (`demo.event-wait`), and
   records that it has `tenant` and no deadline (DL-05, KAF-01, KAF-02, IT-3.1, IT-3.8). The record's value is an event id that `orders` returns, so
   a run is judged on its own event, and `DemoClient` polls `GET /events/{event}` on `edge`, because the request must end before the listener's result
   exists.
 
 **Tenant at the edge.** `edge` binds the tenant in its handler with `Context.with(TENANT, "acme")`, and keeps the default `inbound.trust=none`. A JWT
 would add a key pair and a token issuer to a demo about something else, and trusting the demo client's network at the edge would contradict the
-README's warning. A comment in `EdgeService` points to the quick start's token step. Only `orders` sets `inbound.trust=cidr`: a fixed Compose subnet
-in Docker, `127.0.0.1/32` in the tests.
+README's warning. A comment in `EdgeService` points to the quick start's token step. Only `orders` sets `inbound.trust=cidr`: the private ranges
+in Docker, because a fixed subnet could collide with a developer's network and `orders` can't be reached from outside Compose, and `127.0.0.1/32` in
+the tests.
 
 **Clients.** `spring.http.clients.imperative.factory=jdk`, because the deadline's per-request timeout needs the JDK request factory (D51).
 
@@ -135,8 +137,9 @@ in Docker, `127.0.0.1/32` in the tests.
 `eclipse-temurin:25-jdk` builds the demo with the wrapper, and serves every container:
 
 - `Dockerfile` copies the repository and runs `installDist`, then the Demo 1 test once, so that Gradle and the dependencies are in the image.
-- `compose.yaml` runs `kafka`, `edge`, `orders` and `partner`, each service with `java -cp` and its main class. `client` and `context-loss-test`
-  sit under a `demo` profile, so `up` does not start them. Nothing is published to a host port, so the demo can't collide with a local service.
+- `compose.yaml` runs `kafka`, `edge`, `orders` and `partner`, each service with `java` and its main class, on the image's `CLASSPATH`. `client` and
+  `context-loss-test` sit under a `demo` profile, so `up` does not start them. Nothing is published to a host port, so the demo can't collide with
+  a local service.
 - `Dockerfile.dockerignore` sits beside the Dockerfile and keeps `.git`, `build`, `.gradle` and `.idea` out of the context, and nothing is added to
   the repository root.
 - `run-demo.sh` runs `docker compose up --build --detach`, then the test (`./gradlew --offline --rerun ... --tests '*ContextLossDemoTest'`), then
@@ -144,8 +147,8 @@ in Docker, `127.0.0.1/32` in the tests.
   demo fails the script. It uses nothing newer than bash 3.2, for macOS.
 - `DemoClient` retries until `edge` answers, so the services need no health checks; `kafka` has one, for `depends_on`.
 
-**Warm-up.** A cold JVM can eat a 2-second budget, as `DeadlinePropagationIT`'s warm-up shows, so `DemoClient` calls each flow once and discards the
-result before it prints.
+**Warm-up.** A cold JVM can eat a 2-second budget, as `DeadlinePropagationIT`'s warm-up shows, so `DemoClient` calls each flow until one call
+succeeds, for at most 30 seconds, and discards the results before it prints.
 
 **Output.** Exact text is the implementer's; the shape is a title and at most three lines per demo (REL-02, D89). The tests assert the shape and the
 facts. Numbers vary per run:
@@ -161,8 +164,8 @@ Demo 2: a tenant is stripped from an external call
   edge      reported FORBIDDEN_HEADER
 
 Demo 3: a deadline shrinks across hops, and a Kafka event is unaffected
-  edge      2000 ms left
-  orders    1987 ms left
+  edge      1999 ms left, then 100 ms of simulated work
+  orders    1898 ms left
   event     handled after the deadline passed, tenant acme, no deadline
 ```
 

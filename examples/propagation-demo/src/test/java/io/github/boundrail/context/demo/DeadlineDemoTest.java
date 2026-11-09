@@ -3,6 +3,7 @@ package io.github.boundrail.context.demo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import io.github.boundrail.context.BuiltInKeys;
 import io.github.boundrail.context.Context;
@@ -14,12 +15,17 @@ import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.aopalliance.aop.Advice;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -27,9 +33,11 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.AbstractKafkaListenerContainerFactory;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 /** Demo 3 of design.md §15: a deadline shrinks across hops, and a Kafka event is unaffected. */
@@ -50,10 +58,36 @@ class DeadlineDemoTest {
         List<String> lines = printed.toString().lines().toList();
         assertThat(lines).hasSize(4);
         assertThat(lines.get(0)).isEqualTo("Demo 3: a deadline shrinks across hops, and a Kafka event is unaffected");
-        assertThat(lines.get(1)).matches("  edge      \\d+ ms left");
+        assertThat(lines.get(1)).matches("  edge      \\d+ ms left, then \\d+ ms of simulated work");
         assertThat(lines.get(2)).matches("  orders    \\d+ ms left");
         assertThat(budget(lines.get(1))).isGreaterThan(budget(lines.get(2)));
         assertThat(budget(lines.get(2))).isPositive();
+    }
+
+    @Test
+    @DisplayName("REL-02 demo 3 the simulated work configured in edge.properties is printed and comes off the budget orders gets")
+    void theConfiguredSimulatedWorkIsPrintedAndComesOffTheBudget() throws InterruptedException, IOException {
+        long work = configuredSimulatedWorkMillis();
+
+        try (DemoServices services = DemoServices.start()) {
+            client(services).deadline();
+        }
+
+        List<String> lines = printed.toString().lines().toList();
+        assertThat(lines.get(1)).endsWith(" ms left, then " + work + " ms of simulated work");
+        assertThat(budget(lines.get(1)) - budget(lines.get(2))).isGreaterThanOrEqualTo(work);
+    }
+
+    @Test
+    @DisplayName("REL-02 demo 3 a changed demo.simulated-work is printed and comes off the budget orders gets")
+    void aChangedSimulatedWorkIsPrintedAndComesOffTheBudget() throws InterruptedException {
+        try (DemoServices services = DemoServices.startWithEdge("--demo.simulated-work=300ms")) {
+            client(services).deadline();
+        }
+
+        List<String> lines = printed.toString().lines().toList();
+        assertThat(lines.get(1)).endsWith(" ms left, then 300 ms of simulated work");
+        assertThat(budget(lines.get(1)) - budget(lines.get(2))).isGreaterThanOrEqualTo(300);
     }
 
     @Test
@@ -199,12 +233,57 @@ class DeadlineDemoTest {
         assertThat(printed.toString().lines().toList()).hasSize(4);
     }
 
+    @Test
+    @DisplayName("REL-02 demo 3 calls that run out of budget are discarded until one succeeds")
+    void callsThatRunOutOfBudgetAreDiscardedUntilOneSucceeds() throws InterruptedException {
+        try (DemoServices services = DemoServices.start(FirstTwoDeadlineCallsTimeOut.class)) {
+            client(services).deadline();
+        }
+
+        assertThat(printed.toString().lines().toList()).hasSize(4);
+    }
+
+    @Test
+    @DisplayName("REL-02 demo 3 a run in which no warm-up call succeeds fails")
+    void aRunInWhichNoWarmUpCallSucceedsFails() {
+        try (DemoServices services = DemoServices.start(EveryDeadlineCallTimesOut.class)) {
+            DemoClient client = client(services);
+
+            assertThatThrownBy(client::deadline).isInstanceOf(IllegalStateException.class).hasMessageContaining("no successful call to /deadline")
+                    .hasMessageContaining("504");
+        }
+
+        assertThat(printed.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("REL-02 demo 3 a hung edge fails the run before the warm-up bound")
+    void aHungEdgeFailsTheRun() {
+        try (DemoServices services = DemoServices.start(DeadlineCallsHang.class)) {
+            DemoClient client = client(services);
+
+            assertTimeoutPreemptively(Duration.ofSeconds(20),
+                    () -> assertThatThrownBy(client::deadline).isInstanceOf(ResourceAccessException.class));
+        }
+
+        assertThat(printed.toString()).isEmpty();
+    }
+
     private DemoClient client(DemoServices services) {
         return new DemoClient(services.edge(), new PrintStream(printed, true));
     }
 
+    /** {@return the first number on the line} */
     private static long budget(String line) {
-        return Long.parseLong(line.replaceAll("\\D", ""));
+        return Long.parseLong(line.replaceAll("\\D+", " ").trim().split(" ")[0]);
+    }
+
+    private static long configuredSimulatedWorkMillis() throws IOException {
+        Properties edge = new Properties();
+        try (InputStream properties = DemoClient.class.getResourceAsStream("/edge.properties")) {
+            edge.load(properties);
+        }
+        return DurationStyle.detectAndParse(edge.getProperty("demo.simulated-work")).toMillis();
     }
 
     /** {@return the first non-empty body of a successful response from {@code edge}}; fails after a timeout */
@@ -267,6 +346,59 @@ class DeadlineDemoTest {
             return (request, response, chain) -> {
                 if (((HttpServletRequest) request).getRequestURI().startsWith("/events/")) {
                     ((HttpServletResponse) response).sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+                } else {
+                    chain.doFilter(request, response);
+                }
+            };
+        }
+    }
+
+    /** Adds a filter to {@code edge} that answers the first two requests to {@code /deadline} with a 504, as a slow first Kafka send does. */
+    @Configuration(proxyBeanMethods = false)
+    static class FirstTwoDeadlineCallsTimeOut {
+
+        @Bean
+        static Filter firstTwoDeadlineCallsTimeOut() {
+            AtomicInteger calls = new AtomicInteger();
+            return (request, response, chain) -> {
+                if ("/deadline".equals(((HttpServletRequest) request).getRequestURI()) && calls.incrementAndGet() <= 2) {
+                    ((HttpServletResponse) response).sendError(HttpServletResponse.SC_GATEWAY_TIMEOUT);
+                } else {
+                    chain.doFilter(request, response);
+                }
+            };
+        }
+    }
+
+    /** Adds a filter to {@code edge} that answers every request to {@code /deadline} with a 504. */
+    @Configuration(proxyBeanMethods = false)
+    static class EveryDeadlineCallTimesOut {
+
+        @Bean
+        static Filter everyDeadlineCallTimesOut() {
+            return (request, response, chain) -> {
+                if ("/deadline".equals(((HttpServletRequest) request).getRequestURI())) {
+                    ((HttpServletResponse) response).sendError(HttpServletResponse.SC_GATEWAY_TIMEOUT);
+                } else {
+                    chain.doFilter(request, response);
+                }
+            };
+        }
+    }
+
+    /** Adds a filter to {@code edge} that never answers a request to {@code /deadline}. */
+    @Configuration(proxyBeanMethods = false)
+    static class DeadlineCallsHang {
+
+        @Bean
+        static Filter deadlineCallsHang() {
+            return (request, response, chain) -> {
+                if ("/deadline".equals(((HttpServletRequest) request).getRequestURI())) {
+                    try {
+                        new CountDownLatch(1).await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
                 } else {
                     chain.doFilter(request, response);
                 }

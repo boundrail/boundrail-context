@@ -22,7 +22,7 @@ class ExternalCallDemoTest {
 
     @Test
     @DisplayName("REL-02 demo 2 the tenant set on the partner call is stripped and reported")
-    void theTenantIsStrippedAndReported() {
+    void theTenantIsStrippedAndReported() throws InterruptedException {
         try (DemoServices services = DemoServices.start()) {
             client(services).externalCall();
         }
@@ -62,7 +62,7 @@ class ExternalCallDemoTest {
 
     @Test
     @DisplayName("REL-02 demo 2 a first call that runs out of budget is discarded as the warm-up")
-    void aFirstCallThatRunsOutOfBudgetIsDiscarded() {
+    void aFirstCallThatRunsOutOfBudgetIsDiscarded() throws InterruptedException {
         try (DemoServices services = DemoServices.start(DemoServices.FirstCallTimesOut.class)) {
             client(services).externalCall();
         }

@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -38,16 +39,23 @@ public class EdgeService {
     private final RestClient partner;
     private final ReportedViolations reported;
     private final Duration eventWait;
+    private final Duration simulatedWork;
     private final Map<String, HandledEvent> handledEvents = new ConcurrentHashMap<>();
+
+    public static void main(String[] args) {
+        SpringApplication.run(EdgeService.class, args);
+    }
 
     EdgeService(RestClient.Builder clients, ReportedViolations reported,
             @Value("${demo.orders-url:http://orders:8080}") String ordersUrl,
             @Value("${demo.partner-url:http://partner:8080}") String partnerUrl,
-            @Value("${demo.event-wait}") Duration eventWait) {
+            @Value("${demo.event-wait}") Duration eventWait,
+            @Value("${demo.simulated-work}") Duration simulatedWork) {
         orders = clients.clone().apply(BoundrailClients.internal("orders")).baseUrl(ordersUrl).build();
         partner = clients.clone().apply(BoundrailClients.external()).baseUrl(partnerUrl).build();
         this.reported = reported;
         this.eventWait = eventWait;
+        this.simulatedWork = simulatedWork;
     }
 
     @Bean
@@ -76,13 +84,17 @@ public class EdgeService {
         });
     }
 
-    /** Demo 3: returns the budget left on arrival here, the one {@code orders} found on arrival there, and the event {@code orders} published. */
+    /**
+     * Demo 3: returns the budget left on arrival here, the simulated work done before calling {@code orders}, the budget {@code orders} found on
+     * arrival there, and the event {@code orders} published.
+     */
     @GetMapping("/deadline")
-    DeadlineCall deadline() {
+    DeadlineCall deadline() throws InterruptedException {
         long budget = DemoPolicy.budgetMillis();
         return Context.with(DemoPolicy.TENANT, "acme").call(() -> {
+            Thread.sleep(simulatedWork);
             OrderPlaced placed = callOrders();
-            return new DeadlineCall(DemoPolicy.TENANT.get(), budget, placed.budgetMillis(), placed.event());
+            return new DeadlineCall(DemoPolicy.TENANT.get(), budget, simulatedWork.toMillis(), placed.budgetMillis(), placed.event());
         });
     }
 
@@ -108,7 +120,7 @@ public class EdgeService {
     }
 
     /** What {@code edge} returns for demo 3; a budget of 0 means that service had no deadline, or under 1 ms left. */
-    record DeadlineCall(String tenant, long edgeMillis, long ordersMillis, String event) {
+    record DeadlineCall(String tenant, long edgeMillis, long simulatedWorkMillis, long ordersMillis, String event) {
     }
 
     /** What the listener found bound; {@code tenant} is {@code null} if none was. */

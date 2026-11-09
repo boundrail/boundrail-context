@@ -104,7 +104,8 @@ final class DemoServices implements AutoCloseable {
     }
 
     private static ConfigurableApplicationContext start(SpringApplicationBuilder service, String... arguments) {
-        return service.properties("server.address=127.0.0.1", "server.port=0", "spring.main.banner-mode=off").run(arguments);
+        return service.properties("server.address=127.0.0.1", "server.port=0", "server.shutdown=immediate", "spring.main.banner-mode=off")
+                .run(arguments);
     }
 
     private static URI uri(ConfigurableApplicationContext service) {

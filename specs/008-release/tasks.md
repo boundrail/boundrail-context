@@ -78,16 +78,15 @@ Verify commands, each followed by `./gradlew check` before the commit:
       and three lines. Green: `-kafka` project dependency and `spring-boot-starter-kafka` in `demo/build.gradle.kts`, `testcontainers-kafka` for
       tests, the `KafkaTemplate` send in `OrdersService`, the listener in `EdgeService`, `spring.kafka.*` properties (`auto-offset-reset=earliest`).
       Verify: **Demo**. (REL-02, §15 demo 3)
-- [ ] T005 [US1] [TDD-EXCEPTION: from a clean copy of the repository with no build cache, `run-demo.sh` exits 0 in under 10 minutes and prints the
+- [x] T005 [US1] [TDD-EXCEPTION: from a clean copy of the repository with no build cache, `run-demo.sh` exits 0 in under 10 minutes and prints the
       three demos; with a temporary break of `DemoClient`'s Demo 2 check it exits non-zero; no container remains afterwards] Create `demo/Dockerfile`,
       `demo/Dockerfile.dockerignore`, `demo/compose.yaml` and `demo/run-demo.sh` (executable, mode 100755), as in
       [plan.md](plan.md#demo). Add `DemoClient`'s `main`, which waits for `edge`, the `main` methods of
       `EdgeService`, `OrdersService` and `PartnerService`, and the `application` plugin's `mainClass`. Print the blank lines between demos, and set
-      `boundrail.context.inbound.trusted-cidrs` for `orders` to the Compose subnet. The image build runs only `ContextLossDemoTest`, because the
+      `boundrail.context.inbound.trusted-cidrs` for `orders` to the private ranges. The image build runs only `ContextLossDemoTest`, because the
       other demo tests need Docker.
       Name the broker `kafka`, advertise `kafka:9092`, and keep topic auto-creation on or create `orders.events`. `DemoClient.deadline()` declares
-      `InterruptedException`. Run several cold starts: if a slow first Kafka send makes the real call time out, warm up until a call succeeds. Report
-      the
+      `InterruptedException`. Run several cold starts: if a slow first Kafka send makes the real call time out, warm up until a call succeeds. Report the
       real gap between `edge` and `orders`: the user decides after this task whether `edge` gets labelled simulated work. Report the measured
       time (SC-002). Verify as tagged:
 
@@ -197,8 +196,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 **Independent Test**: A fresh Gradle project resolves the four artifacts at `0.1.0` from Maven Central.
 
 - [ ] T019 [P] [USER] [US2] Create the release credentials. Needs only T009's Portal account, so it can start at once. Generate a GPG signing key,
-      with the
-      name `jordi1st` alone as its user ID and no email, and send the public key to a key server Central reads. Generate a Portal user token.
+      with the name `jordi1st` alone as its user ID and no email, and send the public key to a key server Central reads. Generate a Portal user token.
       Put `mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyId` and `signingInMemoryKeyPassword` in
       `~/.gradle/gradle.properties`, or in
       `ORG_GRADLE_PROJECT_*` environment variables; never in the repository. Back up the key. (REL-04)

@@ -1,0 +1,60 @@
+name: propagation-demo
+
+x-demo-image: &demo-image
+  image: boundrail-propagation-demo
+  pull_policy: never
+
+services:
+  kafka:
+    image: apache/kafka:4.2.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: nc -z localhost 9092
+      interval: 2s
+      retries: 60
+
+  edge:
+    <<: *demo-image
+    build:
+      context: ../..
+      dockerfile: examples/propagation-demo/Dockerfile
+    command: [java, io.github.boundrail.context.demo.EdgeService]
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  orders:
+    <<: *demo-image
+    # Trusts edge's network, so it binds the headers edge sends. It sets no default-inbound: its deadline has to come from edge.
+    # All private ranges, because Compose picks the subnet. Broader than production, and fine here: orders publishes no port, so nothing outside
+    # Compose reaches it.
+    command:
+      - java
+      - io.github.boundrail.context.demo.OrdersService
+      - --boundrail.context.inbound.trusted-cidrs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  partner:
+    <<: *demo-image
+    command: [java, io.github.boundrail.context.demo.PartnerService]
+
+  client:
+    <<: *demo-image
+    profiles: [demo]
+    command: [java, io.github.boundrail.context.demo.DemoClient]
+
+  context-loss-test:
+    <<: *demo-image
+    profiles: [demo]
+    command: [./gradlew, --no-daemon, --offline, ":examples:propagation-demo:test", --rerun, --tests, "*ContextLossDemoTest"]
