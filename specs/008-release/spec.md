@@ -60,7 +60,7 @@ output of the three demos (DESIGN D89).
 compact output of a few lines per demo. It SHALL use in-repo project dependencies and SHALL NOT be published (DESIGN D87).
 
 **REL-03** `[M7]` The user-facing configuration reference SHALL be a committed `docs/configuration.md`, generated from the Configuration tables in
-the feature specs (002–007), and `./gradlew check` SHALL fail when it is stale (DESIGN D88).
+the feature specs (today 002–007; every spec that has one), and `./gradlew check` SHALL fail when it is stale (DESIGN D88).
 
 **REL-04** `[M7]` 0.1.0 of the four published projects SHALL be published to Maven Central under the group `io.github.boundrail`, through the
 Central Portal, with the tooling DESIGN D85 names (DESIGN D84, D85). The `developers` section of each POM SHALL give the maintainer as `jordi1st`

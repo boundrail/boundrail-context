@@ -135,8 +135,10 @@ Verify commands, each followed by `./gradlew check` before the commit:
       order, `violations.mode` becomes `boundrail.context.violations.mode`, the suffix of `` `backend` (JVM system property) `` stays, and text
       outside the table is left out. It does not compile. Green: `ConfigurationReference` with the parsing and rendering of
       [plan.md](plan.md#configuration-reference). Verify: **IT**. (REL-03)
-- [ ] T011 [US1] Red: add `REL-03 the committed docs/configuration.md matches the Configuration tables of specs 002 – 007`, which regenerates from
-      `specs/` and compares; it fails because the file doesn't exist. Green: `main` in `ConfigurationReference`; in
+- [x] T011 [US1] Red: add `REL-03 the committed docs/configuration.md matches the Configuration tables of specs 002 – 007`, which regenerates from
+      `specs/` and compares; it fails because the file doesn't exist. Also red first: `REL-03 a spec with a Configuration section but no table
+      fails generation, naming the spec`, and the notice sentence on Meaning names (plan, settled 2026-11-09), updating T010's expected text.
+      Green: `main` in `ConfigurationReference`, reading every `specs/*/spec.md` and keeping those with a `### Configuration` section; in
       `integration-tests/build.gradle.kts`, a `JavaExec` task `generateConfigurationReference`, a system property for the repository root, and
       `specs/` and `docs/configuration.md` as inputs of the test tasks; generate and commit `docs/configuration.md`. Prove the check, with both
       changes reverted afterwards: a changed Default in `specs/005-deadlines/spec.md`, and a changed line in `docs/configuration.md`, each make a

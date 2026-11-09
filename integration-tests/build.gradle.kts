@@ -35,3 +35,23 @@ tasks.withType<Test>().configureEach {
     systemProperty("boundrail.it.test-module.pom", testModulePom.asFile.absolutePath)
     systemProperty("boundrail.it.test-module.metadata", testModuleMetadata.asFile.absolutePath)
 }
+
+// ConfigurationReferenceIT compares docs/configuration.md with the Configuration tables in specs/*/spec.md (REL-03). Both are inputs,
+// so a change to either reruns the test instead of reporting it up to date.
+val repositoryRoot = rootProject.layout.projectDirectory
+val specs = repositoryRoot.dir("specs")
+val configurationReference = repositoryRoot.file("docs/configuration.md")
+
+tasks.withType<Test>().configureEach {
+    inputs.files(fileTree(specs) { include("*/spec.md") }).withPropertyName("specs").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(configurationReference).withPropertyName("configurationReference").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("boundrail.it.repository-root", repositoryRoot.asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("generateConfigurationReference") {
+    group = "documentation"
+    description = "Regenerates docs/configuration.md from the Configuration tables in specs/."
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass = "io.github.boundrail.context.it.docs.ConfigurationReference"
+    args(repositoryRoot.asFile.absolutePath)
+}

@@ -331,6 +331,7 @@ a JDK 25 toolchain.
 ## Documentation
 
 - [examples.md](docs/examples.md): every feature, from plain Java to a set of Spring Boot services.
+- [configuration.md](docs/configuration.md): every configuration property, its default and its meaning.
 - [design.md](docs/design.md): what the project is, why it exists, and every design decision.
 - [roadmap.md](docs/roadmap.md): milestones from an empty repository to the v0.1 release.
 - [specs/](specs/): normative requirements and acceptance scenarios, one Spec Kit feature per milestone.
