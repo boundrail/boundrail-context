@@ -181,7 +181,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [x] T016 [US2] Guard: `REL-04 no published POM or module metadata contains an email address`, for all four projects: no `email` element, and no text
       matching an address pattern anywhere in the file. Green before the task; show it red against both temporary changes in
       [plan.md](plan.md#guard-tests), then revert them, and report both reds. Verify: **IT**. (REL-04)
-- [ ] T017 [US2] [TDD-EXCEPTION: T018; `./gradlew publishToMavenCentral --dry-run` lists sign and publish tasks of exactly the four projects;
+- [x] T017 [US2] [TDD-EXCEPTION: T018; `./gradlew publishToMavenCentral --dry-run` lists sign and publish tasks of exactly the four projects;
       `./gradlew check` is green with no key] In `published`, add `publishToMavenCentral(false, DeploymentValidation.VALIDATED)` and
       `signAllPublications()`. Nothing about keys or tokens enters the repository. Verify also with `--warning-mode=all`. (REL-04, D85)
 - [ ] T018 [US2] Rehearsal, no commit, no credentials, and nothing kept but the outcome. With a throwaway key in a temporary `GNUPGHOME`, passed as

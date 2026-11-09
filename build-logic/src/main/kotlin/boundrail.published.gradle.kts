@@ -1,3 +1,4 @@
+import com.vanniktech.maven.publish.DeploymentValidation
 import com.vanniktech.maven.publish.JavaLibrary
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
@@ -15,6 +16,11 @@ java {
 
 mavenPublishing {
     configure(JavaLibrary(JavadocJar.None(), SourcesJar.Sources()))
+
+    // Manual release through the Central Portal: the upload is validated, then waits there to be published by hand (REL-04, D85).
+    publishToMavenCentral(false, DeploymentValidation.VALIDATED)
+    // The key comes from Gradle properties outside the repository; check never signs, so it needs no key (D85).
+    signAllPublications()
 
     // The metadata Central requires; each project sets its own description (REL-04).
     pom {
