@@ -217,22 +217,21 @@ Verify commands, each followed by `./gradlew check` before the commit:
       `./gradlew check`. Read one generated POM per project in full. Fix findings as follow-up tasks (T021a, …), then report to the user that the
       build is ready for release.
 - [x] T021a [US2] Fixes from T021, settled with the user 2026-11-09: core's description in design.md §12, its build script and
-      `BuildSmokeIT` starts with a capital ("Keys, …"), red first; D85 records that the spring and kafka POMs publish the Spring Boot BOM as a
+      `BuildSmokeIT` start with a capital ("Keys, …"), red first; D85 records that the spring and kafka POMs publish the Spring Boot BOM as a
       platform (accepted); plan.md's task counts and PR table include T013a, T021a and T024a; T007 and the T011 stale-check item are ticked.
       Verify: **IT**, `./gradlew check`.
-- [ ] T022 [USER] Review and merge PR B and PR C to `main`; CI is green on `main`.
-- [ ] T023 [USER] [US2] Needs T009 verified, T019, T021, T022. Upload from a clean `main`: `./gradlew publishToMavenCentral`. Never run
+- [x] T022 [USER] Review and merge PR B and PR C to `main`; CI is green on `main`.
+- [x] T023 [USER] [US2] Needs T009 verified, T019, T021, T022. Upload from a clean `main`: `./gradlew publishToMavenCentral`. Never run
       `publishAndReleaseToMavenCentral`. The deployment stops for review in the Portal. (REL-04)
-- [ ] T024 [USER] [US2] In the Portal, inspect the deployment: four projects at `0.1.0`, under `io.github.boundrail`, each with a JAR, sources,
+- [x] T024 [USER] [US2] In the Portal, inspect the deployment: four projects at `0.1.0`, under `io.github.boundrail`, each with a JAR, sources,
       Javadoc, signatures and a POM whose `developers` has no email. Then press Publish. **This cannot be undone**, so drop the deployment instead if
       anything is wrong. (REL-04, SC-001)
-- [ ] T024a [USER] [US2] After T024: tag `v0.1.0` on the uploaded commit, push the tag, and create a GitHub Release from it with short notes.
-- [ ] T025 [US2] After T024 and Central's sync. No commit. In a new temporary directory, a Gradle project with only `mavenCentral()` depends on the
+- [x] T024a [USER] [US2] After T024: tag `v0.1.0` on the uploaded commit, push the tag, and create a GitHub Release from it with short notes.
+- [x] T025 [US2] After T024 and Central's sync. No commit. In a new temporary directory, a Gradle project with only `mavenCentral()` depends on the
       four artifacts at `0.1.0`, resolves them and compiles a class using `ContextKey`. Report the output. (REL-04, US2 scenario 1, SC-001)
-- [ ] T026 [US2] [TDD-EXCEPTION: `./gradlew check` is green; **Lines**] Close M7, in PR D: set M7's status in `docs/roadmap.md` to Done, tick the
-      Exit Checklist below, remove the README's "Pre-release" note and add the Maven Central badge. Last, run `./gradlew check`, which covers JDK 21,
-      JDK 25 and
-      the forced ThreadLocal run, fresh, and report it.
+- [x] T026 [US2] [TDD-EXCEPTION: `./gradlew check` is green; **Lines**] Close M7, in PR D: set M7's status in
+      `docs/roadmap.md` to Done and spec.md's Status to Implemented, tick the Exit Checklist below, remove the README's "Pre-release" note and add
+      the Maven Central badge. Last, run `./gradlew check`, which covers JDK 21, JDK 25 and the forced ThreadLocal run, fresh, and report it.
 
 **Checkpoint**: M7 is closed.
 
@@ -258,9 +257,9 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [x] The user approved the plan, tasks, TDD exceptions (T003's `factory` line, T005, T006, T017, T026) and guard test (T016)
 - [x] Q1 settled and written into spec.md; Q2 – Q7 answered
 - [x] T018's outcome recorded in plan.md, and T020's if it ran
-- [ ] Requirements done: REL-01 – REL-04
+- [x] Requirements done: REL-01 – REL-04
 - [x] T016's guard shown red against both temporary changes, and the changes reverted
 - [x] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted (T011, and again in T021)
 - [x] `run-demo.sh` ran from a clean copy of the repository in under 10 minutes (SC-002): 248 s, T005
-- [ ] 0.1.0 on Maven Central, and resolved by a fresh project (T025)
-- [ ] `./gradlew check` green
+- [x] 0.1.0 on Maven Central, and resolved by a fresh project (T025)
+- [x] `./gradlew check` green

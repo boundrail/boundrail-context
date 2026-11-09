@@ -1,6 +1,6 @@
 # boundrail-context — Roadmap
 
-> **Status:** plan for v0.1 · **Last updated:** 4 November 2026
+> **Status:** plan for v0.1 · **Last updated:** 9 November 2026
 > **Companion documents:** [design.md](design.md) (what and why) · [specs/](../specs/) (normative requirements and acceptance
 > tests)
 
@@ -39,7 +39,7 @@ Each milestone is one Spec Kit feature under [`specs/`](../specs/), numbered in 
 | **M4** | [005](../specs/005-deadlines/) | Deadlines | M | IT-3 is green, except the messaging scenario | Done |
 | **M5** | [006](../specs/006-identity/) | Identity | M | IT-4 is green, except the messaging scenario | Done |
 | **M6** | [007](../specs/007-kafka/) | Kafka | M | All acceptance suites are fully green | Done |
-| **M7** | [008](../specs/008-release/) | v0.1 release | M | 0.1.0 is on Maven Central | Not started |
+| **M7** | [008](../specs/008-release/) | v0.1 release | M | 0.1.0 is on Maven Central | Done |
 
 ```
 M0 ─► M1 ─► M2 ─► M3 ─► M4 ─┐
