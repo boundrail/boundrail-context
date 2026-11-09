@@ -241,6 +241,10 @@ maintainer's review.
 b48d02f, with the real key and token, uploaded the deployment, and the Portal showed it as Validated (`DeploymentValidation.VALIDATED`). The
 maintainer then dropped it; nothing was published.
 
+**T024 note (2026-11-09, reported by the maintainer).** The first Publish in the Portal returned HTTP 403, and the Portal also showed the site-wide
+"Monthly publishing limits are now in effect" notice. The limits were not the cause: the release is far below them. The response asked for cookies
+to be accepted. Clearing the Portal's site data in the browser, then signing out and back in, fixed it, and the next Publish was accepted.
+
 **Upload rehearsal (T020).** D84 says Central registers `io.github.<username>` automatically, so the maintainer owns
 `io.github.jordi1st` as soon as they sign in. An upload with `-Pgroup=io.github.jordi1st` exercises the real upload and the Portal's checks while
 `io.github.boundrail` is still being verified, with no change to the repository. The deployment is then dropped, never published. T018 confirms that
