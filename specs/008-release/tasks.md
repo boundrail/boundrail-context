@@ -209,7 +209,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       Put `mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyId` and `signingInMemoryKeyPassword` in
       `~/.gradle/gradle.properties`, or in
       `ORG_GRADLE_PROJECT_*` environment variables; never in the repository. Back up the key. (REL-04)
-- [ ] T020 [USER] [US2] Needs T018, T019. Upload rehearsal under the personal namespace, from the PR C branch:
+- [x] T020 [USER] [US2] Needs T018, T019. Upload rehearsal under the personal namespace, from the PR C branch:
       `./gradlew publishToMavenCentral -Pgroup=io.github.jordi1st`. The command should succeed, and the Portal should accept the deployment and hold
       it for review, with all files signed. Then **drop the deployment; do not publish it**. Report the outcome, including what `VALIDATED` did, for
       the planner to record. On a failure, follow [plan.md](plan.md#risks). (REL-04, D85 risk)

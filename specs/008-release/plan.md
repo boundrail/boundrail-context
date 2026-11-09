@@ -237,6 +237,10 @@ maintainer's review.
 `--warning-mode=all` reported nothing from the plugins. In an empty Gradle user home the toolchains need
 `-Dorg.gradle.java.installations.paths=<JDK 21>,<JDK 25>`; the `-P` form is deprecated in Gradle 9.
 
+**T020 outcome (2026-11-09, reported by the maintainer).** `./gradlew publishToMavenCentral -Pgroup=io.github.jordi1st` from `008-release` at
+b48d02f, with the real key and token, uploaded the deployment, and the Portal showed it as Validated (`DeploymentValidation.VALIDATED`). The
+maintainer then dropped it; nothing was published.
+
 **Upload rehearsal (T020).** D84 says Central registers `io.github.<username>` automatically, so the maintainer owns
 `io.github.jordi1st` as soon as they sign in. An upload with `-Pgroup=io.github.jordi1st` exercises the real upload and the Portal's checks while
 `io.github.boundrail` is still being verified, with no change to the repository. The deployment is then dropped, never published. T018 confirms that
