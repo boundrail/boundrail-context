@@ -16,3 +16,14 @@ java {
 mavenPublishing {
     configure(JavaLibrary(JavadocJar.None(), SourcesJar.Sources()))
 }
+
+// Resolved versions in the POM, so dependencies whose version comes from a platform still carry one (D85).
+publishing {
+    publications.withType<MavenPublication>().configureEach {
+        versionMapping {
+            allVariants {
+                fromResolutionResult()
+            }
+        }
+    }
+}

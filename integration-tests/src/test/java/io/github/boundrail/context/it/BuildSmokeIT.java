@@ -178,6 +178,43 @@ class BuildSmokeIT {
     }
 
     @Test
+    @DisplayName("REL-04 every dependency in each published POM has a version")
+    void everyDependencyInEachPublishedPomHasAVersion() throws Exception {
+        String poms = System.getProperty("boundrail.it.published-poms");
+        assertThat(poms).as("system property boundrail.it.published-poms (set by the integration test task)").isNotNull();
+
+        SoftAssertions softly = new SoftAssertions();
+        for (String path : poms.split(File.pathSeparator)) {
+            Path pom = Path.of(path);
+            Element project = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile()).getDocumentElement();
+            boolean importsBom = false;
+            Element management = childElement(project, "dependencyManagement");
+            Element managed = management == null ? null : childElement(management, "dependencies");
+            if (managed != null) {
+                for (Element dependency : childElements(managed, "dependency")) {
+                    importsBom |= "import".equals(childText(dependency, "scope")) && "pom".equals(childText(dependency, "type"));
+                }
+            }
+            Element dependencies = childElement(project, "dependencies");
+            if (dependencies == null) {
+                continue;
+            }
+            for (Element dependency : childElements(dependencies, "dependency")) {
+                String module = childText(dependency, "groupId") + ":" + childText(dependency, "artifactId");
+                String version = childText(dependency, "version");
+                if ("io.github.boundrail".equals(childText(dependency, "groupId"))) {
+                    softly.assertThat(version).as("version of %s in %s", module, pom).isEqualTo("0.1.0");
+                } else if (version == null || version.isBlank()) {
+                    softly.assertThat(importsBom)
+                            .as("%s in %s has no version and the POM imports no BOM", module, pom)
+                            .isTrue();
+                }
+            }
+        }
+        softly.assertAll();
+    }
+
+    @Test
     @DisplayName("TEST-01 the boundrail-context-test JAR auto-configures only the TEST-02 violation recorder")
     void testModuleJarAutoConfiguresOnlyTheViolationRecorder() throws Exception {
         Path jar = Path.of(TestInboundTrustVerifier.class.getProtectionDomain().getCodeSource().getLocation().toURI());
@@ -206,6 +243,23 @@ class BuildSmokeIT {
             }
         }
         return null;
+    }
+
+    /** Returns the first direct child element of {@code parent} with the given name, or {@code null} if there is none. */
+    private static Element childElement(Element parent, String name) {
+        List<Element> children = childElements(parent, name);
+        return children.isEmpty() ? null : children.getFirst();
+    }
+
+    /** Returns the direct child elements of {@code parent} with the given name. */
+    private static List<Element> childElements(Element parent, String name) {
+        List<Element> children = new ArrayList<>();
+        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child instanceof Element element && element.getTagName().equals(name)) {
+                children.add(element);
+            }
+        }
+        return children;
     }
 
     /** Reads the class file major version of a core JAR entry, bypassing multi-release resolution. */

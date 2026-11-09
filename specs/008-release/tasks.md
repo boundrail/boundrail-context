@@ -164,7 +164,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       its comment removed from `boundrail-context-test/build.gradle.kts` (D85). TEST-01, TEST-04 and BLD-04 stay green. Verify: **IT**;
       `./gradlew help --warning-mode=all` reports nothing new from the plugin, or the task report lists it;
       `./gradlew :integration-tests:tasks --all :examples:propagation-demo:tasks --all` lists no publishing task. (REL-04, REL-02 not published)
-- [ ] T013 [US2] Red: `REL-04 every dependency in each published POM has a version`, directly or through an imported BOM; it fails on
+- [x] T013 [US2] Red: `REL-04 every dependency in each published POM has a version`, directly or through an imported BOM; it fails on
       `junit-jupiter-api` and `assertj-core` in `boundrail-context-test`, and project dependencies must be at `0.1.0`. Green:
       `versionMapping { allVariants { fromResolutionResult() } }` in `published` (D85). Verify: **IT**. (REL-04)
 - [ ] T014 [US2] Red: `REL-04 each published POM has the metadata Central requires`: the name, description, URL, Apache-2.0 licence
