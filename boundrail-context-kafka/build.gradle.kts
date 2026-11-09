@@ -1,6 +1,7 @@
 plugins {
     id("boundrail.java-conventions")
     `java-library`
+    id("boundrail.published")
 }
 
 dependencies {

@@ -155,7 +155,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: `./gradlew :integration-tests:integrationTestJdk25 --tests '*BuildSmokeIT'` and T018's rehearsal.
 
-- [ ] T012 [US2] Red: in `it/BuildSmokeIT.java`,
+- [x] T012 [US2] Red: in `it/BuildSmokeIT.java`,
       `REL-04 each published project has a POM under io.github.boundrail at 0.1.0, with sources and Javadoc`, looping over the four POMs and module
       metadata files from a new system property `boundrail.it.published-poms`, set in `integration-tests/build.gradle.kts`: `groupId`, `artifactId`
       (the project name), `version`, and `sourcesElements` and `javadocElements` variants; three files don't exist and the fourth has the wrong group.

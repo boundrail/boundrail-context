@@ -1,8 +1,11 @@
 [versions]
 spring-boot = "4.1.1"
+maven-publish = "0.37.0"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+# The com.vanniktech.maven.publish plugin, a dependency of build-logic (D85).
+maven-publish-plugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "maven-publish" }
 
 # Versions below are managed by spring-boot-bom.
 assertj-core = { module = "org.assertj:assertj-core" }

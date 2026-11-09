@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.boundrail.context.internal.RuntimeVersionMarker;
 import io.github.boundrail.context.test.TestInboundTrustVerifier;
 import java.io.DataInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,10 +19,12 @@ import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.xml.parsers.DocumentBuilderFactory;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -138,6 +142,42 @@ class BuildSmokeIT {
     }
 
     @Test
+    @DisplayName("REL-04 each published project has a POM under io.github.boundrail at 0.1.0, with sources and Javadoc")
+    void eachPublishedProjectHasAPomUnderTheGroupWithSourcesAndJavadoc() throws Exception {
+        String poms = System.getProperty("boundrail.it.published-poms");
+        assertThat(poms).as("system property boundrail.it.published-poms (set by the integration test task)").isNotNull();
+
+        SoftAssertions softly = new SoftAssertions();
+        List<String> artifactIds = new ArrayList<>();
+        for (String path : poms.split(File.pathSeparator)) {
+            Path pom = Path.of(path);
+            Path metadata = pom.resolveSibling("module.json");
+            if (!Files.exists(pom) || !Files.exists(metadata)) {
+                softly.fail("missing POM or module metadata: %s, %s", pom, metadata);
+                continue;
+            }
+
+            Element project = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile()).getDocumentElement();
+            String artifactId = childText(project, "artifactId");
+            artifactIds.add(artifactId);
+            softly.assertThat(childText(project, "groupId")).as("groupId in %s", pom).isEqualTo("io.github.boundrail");
+            softly.assertThat(childText(project, "version")).as("version in %s", pom).isEqualTo("0.1.0");
+
+            JsonNode module = JsonMapper.builder().build().readTree(metadata.toFile());
+            List<String> variants = new ArrayList<>();
+            for (JsonNode variant : module.path("variants")) {
+                variants.add(variant.path("name").asString());
+            }
+            softly.assertThat(variants).as("variants in %s", metadata).contains("sourcesElements", "javadocElements");
+        }
+        softly.assertThat(artifactIds)
+                .as("artifactIds of the published POMs")
+                .containsExactlyInAnyOrder(
+                        "boundrail-context-core", "boundrail-context-spring", "boundrail-context-kafka", "boundrail-context-test");
+        softly.assertAll();
+    }
+
+    @Test
     @DisplayName("TEST-01 the boundrail-context-test JAR auto-configures only the TEST-02 violation recorder")
     void testModuleJarAutoConfiguresOnlyTheViolationRecorder() throws Exception {
         Path jar = Path.of(TestInboundTrustVerifier.class.getProtectionDomain().getCodeSource().getLocation().toURI());
@@ -156,6 +196,16 @@ class BuildSmokeIT {
             assertThat(candidates).containsExactly("io.github.boundrail.context.test.BoundrailTestAutoConfiguration");
             assertThat(file.getJarEntry("META-INF/spring.factories")).isNull();
         }
+    }
+
+    /** Returns the text of the direct child element of {@code parent} with the given name, or {@code null} if there is none. */
+    private static String childText(Element parent, String name) {
+        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child instanceof Element element && element.getTagName().equals(name)) {
+                return element.getTextContent();
+            }
+        }
+        return null;
     }
 
     /** Reads the class file major version of a core JAR entry, bypassing multi-release resolution. */
