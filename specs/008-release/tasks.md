@@ -178,7 +178,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       and SCM that REL-04 lists. Green: the `pom` block in `published`, and a `description` per project. Verify: **IT**. (REL-04, constitution)
 - [x] T015 [US2] Red: `REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st`, exactly one developer.
       Green: the `developers` block in `published`, with no `email`. Verify: **IT**. (REL-04, D85)
-- [ ] T016 [US2] Guard: `REL-04 no published POM or module metadata contains an email address`, for all four projects: no `email` element, and no text
+- [x] T016 [US2] Guard: `REL-04 no published POM or module metadata contains an email address`, for all four projects: no `email` element, and no text
       matching an address pattern anywhere in the file. Green before the task; show it red against both temporary changes in
       [plan.md](plan.md#guard-tests), then revert them, and report both reds. Verify: **IT**. (REL-04)
 - [ ] T017 [US2] [TDD-EXCEPTION: T018; `./gradlew publishToMavenCentral --dry-run` lists sign and publish tasks of exactly the four projects;
@@ -255,7 +255,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - [x] Q1 settled and written into spec.md; Q2 – Q7 answered
 - [ ] T018's outcome recorded in plan.md, and T020's if it ran
 - [ ] Requirements done: REL-01 – REL-04
-- [ ] T016's guard shown red against both temporary changes, and the changes reverted
+- [x] T016's guard shown red against both temporary changes, and the changes reverted
 - [ ] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted
 - [x] `run-demo.sh` ran from a clean copy of the repository in under 10 minutes (SC-002): 248 s, T005
 - [ ] 0.1.0 on Maven Central, and resolved by a fresh project (T025)

@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -288,6 +289,28 @@ class BuildSmokeIT {
             softly.assertThat(developerEntries)
                     .as("developers (id name url) in %s", pom)
                     .containsExactly("jordi1st jordi1st https://github.com/jordi1st");
+        }
+        softly.assertAll();
+    }
+
+    @Test
+    @DisplayName("REL-04 no published POM or module metadata contains an email address")
+    void noPublishedPomOrModuleMetadataContainsAnEmailAddress() throws Exception {
+        String poms = System.getProperty("boundrail.it.published-poms");
+        assertThat(poms).as("system property boundrail.it.published-poms (set by the integration test task)").isNotNull();
+        // An address, but not the user of a URL such as the SCM's ssh://git@github.com/...
+        Pattern address = Pattern.compile("(?<![\\w.%+-])(?<!://)[\\w.%+-]+@[\\w-]+(\\.[\\w-]+)*\\.[A-Za-z]{2,}");
+
+        SoftAssertions softly = new SoftAssertions();
+        for (String path : poms.split(File.pathSeparator)) {
+            Path pom = Path.of(path);
+            Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile());
+            softly.assertThat(document.getElementsByTagName("email").getLength()).as("email elements in %s", pom).isZero();
+            for (Path file : List.of(pom, pom.resolveSibling("module.json"))) {
+                softly.assertThat(address.matcher(Files.readString(file)).results().map(MatchResult::group).toList())
+                        .as("email addresses in %s", file)
+                        .isEmpty();
+            }
         }
         softly.assertAll();
     }
