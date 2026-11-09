@@ -63,8 +63,8 @@ remains:
 - No secret ever enters the repository: credentials and keys live in the maintainer's `~/.gradle/gradle.properties` or environment.
 - A released POM cannot be removed from Central (D85), so nothing is uploaded until T021's review has passed.
 
-**Scale/Scope**: 4 requirements (REL-01 – REL-04); 26 tasks: 18 for the agents (14 red-green or exception tasks, the signing rehearsal, the
-feature review, the consumer check and the close) and 8 owned by the user ([tasks.md](tasks.md))
+**Scale/Scope**: 4 requirements (REL-01 – REL-04); 29 tasks: 20 for the agents (15 red-green or exception tasks, the signing rehearsal, the
+feature review and its fixes, the consumer check and the close) and 9 owned by the user ([tasks.md](tasks.md))
 
 ## Constitution Check
 
@@ -96,7 +96,7 @@ the demo on `main` (D86). So the demo comes first, and the rest of the work runs
 |---|---|---|---|
 | A: demo and README | T001 – T006, with the uncommitted spec, plan, tasks, design and roadmap edits | T007 | Going public, the namespace request |
 | B: configuration reference | T010 – T011 | T022 | REL-03 |
-| C: publishing build | T012 – T017 | T022 | The rehearsal, the upload |
+| C: publishing build | T012 – T018, T013a, the T020 record, T021 and T021a | T022 | The upload |
 | D: close | T026 | After T026 | M7 closed |
 
 All four use branch `008-release`, as PR #1 did, one at a time, each starting from the merged `main`. PR B and PR C need no credentials, and can be
@@ -195,7 +195,12 @@ that, Gradle would report the task up to date and a stale file would pass, so T0
 ### Publishing
 
 **Convention plugin.** `boundrail.published` applies `com.vanniktech.maven.publish`, sets the POM, and sets
-`versionMapping { allVariants { fromResolutionResult() } }` on the publications (D85). It is applied only in the four published projects.
+`versionMapping { allVariants { fromResolutionResult() } }` on the publications (D85). It is applied only in the four published projects. The
+Javadoc JAR comes from Gradle's `java { withJavadocJar() }`, with the plugin's own turned off
+(`JavaLibrary(JavadocJar.None(), SourcesJar.Sources())`): the plugin's `plainJavadocJar` reaches the Maven publication but not the module metadata,
+so it would have no `javadocElements` variant (settled with the user 2026-11-09, found in T012). Core's sources JAR mirrors its binary JAR: the
+`java25` sources go under `META-INF/versions/25/`, so a user on JDK 25 can step into the classes that run there; the Javadoc covers `main` only,
+because `java25` holds no public API (settled with the user 2026-11-09, T013a).
 
 **Coordinates.** A root `gradle.properties` with `group=io.github.boundrail` and `version=0.1.0`. Today neither is set anywhere, and the published
 `artifactId` is the project name. Nothing else reads them: JAR names change, and `BuildSmokeIT` only checks the `.jar` suffix.
@@ -219,6 +224,22 @@ maintainer's review.
 
 **Rehearsal (T018).** No credentials are needed to exercise signing: a throwaway key in a temporary `GNUPGHOME` and a temporary Maven repository
 (`-Dmaven.repo.local`) sign all four projects on Gradle 9.8.0. Nothing from it is kept.
+
+**T018 outcome (2026-11-09, at 207452c, Gradle 9.8.0, an empty Gradle user home).** Passed on every point, with no change to the repository:
+
+1. All four projects published a JAR, sources JAR, Javadoc JAR, POM and module file, each with an `.asc`; `gpg --verify` reported a good
+   signature for all 20 files.
+2. Core's JAR has `META-INF/versions/25/` and `Multi-Release: true`; its sources JAR has the three `java25` sources there, byte-identical to
+   `src/main/java25` (T013a).
+3. Without a key the build fails at `:boundrail-context-core:signMavenPublication` with "No configured signatory", and writes nothing.
+4. `-Pgroup=io.github.jordi1st` puts every POM and module file, including the dependencies between the projects, under `io.github.jordi1st`.
+
+`--warning-mode=all` reported nothing from the plugins. In an empty Gradle user home the toolchains need
+`-Dorg.gradle.java.installations.paths=<JDK 21>,<JDK 25>`; the `-P` form is deprecated in Gradle 9.
+
+**T020 outcome (2026-11-09, reported by the maintainer).** `./gradlew publishToMavenCentral -Pgroup=io.github.jordi1st` from `008-release` at
+b48d02f, with the real key and token, uploaded the deployment, and the Portal showed it as Validated (`DeploymentValidation.VALIDATED`). The
+maintainer then dropped it; nothing was published.
 
 **Upload rehearsal (T020).** D84 says Central registers `io.github.<username>` automatically, so the maintainer owns
 `io.github.jordi1st` as soon as they sign in. An upload with `-Pgroup=io.github.jordi1st` exercises the real upload and the Portal's checks while
@@ -289,7 +310,7 @@ build-logic/src/main/kotlin/
 boundrail-context-{core,spring,kafka,test}/build.gradle.kts   # apply the convention (T012)
 integration-tests/build.gradle.kts          # POM inputs (T012), reference task and inputs (T011)
 integration-tests/src/test/java/io/github/boundrail/context/it/
-├── BuildSmokeIT.java                       # REL-04 tests (T012 – T016)
+├── BuildSmokeIT.java                       # REL-04 tests (T012 – T016, T013a)
 ├── ConfigurationReferenceIT.java           # new (T010, T011)
 └── docs/ConfigurationReference.java        # new: the generator (T010, T011)
 examples/propagation-demo/

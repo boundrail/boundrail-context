@@ -1,9 +1,11 @@
 plugins {
     id("boundrail.java-conventions")
     `java-library`
-    // Generates the POM and module metadata that BuildSmokeIT checks (TEST-01); nothing is published.
-    `maven-publish`
+    id("boundrail.published")
 }
+
+// The Contents cell of design.md §12 (REL-04).
+description = "JUnit Jupiter extension, assertions, test trust verifier"
 
 dependencies {
     api(project(":boundrail-context-core"))
@@ -22,12 +24,4 @@ dependencies {
     testImplementation(libs.spring.boot.autoconfigure)
     testImplementation(libs.spring.boot.test)
     testImplementation(libs.junit.platform.testkit)
-}
-
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-        }
-    }
 }

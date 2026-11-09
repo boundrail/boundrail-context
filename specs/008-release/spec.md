@@ -65,7 +65,9 @@ the feature specs (today 002–007; every spec that has one), and `./gradlew che
 **REL-04** `[M7]` 0.1.0 of the four published projects SHALL be published to Maven Central under the group `io.github.boundrail`, through the
 Central Portal, with the tooling DESIGN D85 names (DESIGN D84, D85). The `developers` section of each POM SHALL give the maintainer as `jordi1st`
 with the URL `https://github.com/jordi1st`, and SHALL NOT contain an email address. Each POM SHALL also give the project's name, its description from
-the Contents cell of design.md §12, the GitHub repository as its URL and SCM, and the Apache-2.0 licence.
+the Contents cell of design.md §12, the GitHub repository as its URL and SCM, and the Apache-2.0 licence. Each project SHALL be published with a
+sources JAR and a Javadoc JAR; core's sources JAR SHALL mirror its multi-release layout, with the Java 25 sources under `META-INF/versions/25/`,
+and its Javadoc covers the main sources only.
 
 ### Key Entities
 

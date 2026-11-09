@@ -36,6 +36,29 @@ tasks.withType<Test>().configureEach {
     systemProperty("boundrail.it.test-module.metadata", testModuleMetadata.asFile.absolutePath)
 }
 
+// BuildSmokeIT checks the generated POM and module metadata of each published project (REL-04).
+val publishedProjects = listOf("boundrail-context-core", "boundrail-context-spring", "boundrail-context-kafka", "boundrail-context-test")
+val publishedPublications = publishedProjects.map { rootProject.layout.projectDirectory.dir("$it/build/publications/maven") }
+val publishedPoms = publishedPublications.map { it.file("pom-default.xml") }
+
+tasks.withType<Test>().configureEach {
+    publishedProjects.forEach {
+        dependsOn(":$it:generatePomFileForMavenPublication", ":$it:generateMetadataFileForMavenPublication")
+    }
+    inputs.files(publishedPublications.flatMap { listOf(it.file("pom-default.xml"), it.file("module.json")) })
+        .withPropertyName("publishedPublications").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("boundrail.it.published-poms", publishedPoms.joinToString(File.pathSeparator) { it.asFile.absolutePath })
+}
+
+// BuildSmokeIT checks that core's sources JAR mirrors its multi-release binary JAR (REL-04).
+val coreSourcesJar = rootProject.layout.projectDirectory.file("boundrail-context-core/build/libs/boundrail-context-core-$version-sources.jar")
+
+tasks.withType<Test>().configureEach {
+    dependsOn(":boundrail-context-core:sourcesJar")
+    inputs.file(coreSourcesJar).withPropertyName("coreSourcesJar").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("boundrail.it.core-sources-jar", coreSourcesJar.asFile.absolutePath)
+}
+
 // ConfigurationReferenceIT compares docs/configuration.md with the Configuration tables in specs/*/spec.md (REL-03). Both are inputs,
 // so a change to either reruns the test instead of reporting it up to date.
 val repositoryRoot = rootProject.layout.projectDirectory

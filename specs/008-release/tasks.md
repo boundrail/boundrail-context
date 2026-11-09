@@ -111,7 +111,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Goal**: The repository is public and the namespace request is running, while the agents continue with Phases 3 and 4.
 
-- [ ] T007 [USER] Review PR A (T001 – T006 and the docs), and merge it to `main`.
+- [x] T007 [USER] Review PR A (T001 – T006 and the docs), and merge it to `main`.
 - [x] T008 [USER] [US2] Make the repository public, once the demo is on `main` and CI is green there (D86). First confirm the check in
       [plan.md](plan.md#risks): the history and tracked files hold nothing private, and `.claude/` and `.specify/` are meant to be public. Then:
       `gh repo edit boundrail/boundrail-context --visibility public --accept-visibility-change-consequences`. Check that the README's links and CI
@@ -155,7 +155,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: `./gradlew :integration-tests:integrationTestJdk25 --tests '*BuildSmokeIT'` and T018's rehearsal.
 
-- [ ] T012 [US2] Red: in `it/BuildSmokeIT.java`,
+- [x] T012 [US2] Red: in `it/BuildSmokeIT.java`,
       `REL-04 each published project has a POM under io.github.boundrail at 0.1.0, with sources and Javadoc`, looping over the four POMs and module
       metadata files from a new system property `boundrail.it.published-poms`, set in `integration-tests/build.gradle.kts`: `groupId`, `artifactId`
       (the project name), `version`, and `sourcesElements` and `javadocElements` variants; three files don't exist and the fourth has the wrong group.
@@ -164,20 +164,27 @@ Verify commands, each followed by `./gradlew check` before the commit:
       its comment removed from `boundrail-context-test/build.gradle.kts` (D85). TEST-01, TEST-04 and BLD-04 stay green. Verify: **IT**;
       `./gradlew help --warning-mode=all` reports nothing new from the plugin, or the task report lists it;
       `./gradlew :integration-tests:tasks --all :examples:propagation-demo:tasks --all` lists no publishing task. (REL-04, REL-02 not published)
-- [ ] T013 [US2] Red: `REL-04 every dependency in each published POM has a version`, directly or through an imported BOM; it fails on
+- [x] T013 [US2] Red: `REL-04 every dependency in each published POM has a version`, directly or through an imported BOM; it fails on
       `junit-jupiter-api` and `assertj-core` in `boundrail-context-test`, and project dependencies must be at `0.1.0`. Green:
       `versionMapping { allVariants { fromResolutionResult() } }` in `published` (D85). Verify: **IT**. (REL-04)
-- [ ] T014 [US2] Red: `REL-04 each published POM has the metadata Central requires`: the name, description, URL, Apache-2.0 licence
+- [x] T013a [US2] Red: `REL-04 core's sources JAR holds the java25 sources under META-INF/versions/25`, reading
+      `boundrail-context-core`'s sources JAR from a new system property: `internal/RuntimeVersionMarker.java` at the root equals the `src/main/java`
+      file, and `META-INF/versions/25/` holds `internal/RuntimeVersionMarker.java` and `internal/ScopedValueSlot.java` equal to the `src/main/java25`
+      files (`ScopedValueSlot` exists only in `java25`). Green: in
+      `boundrail.multi-release` (or core's build script), add the `java25` source set's sources to `sourcesJar` under `META-INF/versions/25/`,
+      mirroring the binary JAR. Javadoc stays `main` only: `java25` holds no public API. Settled with the user 2026-11-09, after T012's review.
+      Verify: **IT**. (REL-04)
+- [x] T014 [US2] Red: `REL-04 each published POM has the metadata Central requires`: the name, description, URL, Apache-2.0 licence
       and SCM that REL-04 lists. Green: the `pom` block in `published`, and a `description` per project. Verify: **IT**. (REL-04, constitution)
-- [ ] T015 [US2] Red: `REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st`, exactly one developer.
+- [x] T015 [US2] Red: `REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st`, exactly one developer.
       Green: the `developers` block in `published`, with no `email`. Verify: **IT**. (REL-04, D85)
-- [ ] T016 [US2] Guard: `REL-04 no published POM or module metadata contains an email address`, for all four projects: no `email` element, and no text
+- [x] T016 [US2] Guard: `REL-04 no published POM or module metadata contains an email address`, for all four projects: no `email` element, and no text
       matching an address pattern anywhere in the file. Green before the task; show it red against both temporary changes in
       [plan.md](plan.md#guard-tests), then revert them, and report both reds. Verify: **IT**. (REL-04)
-- [ ] T017 [US2] [TDD-EXCEPTION: T018; `./gradlew publishToMavenCentral --dry-run` lists sign and publish tasks of exactly the four projects;
+- [x] T017 [US2] [TDD-EXCEPTION: T018; `./gradlew publishToMavenCentral --dry-run` lists sign and publish tasks of exactly the four projects;
       `./gradlew check` is green with no key] In `published`, add `publishToMavenCentral(false, DeploymentValidation.VALIDATED)` and
       `signAllPublications()`. Nothing about keys or tokens enters the repository. Verify also with `--warning-mode=all`. (REL-04, D85)
-- [ ] T018 [US2] Rehearsal, no commit, no credentials, and nothing kept but the outcome. With a throwaway key in a temporary `GNUPGHOME`, passed as
+- [x] T018 [US2] Rehearsal, no commit, no credentials, and nothing kept but the outcome. With a throwaway key in a temporary `GNUPGHOME`, passed as
       `ORG_GRADLE_PROJECT_signingInMemoryKey` and `ORG_GRADLE_PROJECT_signingInMemoryKeyPassword`, run on the wrapper's Gradle 9.8.0
       `./gradlew publishToMavenLocal -Dmaven.repo.local=<temporary directory> --warning-mode=all`. Confirm and report:
       1. all four projects have a JAR, sources JAR, Javadoc JAR, POM and module file, each with an `.asc` that passes `gpg --verify`;
@@ -197,18 +204,22 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 **Independent Test**: A fresh Gradle project resolves the four artifacts at `0.1.0` from Maven Central.
 
-- [ ] T019 [P] [USER] [US2] Create the release credentials. Needs only T009's Portal account, so it can start at once. Generate a GPG signing key,
+- [x] T019 [P] [USER] [US2] Create the release credentials. Needs only T009's Portal account, so it can start at once. Generate a GPG signing key,
       with the name `jordi1st` alone as its user ID and no email, and send the public key to a key server Central reads. Generate a Portal user token.
       Put `mavenCentralUsername`, `mavenCentralPassword`, `signingInMemoryKey`, `signingInMemoryKeyId` and `signingInMemoryKeyPassword` in
       `~/.gradle/gradle.properties`, or in
       `ORG_GRADLE_PROJECT_*` environment variables; never in the repository. Back up the key. (REL-04)
-- [ ] T020 [USER] [US2] Needs T018, T019. Upload rehearsal under the personal namespace, from the PR C branch:
+- [x] T020 [USER] [US2] Needs T018, T019. Upload rehearsal under the personal namespace, from the PR C branch:
       `./gradlew publishToMavenCentral -Pgroup=io.github.jordi1st`. The command should succeed, and the Portal should accept the deployment and hold
       it for review, with all files signed. Then **drop the deployment; do not publish it**. Report the outcome, including what `VALIDATED` did, for
       the planner to record. On a failure, follow [plan.md](plan.md#risks). (REL-04, D85 risk)
-- [ ] T021 [US2] Before anything is released: the whole-feature review (`requesting-code-review`, `reviewer` agent) of REL-01 – REL-04, and a fresh
+- [x] T021 [US2] Before anything is released: the whole-feature review (`requesting-code-review`, `reviewer` agent) of REL-01 – REL-04, and a fresh
       `./gradlew check`. Read one generated POM per project in full. Fix findings as follow-up tasks (T021a, …), then report to the user that the
       build is ready for release.
+- [x] T021a [US2] Fixes from T021, settled with the user 2026-11-09: core's description in design.md §12, its build script and
+      `BuildSmokeIT` starts with a capital ("Keys, …"), red first; D85 records that the spring and kafka POMs publish the Spring Boot BOM as a
+      platform (accepted); plan.md's task counts and PR table include T013a, T021a and T024a; T007 and the T011 stale-check item are ticked.
+      Verify: **IT**, `./gradlew check`.
 - [ ] T022 [USER] Review and merge PR B and PR C to `main`; CI is green on `main`.
 - [ ] T023 [USER] [US2] Needs T009 verified, T019, T021, T022. Upload from a clean `main`: `./gradlew publishToMavenCentral`. Never run
       `publishAndReleaseToMavenCentral`. The deployment stops for review in the Portal. (REL-04)
@@ -232,12 +243,12 @@ Verify commands, each followed by `./gradlew check` before the commit:
 - Demo: T001 → T002 → T003 → T004 → T005 → T006 → T007.
 - Going public: T007 → T008 → T009 (D86). T019 needs T009's Portal account, not the verified namespace.
 - Configuration reference: T010 → T011.
-- Publishing build: T012 → T013 → T014 → T015 → T016 → T017 → T018.
+- Publishing build: T012 → T013 → T013a → T014 → T015 → T016 → T017 → T018.
 - Rehearsal upload: T020 needs T018 and T019.
 - Release: T021 needs T011 and T018, and T020 if it runs. Then T021 → T022. T023 needs T009 verified, T019 and T022. Then T023 → T024 → T025 → T026.
 - T001 – T004 touch `EdgeService`, `DemoClient` and `demo/build.gradle.kts`, so they run in sequence.
 - T010 has no dependency on the demo or the publishing build. T011 and T012 both change `integration-tests/build.gradle.kts`, so they run in sequence.
-- T012 – T017 all change `published` or `BuildSmokeIT`, so they run in sequence.
+- T012 – T017 and T013a all change `published` or `BuildSmokeIT`, so they run in sequence.
 - T016 comes after T015, so its temporary change has a `developer` block to add to.
 - PR A comes first in practice, because T008 and T009 wait for it (D86); the agents continue with Phases 3 and 4 during the namespace wait.
 - Every task that commits is reviewed and committed on its own, on branch `008-release`; pushing and merging need the user.
@@ -246,10 +257,10 @@ Verify commands, each followed by `./gradlew check` before the commit:
 
 - [x] The user approved the plan, tasks, TDD exceptions (T003's `factory` line, T005, T006, T017, T026) and guard test (T016)
 - [x] Q1 settled and written into spec.md; Q2 – Q7 answered
-- [ ] T018's outcome recorded in plan.md, and T020's if it ran
+- [x] T018's outcome recorded in plan.md, and T020's if it ran
 - [ ] Requirements done: REL-01 – REL-04
-- [ ] T016's guard shown red against both temporary changes, and the changes reverted
-- [ ] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted
+- [x] T016's guard shown red against both temporary changes, and the changes reverted
+- [x] T011's stale check shown failing for a changed spec and a changed reference, and the changes reverted (T011, and again in T021)
 - [x] `run-demo.sh` ran from a clean copy of the repository in under 10 minutes (SC-002): 248 s, T005
 - [ ] 0.1.0 on Maven Central, and resolved by a fresh project (T025)
 - [ ] `./gradlew check` green
