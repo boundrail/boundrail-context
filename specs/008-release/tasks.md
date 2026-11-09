@@ -176,7 +176,7 @@ Verify commands, each followed by `./gradlew check` before the commit:
       Verify: **IT**. (REL-04)
 - [x] T014 [US2] Red: `REL-04 each published POM has the metadata Central requires`: the name, description, URL, Apache-2.0 licence
       and SCM that REL-04 lists. Green: the `pom` block in `published`, and a `description` per project. Verify: **IT**. (REL-04, constitution)
-- [ ] T015 [US2] Red: `REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st`, exactly one developer.
+- [x] T015 [US2] Red: `REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st`, exactly one developer.
       Green: the `developers` block in `published`, with no `email`. Verify: **IT**. (REL-04, D85)
 - [ ] T016 [US2] Guard: `REL-04 no published POM or module metadata contains an email address`, for all four projects: no `email` element, and no text
       matching an address pattern anywhere in the file. Green before the task; show it red against both temporary changes in

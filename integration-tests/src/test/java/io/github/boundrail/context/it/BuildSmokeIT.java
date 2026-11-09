@@ -269,6 +269,30 @@ class BuildSmokeIT {
     }
 
     @Test
+    @DisplayName("REL-04 the developers section of each published POM names jordi1st with https://github.com/jordi1st")
+    void developersSectionOfEachPublishedPomNamesTheMaintainer() throws Exception {
+        String poms = System.getProperty("boundrail.it.published-poms");
+        assertThat(poms).as("system property boundrail.it.published-poms (set by the integration test task)").isNotNull();
+
+        SoftAssertions softly = new SoftAssertions();
+        for (String path : poms.split(File.pathSeparator)) {
+            Path pom = Path.of(path);
+            Element project = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile()).getDocumentElement();
+            Element developers = childElement(project, "developers");
+            List<String> developerEntries = new ArrayList<>();
+            if (developers != null) {
+                for (Element developer : childElements(developers, "developer")) {
+                    developerEntries.add(childText(developer, "id") + " " + childText(developer, "name") + " " + childText(developer, "url"));
+                }
+            }
+            softly.assertThat(developerEntries)
+                    .as("developers (id name url) in %s", pom)
+                    .containsExactly("jordi1st jordi1st https://github.com/jordi1st");
+        }
+        softly.assertAll();
+    }
+
+    @Test
     @DisplayName("REL-04 core's sources JAR holds the java25 sources under META-INF/versions/25")
     void coreSourcesJarHoldsTheJava25SourcesUnderMetaInfVersions25() throws Exception {
         String sourcesJar = System.getProperty("boundrail.it.core-sources-jar");

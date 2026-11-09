@@ -32,6 +32,14 @@ mavenPublishing {
             connection.set("scm:git:https://github.com/boundrail/boundrail-context.git")
             developerConnection.set("scm:git:ssh://git@github.com/boundrail/boundrail-context.git")
         }
+        // No email: a released POM cannot be removed from Central (REL-04, D85).
+        developers {
+            developer {
+                id.set("jordi1st")
+                name.set("jordi1st")
+                url.set("https://github.com/jordi1st")
+            }
+        }
     }
 }
 
